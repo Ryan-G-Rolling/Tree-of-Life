@@ -1,0 +1,7 @@
+build/
+tests/*.bin
+tests/*.bin.tmp
+.local/claude-ds/
+# Local CLI setup is specific to this machine.
+claude-ds.ps1
+CLAUDE_DS.md
