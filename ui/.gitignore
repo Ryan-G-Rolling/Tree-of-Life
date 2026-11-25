@@ -1,0 +1,9 @@
+build/
+*.exe
+*.o
+saves/*.sav
+shot_*.png
+
+# 4K 归档截图是交付物，根目录临时截图仍忽略
+!docs/screens/v2/
+!docs/screens/v2/*.png
