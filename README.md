@@ -1,5 +1,7 @@
 # Tree of Life 项目文档
 
+The group assignment for our C lesson 1
+
 本目录是三人共同开发 Raylib 2D 生物进化增量游戏的设计基准。开发前先阅读以下三份文档。
 
 1. [项目介绍与完整玩法](00-项目介绍与完整玩法.md)
