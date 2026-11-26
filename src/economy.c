@@ -34,6 +34,7 @@ double economy_click_atp(const GameState *game)
     double permanent = 1.0;
     if (game->legacy.levels[LEGACY_METABOLISM] >= 1) permanent *= LEGACY_ATP_LEVEL_1_MULTIPLIER;
     if (game->legacy.levels[LEGACY_METABOLISM] >= 4) permanent *= LEGACY_ATP_LEVEL_4_MULTIPLIER;
+    if (game->legacy.levels[LEGACY_METABOLISM] >= 6) permanent *= LEGACY_CLICK_MULTIPLIER_LV6;
     return BASE_CLICK_ATP
         * economy_run_multiplier(UPGRADE_METABOLISM,
                                  game->run.run_upgrade_levels[UPGRADE_METABOLISM])
@@ -45,7 +46,7 @@ int economy_biomass_milestone(double max_biomass)
     static const double thresholds[] = BIOMASS_MILESTONES;
     if (!isfinite(max_biomass) || max_biomass < 0.0) return 0;
     int level = 0;
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < BIOMASS_MILESTONE_COUNT; ++i) {
         if (max_biomass < thresholds[i]) break;
         level = i + 1;
     }

@@ -14,6 +14,9 @@
 #include "raylib.h"
 #include "ui_internal.h"
 #include "ui_adapter.h"
+#include "environment.h"
+#include "evolution.h"
+#include "balance.h"
 #include "atmosphere.h" /* 展台内部的 L1 悬液（atm_draw_live_in） */
 
 /* ================= 通用小工具 ================= */
@@ -23,6 +26,10 @@
  * 于是 ui_btn_draw 的插值永远从 0 开始、永远不会动。用 (id,target,option)
  * 而不是下标做键，弹层开关导致表顺序变化时才不会把动画串到别的按钮上。 */
 static UiLayout s_prev;
+static int codex_page = 0;
+static int codex_last_tab = -1;
+static int tree_page = 0;
+void screens_debug_tree_page(int page) { tree_page = page<0?0:page>3?3:page; }
 
 static UiButton *btn_add(UiLayout *L, UiButtonId id, Rectangle r, int target, int option, bool enabled)
 {
@@ -153,15 +160,16 @@ static void draw_top_bar(const GameState *game)
         double rate;
         Color color;
         bool has_rate;
-    } pills[4] = {
+    } pills[5] = {
         { "ATP",     game->run.atp,     rates[0], COL_ATP,     true  },
         { "生物量",  game->run.biomass, rates[1], COL_BIOMASS, true  },
         { "DNA",     game->run.dna,     rates[2], COL_DNA,     true  },
+        { "理念", game->run.knowledge,evolution_knowledge_per_second(game),COL_RARE,true },
         { "EP",      (double)game->legacy.evolution_points, 0, COL_EP, false },
     };
 
-    for (int i = 0; i < 4; ++i) {
-        Rectangle p = { 20.0f + i * 208.0f, 16.0f, 196.0f, 56.0f };
+    for (int i = 0; i < 5; ++i) {
+        Rectangle p = { 20.0f + i * 165.0f, 16.0f, 155.0f, 56.0f };
         ui_panel(p, R_CARD, COL_PANEL, COL_LINE);
         DrawRectangleRounded((Rectangle){ p.x + 10.0f, p.y + 14.0f, 3.0f, 28.0f }, 1.0f, 4, pills[i].color);
 
@@ -307,13 +315,13 @@ static void draw_env_banner(const GameState *game)
 {
     Rectangle r = { 396.0f, 100.0f, 524.0f, 54.0f };
     int env = game->run.current_environment_id;
-    bool crisis = env != 0;
+    bool crisis = environment_is_crisis(env);
     Color accent = crisis ? COL_BAD : COL_ACCENT;
 
     ui_panel(r, R_CARD, crisis ? COL_BAD_SURFACE : COL_PANEL, crisis ? Fade(COL_BAD, 0.5f) : COL_LINE);
 
     char tbuf[32];
-    ui_fmt_time(game->run.environment_time_left, tbuf, (int)sizeof(tbuf));
+    ui_fmt_time(game->run.current_environment_id ? game->run.environment_time_left : game->run.event_interval_left, tbuf, (int)sizeof(tbuf));
     ui_text(tbuf, r.x + S_PAD, r.y + 16.0f, F_TITLE, accent);
 
     ui_text(ua_environment_name(env), r.x + 86.0f, r.y + 10.0f, F_LABEL, COL_TEXT);
@@ -323,7 +331,7 @@ static void draw_env_banner(const GameState *game)
     ui_text(desc, r.x + 86.0f, r.y + 30.0f, F_CAPTION, COL_DIM);
 
     /* Adaptation Lv.3：下一事件预览 */
-    if (game->legacy.levels[LEGACY_ADAPTATION] >= 3 && game->run.next_environment_id != env) {
+    if (environment_preview_available(game) && game->run.next_environment_id > 0) {
         char nb[64];
         snprintf(nb, sizeof(nb), "下一事件：%s", ua_environment_name(game->run.next_environment_id));
         ui_text_right(nb, r.x + r.width - S_PAD, r.y + 34.0f, F_CAPTION, COL_EP);
@@ -435,7 +443,8 @@ static void draw_era_progress(const GameState *game)
     double floor_v = ua_milestone_threshold(level);
 
     float t = 0.0f;
-    if (next > floor_v) t = (float)((cur - floor_v) / (next - floor_v));
+    if(level >= BIOMASS_MILESTONE_COUNT) t=1.0f;
+    else if (next > floor_v) t = (float)((cur - floor_v) / (next - floor_v));
     if (t < 0.0f) t = 0.0f;
     if (t > 1.0f) t = 1.0f;
 
@@ -454,7 +463,9 @@ static void draw_era_progress(const GameState *game)
 
 static void draw_species_card(const GameState *game, int slot)
 {
-    Rectangle r = { 936.0f, 100.0f + slot * 208.0f, 324.0f, 196.0f };
+    int card_slot=slot;
+    if(slot==1 && game->run.active_species_count>2) slot=1+(g_ui.branch_view%2);
+    Rectangle r = { 936.0f, 100.0f + card_slot * 208.0f, 324.0f, 196.0f };
     bool exists = slot < game->run.active_species_count;
 
     if (!exists) {
@@ -468,7 +479,7 @@ static void draw_species_card(const GameState *game, int slot)
     const SpeciesState *sp = &game->run.active_species[slot];
     int id = sp->species_id;
     Color accent = ecology_color(id);
-    card_frame(r, ua_species_name(id), sp->is_main_lineage ? "主谱系" : "额外分支", accent);
+    card_frame(r, ua_species_name(id), sp->is_main_lineage ? "主谱系" : "额外分支 · Tab 切换", accent);
 
     char line[128];
     snprintf(line, sizeof(line), "%s · 阶段 %d", ua_ecology_name(id), ua_species_stage(id));
@@ -570,12 +581,12 @@ static void draw_run_stats(const GameState *game)
     ui_text(total, r.x + 148.0f, r.y + 86.0f, F_DISPLAY, COL_EP);
 
     /* 公式：F_CAPTION 下限 12（01 §3.2 硬性结论 3：10 一律升 12）。
-     * 原串 "EP = 2E + M/3 + S/2 + min(C,3) + B" 在 12px 下宽约 186 逻辑 px，
+     * 原串 "EP = 2E + M/3 + S/2 + min(C,6) + B" 在 12px 下宽约 186 逻辑 px，
      * 而这一行只有 176px 可用（x 由 148 起、卡片内边距 16 收边），会越出卡片描边。
      * 运算符两侧的空格是排版装饰，去掉后 25 字符约 108px，语义一字不少。
      * 中文/拉丁之间仍然保留半角空格（§3.4 T-2 只约束中英混排）。 */
     char hint[96];
-    snprintf(hint, sizeof(hint), "EP=2E+M/3+S/2+min(C,3)+B");
+    snprintf(hint, sizeof(hint), "EP=2E+M/3+S/2+min(C,6)+B");
     ui_text(hint, r.x + 148.0f, r.y + 124.0f, F_CAPTION, COL_FAINT);
     ui_text("主动结束不会丢失图鉴", r.x + 148.0f, r.y + 142.0f, F_CAPTION, COL_FAINT);
 }
@@ -615,7 +626,7 @@ static void draw_next_step(const GameState *game)
     y += 26.0f;
     DrawCircleV((Vector2){ r.x + 22.0f, y + 7.0f }, 3.0f, game->run.current_environment_id ? COL_BAD : COL_DIM);
     char tbuf[32];
-    ui_fmt_time(game->run.environment_time_left, tbuf, (int)sizeof(tbuf));
+    ui_fmt_time(game->run.current_environment_id ? game->run.environment_time_left : game->run.event_interval_left, tbuf, (int)sizeof(tbuf));
     if (game->run.current_environment_id) {
         char line[160];
         snprintf(line, sizeof(line), "%s 还剩 %s，低适应物种会掉种群", ua_environment_name(game->run.current_environment_id), tbuf);
@@ -667,7 +678,15 @@ static void draw_bottom_bar(const GameState *game)
     if (spe) ui_btn_draw(spe, "物种分化", "消耗生物量", is_hot(S, spe));
     if (end) ui_btn_draw(end, "结束本轮演化", "预览 Evolution Points", is_hot(S, end));
 
-    ui_text("空格 点击 · 1/2/3 升级 · M 突变 · E 结算", 700.0f, 758.0f, F_CAPTION, COL_FAINT);
+    UiButton *cap=btn_find(S,UI_BTN_CAPACITY,-1), *res=btn_find(S,UI_BTN_RESERVE,-1), *tech=btn_find(S,UI_BTN_TECH,-1);
+    char a[80],b[80],c[80];
+    snprintf(a,sizeof a,"%.0f ATP + %.0f 生物量",evolution_capacity_atp_cost(game),evolution_capacity_biomass_cost(game));
+    snprintf(b,sizeof b,"%.0f ATP · Lv.%d",evolution_reserve_cost(game),game->run.reserve_levels);
+    const SubUpgradeDef *next=evolution_sub_upgrade_next(game,0);
+    snprintf(c,sizeof c,"%.0f 理念",next?evolution_sub_upgrade_cost(next):0.0);
+    if(cap) ui_btn_draw(cap,"容量扩张",a,is_hot(S,cap));
+    if(res) ui_btn_draw(res,"应急储备",b,is_hot(S,res));
+    if(tech) ui_btn_draw(tech,next?next->name:"科技",next?c:"高阶物种解锁",is_hot(S,tech));
 }
 
 /* ================= 主页面：布局 ================= */
@@ -694,6 +713,10 @@ static void build_main(UiLayout *L, const GameState *game, const UIState *S)
 
     /* 底部动作：H_PRIMARY 44（原 40）。底栏 736–800 的中心是 768，
      * 所以 y = 768 − 44/2 = 746，上下各留 10。 */
+    btn_add(L,UI_BTN_CAPACITY,(Rectangle){600,746,214,H_PRIMARY},0,0,game->run.biomass>=evolution_capacity_biomass_cost(game)&&game->run.atp>=evolution_capacity_atp_cost(game));
+    btn_add(L,UI_BTN_RESERVE,(Rectangle){826,746,180,H_PRIMARY},0,0,game->run.reserve_levels<RESERVE_MAX_LEVEL&&game->run.atp>=evolution_reserve_cost(game));
+    const SubUpgradeDef *tech=evolution_sub_upgrade_next(game,0);
+    btn_add(L,UI_BTN_TECH,(Rectangle){1018,746,242,H_PRIMARY},0,0,tech&&game->run.knowledge>=evolution_sub_upgrade_cost(tech));
     int species_count = game->run.active_species_count;
     bool can_speciate = false;
     int children[4];
@@ -702,9 +725,10 @@ static void build_main(UiLayout *L, const GameState *game, const UIState *S)
         if (ua_speciation_check(game, children[i]) == ACTION_OK) { can_speciate = true; break; }
     }
     (void)species_count;
+    (void)can_speciate;
 
     btn_add(L, UI_BTN_OPEN_MUTATION, (Rectangle){ 20.0f, 746.0f, 180.0f, H_PRIMARY }, 0, 0, true);
-    btn_add(L, UI_BTN_OPEN_SPECIATION, (Rectangle){ 212.0f, 746.0f, 180.0f, H_PRIMARY }, 0, 0, can_speciate);
+    btn_add(L, UI_BTN_OPEN_SPECIATION, (Rectangle){ 212.0f, 746.0f, 180.0f, H_PRIMARY }, 0, 0, n > 0);
     btn_add(L, UI_BTN_OPEN_END_ERA, (Rectangle){ 404.0f, 746.0f, 180.0f, H_PRIMARY }, 0, 0, true);
 }
 
@@ -830,7 +854,7 @@ static void build_legacy(UiLayout *L, const GameState *game, const UIState *S)
     (void)S;
     for (int i = 0; i < 4; ++i) {
         Rectangle r = { 60.0f + (i % 2) * 600.0f, 132.0f + (i / 2) * 232.0f, 560.0f, 212.0f };
-        bool maxed = game->legacy.levels[i] >= 5;
+        bool maxed = game->legacy.levels[i] >= LEGACY_MAX_LEVEL;
         bool afford = game->legacy.evolution_points >= ua_legacy_cost(i, game->legacy.levels[i]);
         btn_add(L, UI_BTN_BUY_LEGACY, r, i, 0, !maxed && afford);
     }
@@ -861,7 +885,7 @@ static void draw_legacy(const GameState *game, const UIState *S)
         UiButton *b = btn_find(S, UI_BTN_BUY_LEGACY, i);
         bool hot = is_hot(S, b);
         int level = game->legacy.levels[i];
-        bool maxed = level >= 5;
+        bool maxed = level >= LEGACY_MAX_LEVEL;
         int cost = maxed ? 0 : ua_legacy_cost(i, level);
         float hv = btn_hover_step(b, hot);
         bool usable = b && b->enabled;
@@ -878,17 +902,17 @@ static void draw_legacy(const GameState *game, const UIState *S)
         ui_text(ua_legacy_name(i), rr.x + 24.0f, rr.y + 22.0f, F_TITLE, COL_TEXT);
 
         char lv[32];
-        snprintf(lv, sizeof(lv), "Lv.%d / 5", level);
+        snprintf(lv, sizeof(lv), "Lv.%d / %d", level, LEGACY_MAX_LEVEL);
         ui_text_right(lv, rr.x + rr.width - 24.0f, rr.y + 24.0f, F_LABEL, COL_DIM);
 
         /* 等级点 */
-        for (int k = 0; k < 5; ++k) {
+        for (int k = 0; k < LEGACY_MAX_LEVEL; ++k) {
             Rectangle pip = { rr.x + 24.0f + k * 26.0f, rr.y + 54.0f, 18.0f, 6.0f };
             DrawRectangleRounded(pip, 1.0f, 4, k < level ? COL_EP : COL_BAR_TRACK);
         }
 
         char eff[160];
-        ua_legacy_effect(game, i, level < 5 ? level + 1 : 5, eff, (int)sizeof(eff));
+        ua_legacy_effect(game, i, level < LEGACY_MAX_LEVEL ? level + 1 : LEGACY_MAX_LEVEL, eff, (int)sizeof(eff));
         ui_text(maxed ? "已满级" : "下一级", rr.x + 24.0f, rr.y + 74.0f, F_CAPTION, COL_FAINT);
         ui_text(eff, rr.x + 24.0f, rr.y + 94.0f, F_BODY, COL_TEXT);
 
@@ -929,7 +953,9 @@ static Rectangle mutation_panel_rect(const GameState *game)
 static Rectangle codex_panel_rect(int tab, int achievement_count)
 {
     float h = 424.0f;
-    if (tab == 1) {
+    if (tab == 0) {
+        h = 624.0f;
+    } else if (tab == 1) {
         h = 624.0f;
     } else if (tab == 2) {
         /* 记录页：成就 2 列排布，首行在 panel.y + 282，行距 68，卡片高 56。
@@ -1146,7 +1172,7 @@ static void draw_speciation_overlay(const GameState *game, const UIState *S)
     if (keep) {
         char label[96];
         snprintf(label, sizeof(label), "保留亲本为额外分支：%s", S->keep_parent ? "是" : "否");
-        ui_btn_draw(keep, label, S->keep_parent ? "需要空的第二物种槽" : "亲本离开活跃列表", is_hot(S, keep));
+        ui_btn_draw(keep, label, S->keep_parent ? "需要多样性 Lv.2，可替换旧分支" : "亲本离开活跃列表", is_hot(S, keep));
     }
 
     UiButton *close = btn_find(S, UI_BTN_CLOSE_OVERLAY, -1);
@@ -1175,12 +1201,23 @@ static void draw_codex_overlay(const GameState *game, const UIState *S)
 
     ui_divider(panel.x + 26.0f, panel.x + panel.width - 26.0f, panel.y + 112.0f, COL_LINE);
 
+    if (codex_last_tab != S->codex_tab) { codex_page=0; codex_last_tab=S->codex_tab; }
+    int page_size = S->codex_tab == 0 ? 12 : 12;
+    int total = S->codex_tab == 0 ? SPECIES_COUNT : MUTATION_COUNT;
+    int pages = (total+page_size-1)/page_size;
+    float wheel = GetMouseWheelMove();
+    if(wheel<0 && codex_page<pages-1) codex_page++;
+    if(wheel>0 && codex_page>0) codex_page--;
+    if(S->codex_tab<2) { char page[80];snprintf(page,sizeof page,"滚轮切换 · %d / %d 页",codex_page+1,pages);ui_text(page,panel.x+26,panel.y+panel.height-28,F_CAPTION,COL_DIM); }
     if (S->codex_tab == 0) {
         int discovered = 0;
         for (int i = 0; i < SPECIES_COUNT; ++i) {
-            Rectangle r = { panel.x + 26.0f + (i % 4) * 262.0f, panel.y + 132.0f + (i / 4) * 132.0f, 244.0f, 116.0f };
+            bool visible = i / page_size == codex_page;
+            int j=i%page_size;
+            Rectangle r = { panel.x + 26.0f + (j % 4) * 262.0f, panel.y + 132.0f + (j / 4) * 132.0f, 244.0f, 116.0f };
             bool found = game->legacy.codex_species[i];
             if (found) discovered++;
+            if (!visible) continue;
             ui_panel(r, R_CARD, found ? COL_PANEL_HI : COL_SURFACE_OFF, COL_LINE);
             if (found) {
                 DrawCircleV((Vector2){ r.x + 40.0f, r.y + 52.0f }, 22.0f, Fade(ecology_color(i), 0.9f));
@@ -1202,9 +1239,12 @@ static void draw_codex_overlay(const GameState *game, const UIState *S)
     } else if (S->codex_tab == 1) {
         int discovered = 0;
         for (int i = 0; i < MUTATION_COUNT; ++i) {
-            Rectangle r = { panel.x + 26.0f + (i % 3) * 350.0f, panel.y + 132.0f + (i / 3) * 116.0f, 332.0f, 100.0f };
+            bool visible = i / page_size == codex_page;
+            int j=i%page_size;
+            Rectangle r = { panel.x + 26.0f + (j % 3) * 350.0f, panel.y + 132.0f + (j / 3) * 116.0f, 332.0f, 100.0f };
             bool found = game->legacy.codex_mutations[i];
             if (found) discovered++;
+            if (!visible) continue;
             ui_panel(r, R_CARD, found ? COL_PANEL_HI : COL_SURFACE_OFF, COL_LINE);
             if (found) {
                 ui_text(ua_mutation_name(i), r.x + S_PAD, r.y + 14.0f, F_LABEL, COL_TEXT);
@@ -1220,7 +1260,7 @@ static void draw_codex_overlay(const GameState *game, const UIState *S)
         snprintf(cnt, sizeof(cnt), "已发现 %d / %d", discovered, MUTATION_COUNT);
         ui_text_right(cnt, panel.x + panel.width - 26.0f, panel.y + 76.0f, F_BODY, COL_DIM);
     } else {
-        const char *labels[3] = { "最高纪元", "最高 EP", "最高生物量" };
+        const char *labels[3] = { "最高阶段", "最高 EP", "最高生物量" };
         double values[3] = { (double)game->legacy.best_era, (double)game->legacy.best_evolution_points, game->legacy.best_biomass };
         Color colors[3] = { COL_ACCENT, COL_EP, COL_BIOMASS };
         for (int i = 0; i < 3; ++i) {
@@ -1237,7 +1277,7 @@ static void draw_codex_overlay(const GameState *game, const UIState *S)
         int n = ua_achievement_count();
         for (int i = 0; i < n && i < 8; ++i) {
             Rectangle r = { panel.x + 26.0f + (i % 2) * 522.0f, panel.y + 282.0f + (i / 2) * 68.0f, 504.0f, 56.0f };
-            bool got = (game->legacy.achievement_flags & (1u << i)) != 0;
+            bool got = false;
             ui_panel(r, R_BTN, got ? COL_PANEL_HI : COL_SURFACE_OFF,
                      got ? Fade(COL_ACCENT, 0.5f) : COL_LINE);
             ui_text(ua_achievement_name(i), r.x + S_PAD, r.y + 10.0f, F_BODY, got ? COL_TEXT : COL_FAINT);
@@ -1281,7 +1321,12 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
         int st = ua_species_stage(i);
         if (st > max_stage) max_stage = st;
     }
-    int cols = max_stage + 1;
+    float wheel = GetMouseWheelMove();
+    if(wheel<0 && tree_page<(max_stage/3)) tree_page++;
+    if(wheel>0 && tree_page>0) tree_page--;
+    int first_stage=tree_page*3;
+    int cols = max_stage-first_stage+1;
+    if(cols>3) cols=3;
     if (cols < 1) cols = 1;
     if (cols > 6) cols = 6;             /* 数据表扩容时的布局护栏 */
 
@@ -1291,8 +1336,9 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
     int max_rows = 1;
     for (int i = 0; i < SPECIES_COUNT; ++i) {
         int st = ua_species_stage(i);
-        if (st >= cols) st = cols - 1;
+        st-=first_stage;
         stage_of[i] = st;
+        if(st<0 || st>=cols) continue;
         row_of[i] = col_count[st]++;
         if (col_count[st] > max_rows) max_rows = col_count[st];
     }
@@ -1307,11 +1353,13 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
     const float card_h = fminf(196.0f,
                                (avail_h - row_gap * (float)(max_rows - 1)) / (float)max_rows);
     const float cell_r = fminf(22.0f, card_w * 0.16f);
-    const float cell_cy = 62.0f;
+    const bool compact = card_h < 174.0f;
+    const float cell_cy = compact ? card_h*0.5f : 62.0f;
 
     Rectangle card[SPECIES_COUNT];
     for (int i = 0; i < SPECIES_COUNT; ++i) {
         int col = stage_of[i], row = row_of[i];
+        if(col<0 || col>=cols) continue;
         float stack_h = card_h * (float)col_count[col] + row_gap * (float)(col_count[col] - 1);
         card[i] = (Rectangle){ inner_x + (float)col * (card_w + col_gap),
                                top + (avail_h - stack_h) * 0.5f + (float)row * (card_h + row_gap),
@@ -1322,17 +1370,18 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
      * 穿过中间列的那一小段（如阶段1→阶段3），读起来是"从节点背后绕过去"。 */
     for (int c = 0; c < cols; ++c) {
         char head[48];
-        snprintf(head, sizeof(head), "%d · %s", c, ua_stage_name(c));
+        snprintf(head, sizeof(head), "%d · %s", c+first_stage, ua_stage_name(c+first_stage));
         ui_text_center(head, inner_x + (float)c * (card_w + col_gap) + card_w * 0.5f,
                        panel.y + 86.0f, F_CAPTION, COL_DIM);
     }
 
     for (int child = 0; child < SPECIES_COUNT; ++child) {
+        if(stage_of[child]<0 || stage_of[child]>=cols) continue;
         int parents[4];
         int n = ua_species_parents(child, parents, 4);
         for (int k = 0; k < n; ++k) {
             int p = parents[k];
-            if (p < 0 || p >= SPECIES_COUNT || stage_of[p] >= stage_of[child]) continue;
+            if (p < 0 || p >= SPECIES_COUNT || stage_of[p]<0 || stage_of[p]>=cols || stage_of[p] >= stage_of[child]) continue;
             bool lit = game->legacy.codex_species[p] && game->legacy.codex_species[child];
             /* 当前物种的"入边"单独提亮：一眼看出这一轮走到树上的哪个位置。
                其余已点亮分支用子代物种色，未探索分支压到 COL_LINE_STRONG 半透明。 */
@@ -1351,8 +1400,9 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
     }
 
     for (int i = 0; i < SPECIES_COUNT; ++i) {
+        if(stage_of[i]<0 || stage_of[i]>=cols) continue;
         Rectangle r = card[i];
-        int stage = stage_of[i];
+        int stage = stage_of[i]+first_stage;
         bool found = game->legacy.codex_species[i];
         bool current = (i == main_id);
 
@@ -1364,29 +1414,29 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
         ui_text(st, r.x + 10.0f, r.y + 10.0f, F_CAPTION, COL_FAINT);
 
         float cx = r.x + r.width * 0.5f;
-        if (found || stage <= main_stage) {
-            DrawCircleV((Vector2){ cx, r.y + cell_cy }, cell_r, Fade(ecology_color(i), 0.85f));
-            ui_text_center(ua_species_name(i), cx, r.y + 96.0f, F_LABEL, COL_TEXT);
-            ui_text_center(ua_ecology_name(i), cx, r.y + 118.0f, F_CAPTION, COL_DIM);
+        bool reveal=found || stage<=main_stage;
+        if(compact) {
+            ui_text_center(reveal?ua_species_name(i):"未发现",cx,r.y+30,F_LABEL,reveal?COL_TEXT:COL_FAINT);
+            ui_text_center(reveal?ua_ecology_name(i):"?",cx,r.y+52,F_CAPTION,COL_DIM);
+        } else if(reveal) {
+            DrawCircleV((Vector2){cx,r.y+cell_cy},cell_r,Fade(ecology_color(i),0.85f));
+            ui_text_center(ua_species_name(i),cx,r.y+96,F_LABEL,COL_TEXT);
+            ui_text_center(ua_ecology_name(i),cx,r.y+118,F_CAPTION,COL_DIM);
         } else {
-            DrawCircleV((Vector2){ cx, r.y + cell_cy }, cell_r, COL_SURFACE_OFF);
-            ui_text_center("?", cx, r.y + cell_cy - 10.0f, F_TITLE, COL_FAINT);
-            ui_text_center("未发现", cx, r.y + 96.0f, F_BODY, COL_FAINT);
+            DrawCircleV((Vector2){cx,r.y+cell_cy},cell_r,COL_SURFACE_OFF);
+            ui_text_center("?",cx,r.y+cell_cy-10,F_TITLE,COL_FAINT);
+            ui_text_center("未发现",cx,r.y+96,F_BODY,COL_FAINT);
         }
-
-        char cost[48];
-        double c = ua_speciation_cost(game, i);
-        char num[32];
-        fmt_cost(num, (int)sizeof(num), c);
-        if (c <= 0.0) snprintf(cost, sizeof(cost), "初始物种");
-        else snprintf(cost, sizeof(cost), "分化 %s", num);
-        /* 代价是"走哪条分支"的唯一决策依据，按 01 §3.2 必须 ≥ F_BODY(14)，不能用 F_CAPTION(12) */
-        ui_text_center(cost, cx, r.y + 146.0f, F_BODY, found ? COL_BIOMASS : COL_FAINT);
-
+        char cost[48],num[32];
+        double c=ua_speciation_cost(game,i);
+        fmt_cost(num,sizeof num,c);
+        if(c<=0)snprintf(cost,sizeof cost,"初始物种");
+        else snprintf(cost,sizeof cost,"分化 %s",num);
+        ui_text_center(cost,cx,r.y+(compact?74:146),F_BODY,found?COL_BIOMASS:COL_FAINT);
         if (current) ui_tag(r, "当前", COL_ACCENT);
     }
 
-    ui_text("灰色卡片为尚未探索的分支：换一条路线再走一轮即可点亮图鉴", panel.x + 26.0f, panel.y + panel.height - 34.0f, F_CAPTION, COL_FAINT);
+    ui_text("滚轮翻页查看全部阶段 · 灰色卡片为尚未探索的分支", panel.x + 26.0f, panel.y + panel.height - 34.0f, F_CAPTION, COL_FAINT);
 }
 
 static void draw_overlay(const GameState *game, const UIState *S)

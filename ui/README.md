@@ -1,3 +1,5 @@
+> 2026-11-26：A+B+C 已接通，统一构建请在仓库根目录运行 `./build.ps1`。本页以下保留该成员独立开发时的说明；整合状态以根目录 README.md 和 INTEGRATION_NOTES.md 为准。
+
 # Tree of Life · 客户端（Member C）
 
 Raylib 2D 生物进化增量游戏的**图形界面与交互层**。规则与数值属于 Member A / B，

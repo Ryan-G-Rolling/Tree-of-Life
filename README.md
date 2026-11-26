@@ -1,38 +1,48 @@
-# Tree of Life 项目文档
+# Tree of Life
 
-The group assignment for our C lesson 1
+三人 C 语言课程项目，使用 Raylib 2D。点击与自动产出积累 ATP、生物量和 DNA，选择突变、推进物种分化，经历环境事件，再通过结束纪元获得 EP 和永久强化。
 
-本目录是三人共同开发 Raylib 2D 生物进化增量游戏的设计基准。开发前先阅读以下三份文档。
+## 运行整合版
 
-1. [项目介绍与完整玩法](00-项目介绍与完整玩法.md)
-2. [三人分工与接口约定](01-三人分工与接口约定.md)
-3. [数据与计算规则](02-数据与计算规则.md)
-
-## 当前状态
-
-- 游戏方向、核心循环、初始数据和计算顺序已经冻结。
-- Member A 的独立核心、经济和存档实现已完成一轮加固与控制台验收；见 [A 模块接入说明](INTEGRATION_NOTES.md)。突变、分化和部分环境提交仍待三人确认接口，B/C 的实现尚未接入。
-- 数值可在测试后调整，资源种类、模块边界、状态流程和跨轮规则不应由个人或 Agent 擅自更改。
-- 若确实需要改变核心规则，三人先更新本文档，再修改接口和代码。
-
-## 已确定的核心
-
-- 使用 C 语言和 Raylib 2D。
-- 玩法由增量成长、主动选择突变、环境自然选择和跨轮永久成长组成。
-- 单轮从原始生命开始，默认推进一条主谱系。
-- `Diversification Lv.2` 允许维持一个额外物种分支，`Lv.3` 开启多物种协同。
-- 玩家主动结束当前纪元并获得 Evolution Points，游戏不会强制结束本轮。
-- 游戏逻辑不得依赖 Raylib，图形界面只读取状态和提交操作。
-
-## 编译与测试 Member A 草稿
-
-在本机 MinGW 环境运行 `mingw32-make test headers`。`tests/rules_stub.c` 仅为 Member B 规则的测试替身，不能加入正式游戏构建。
-
-测试包括原有操作闭环、固定步进与失败回滚边界、损坏存档校验三组，以及公共头文件编译检查。`make all` 构建的是控制台测试程序，当前不包含可玩的 Raylib 游戏。
-
-2026-11-25 已通过普通编译和 `-O2` 优化编译验收。可用以下命令强制完整重编：
+Windows + MinGW-w64 GCC + Python + PowerShell：
 
 ```powershell
-mingw32-make -B test headers
-mingw32-make -B test headers "CFLAGS=-std=c11 -O2 -Wall -Wextra -Wpedantic -Werror -Iinclude"
+.\build.ps1
+.\treeoflife.exe
 ```
+
+构建脚本运行 A 的三组测试、B 的规则测试及真实 A+B 集成测试，然后编译 C 的图形界面。首次构建从 [raylib 官方 5.5 发布页](https://github.com/raysan5/raylib/releases/tag/5.5) 下载 Windows 开发库到 `.local/deps`。字体从本机 Windows 等线复制到 `assets/fonts`，仅供课程本地演示。公开发布前须改用允许再分发的字体。
+
+已构建过时可直接打开根目录 `treeoflife.exe`；程序始终从可执行文件旁读取资源、写入存档。`mingw32-make game` 只构建游戏，`mingw32-make integration` 执行完整构建与检查。
+
+## 整合状态（2026-11-26）
+
+已合入 `codex/member-b` 和 `codex/member-c`，正式游戏链接真实 A/B/C，未链接 `tests/rules_stub.c` 或 `ui/tests/mock`。保留队友原分支及提交历史。
+
+- A：统一动作入口、固定步推进、经济与原子存读档。
+- B：20 个物种、34 个突变、14 个环境、三物种槽、8 级永久强化、理念与子升级。
+- C：主界面、突变与分化、图鉴、进化树、结算和永久强化页面。
+- 已补齐随机状态提交、环境即时损失、危机最低人口、跨轮奖励，以及容量/储备/科技操作；图鉴与进化树支持滚轮翻页。
+
+本版采用 **B 上传分支的扩充内容与数值**，与最初规格中的内容量不同。这是可运行的整合候选版，长期平衡和最终课程范围仍需团队试玩决定。集成细节和验收限制见 [INTEGRATION_NOTES.md](INTEGRATION_NOTES.md)。
+
+## 操作
+
+鼠标可完成全部主要动作。空格点击 ATP；1/2/3 购买单轮升级；M 突变、E 结算、T 进化树、C 图鉴、Esc 关闭弹层、F11 全屏。字母快捷键建议在英文输入法下使用。存在第三物种时，Tab 切换右侧分支卡。图鉴与进化树用鼠标滚轮翻页；底栏可购买容量扩张、应急储备和主谱系科技。
+
+每 15 秒、成功操作后和退出时保存到 `saves/treeoflife-v7.sav`。结构已统一升级为 v7，旧的 A v1、B 演示档及 C 模拟档不兼容；旧路径文件保留。
+
+## 验证与截图
+
+```powershell
+# A 的隔离边界测试（此目标才使用 rules_stub）
+mingw32-make -B test headers
+# 完整优化编译、A/B/真实集成测试、游戏编译
+.\build.ps1
+# 从真实联跑存档导出九张主要界面截图和三张后续进化树页；不修改试玩存档
+.\treeoflife.exe --shot --load build/playthrough.sav --ss 2
+```
+
+`tests/test_integration.c` 覆盖真实突变与重复开候选、失败回滚、三谱系、双币容量、理念科技、Lv.8、陨石只扣一次、事件循环、固定步一致性、结算防重领、跨轮和存档往返，并从零资源自动模拟 60 分钟。它是固定种子与固定购买策略的回归验证，不能代表所有玩家的平衡体验。
+
+原始设计：[玩法](00-项目介绍与完整玩法.md) · [分工与接口](01-三人分工与接口约定.md) · [数据规则](02-数据与计算规则.md)。B 的扩充说明见 `b/docs/`，C 的视觉说明见 `ui/docs/art/`。

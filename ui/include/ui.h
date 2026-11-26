@@ -30,3 +30,5 @@ void ui_notify_result(const GameState *game, GameAction action, ActionResult res
 int ui_should_close(void);
 
 #endif /* UI_PUBLIC_H */
+
+void ui_report_save(bool success);

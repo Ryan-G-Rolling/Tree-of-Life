@@ -25,7 +25,7 @@ int mock_selftest(void);
 
 #include "ui_internal.h"
 
-#define SAVE_PATH "saves/treeoflife.sav"
+#define SAVE_PATH "saves/treeoflife-v7.sav"
 #define FIXED_STEP 0.1
 #define AUTOSAVE_SECONDS 15.0
 
@@ -39,7 +39,11 @@ static void toggle_fullscreen(void);
 
 int main(int argc, char **argv)
 {
+    /* Launching from Explorer or a launcher must find assets and saves beside the exe. */
+    ChangeDirectory(GetApplicationDirectory());
     bool shot_mode = false;
+    const char *load_path=SAVE_PATH;
+    const char *write_path=SAVE_PATH;
     int win_w = DEFAULT_WIN_W;
     int win_h = DEFAULT_WIN_H;
     int forced_ss = 0; /* 0 = 按窗口自动推导，1..3 = 强制 */
@@ -54,6 +58,10 @@ int main(int argc, char **argv)
             printf("--selftest 只在 MOCK=1 构建下可用\n");
             return 1;
 #endif
+        } else if(strcmp(argv[i], "--save")==0 && i+1<argc) {
+            write_path=argv[++i];
+        } else if(strcmp(argv[i], "--load")==0 && i+1<argc) {
+            load_path=argv[++i];
         } else if (strcmp(argv[i], "--w") == 0 && i + 1 < argc) {
             win_w = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--h") == 0 && i + 1 < argc) {
@@ -107,12 +115,13 @@ int main(int argc, char **argv)
     if (shot_mode) {
         mock_fill_demo_state(&game);
     } else {
-        if (save_read(SAVE_PATH, &game) != SAVE_OK) game_init(&game);
+        if (save_read(load_path, &game) != SAVE_OK) game_init(&game);
     }
 #else
-    if (save_read(SAVE_PATH, &game) != SAVE_OK) game_init(&game);
+    if (save_read(load_path, &game) != SAVE_OK) game_init(&game);
 #endif
 
+    if (!DirectoryExists("saves")) MakeDirectory("saves");
     ui_set_forced_ss(forced_ss);
     ui_init();
 
@@ -142,7 +151,7 @@ int main(int argc, char **argv)
             has_result = true;
             ui_notify_result(&game, action, result);
             if (result.code == ACTION_OK) {
-                save_write(SAVE_PATH, &game);
+                ui_report_save(save_write(write_path, &game)==SAVE_OK);
                 autosave_timer = 0.0;
             }
         }
@@ -157,14 +166,14 @@ int main(int argc, char **argv)
 
         autosave_timer += (double)GetFrameTime();
         if (autosave_timer >= AUTOSAVE_SECONDS) {
-            save_write(SAVE_PATH, &game);
+            ui_report_save(save_write(write_path, &game)==SAVE_OK);
             autosave_timer = 0.0;
         }
 
         ui_render(&game, has_result ? &last_result : NULL);
     }
 
-    save_write(SAVE_PATH, &game);
+    if(save_write(write_path, &game)!=SAVE_OK) TraceLog(LOG_ERROR,"Failed to save game on exit");
     ui_shutdown();
     CloseAudioDevice();
     CloseWindow();
@@ -191,6 +200,7 @@ static void capture_screen(const GameState *base, const char *first_file)
     ui_debug_set_keep_parent(1);
     ui_debug_capture(&game, first_file);
 
+    game_apply_action(&game,(GameAction){ACTION_GENERATE_MUTATION_OFFER,0,0,0});
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_MUTATION);
     ui_debug_capture(&game, "shot_02_mutation.png");
 
@@ -209,6 +219,11 @@ static void capture_screen(const GameState *base, const char *first_file)
 
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_TREE);
     ui_debug_capture(&game, "shot_05_tree.png");
+    for(int page=1;page<4;page++) {
+        char file[64];snprintf(file,sizeof file,"shot_05_tree_page%d.png",page+1);
+        screens_debug_tree_page(page);ui_debug_capture(&game,file);
+    }
+    screens_debug_tree_page(0);
 
     game.phase = PHASE_END_ERA_PREVIEW;
     ui_debug_force(UI_SCREEN_END_ERA, UI_OVL_NONE);

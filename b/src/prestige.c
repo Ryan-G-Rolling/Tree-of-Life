@@ -11,15 +11,20 @@
 #include "balance.h"
 
 /* 内容扩容：保留原有 5 档门槛，再增加 5 档，上限从 50,000 翻倍到 100,000 */
-static const double k_biomass_milestones[11] = {
-    0.0, 100.0, 500.0, 2000.0, 10000.0, 50000.0,
-    250000.0, 1000000.0, 2500000.0, 5000000.0, 10000000.0
+static const double k_biomass_milestones[BIOMASS_MILESTONE_COUNT+1] = {
+    0.0, BIOMASS_MILESTONE_VALUES
 };
+double prestige_biomass_milestone_threshold(int level)
+{
+    if(level<0)level=0;
+    if(level>BIOMASS_MILESTONE_COUNT)level=BIOMASS_MILESTONE_COUNT;
+    return k_biomass_milestones[level];
+}
 
 int prestige_biomass_milestone_level(double max_biomass)
 {
     int level = 0;
-    for (int i = 1; i < 11; ++i) {
+    for (int i = 1; i <= BIOMASS_MILESTONE_COUNT; ++i) {
         if (max_biomass >= k_biomass_milestones[i]) {
             level = i;
         }

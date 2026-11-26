@@ -135,6 +135,9 @@ static bool action_needs_game(UiButtonId id)
 {
     switch (id) {
     case UI_BTN_CLICK:
+    case UI_BTN_CAPACITY:
+    case UI_BTN_RESERVE:
+    case UI_BTN_TECH:
     case UI_BTN_UPGRADE:
     case UI_BTN_OPEN_MUTATION:
     case UI_BTN_CHOOSE_MUTATION:
@@ -155,6 +158,9 @@ static void fill_action(const UiButton *b, GameAction *out)
     memset(out, 0, sizeof(*out));
     switch (b->id) {
     case UI_BTN_CLICK:            out->type = ACTION_CLICK_ATP; break;
+    case UI_BTN_CAPACITY: out->type=ACTION_BUY_CAPACITY; break;
+    case UI_BTN_RESERVE: out->type=ACTION_BUY_RESERVE; break;
+    case UI_BTN_TECH: out->type=ACTION_BUY_SUB_UPGRADE; break;
     case UI_BTN_UPGRADE:          out->type = ACTION_BUY_RUN_UPGRADE; out->target_id = b->target_id; break;
     case UI_BTN_OPEN_MUTATION:    out->type = ACTION_GENERATE_MUTATION_OFFER; out->target_species_slot = b->target_id; break;
     case UI_BTN_CHOOSE_MUTATION:  out->type = ACTION_CHOOSE_MUTATION; out->target_id = b->target_id; out->option = b->option; break;
@@ -369,6 +375,9 @@ bool ui_update(const GameState *game, GameAction *pending_action)
         }
     }
 
+    if (g_ui.screen == UI_SCREEN_MAIN && g_ui.overlay == UI_OVL_NONE) {
+        if(IsKeyPressed(KEY_TAB)) g_ui.branch_view++;
+    }
     /* 鼠标指针 */
     if (g_ui.hot >= 0 && g_ui.layout.items[g_ui.hot].enabled) SetMouseCursor(MOUSE_CURSOR_POINTING_HAND);
     else SetMouseCursor(MOUSE_CURSOR_DEFAULT);
@@ -449,6 +458,7 @@ void ui_notify_result(const GameState *game, GameAction action, ActionResult res
     case ACTION_NOT_ENOUGH_ATP:     toast("ATP 不足", true, 1.8f); break;
     case ACTION_NOT_ENOUGH_BIOMASS: toast("生物量不足", true, 1.8f); break;
     case ACTION_NOT_ENOUGH_DNA:     toast("DNA 不足", true, 1.8f); break;
+    case ACTION_NOT_ENOUGH_KNOWLEDGE: toast("理念不足", true, 1.8f); break;
     case ACTION_NOT_ENOUGH_EP:      toast("Evolution Points 不足", true, 1.8f); break;
     case ACTION_REQUIREMENT_NOT_MET: toast("前置条件未满足", true, 2.2f); break;
     case ACTION_LEVEL_MAXED:        toast("已经满级", true, 1.8f); break;
@@ -597,3 +607,5 @@ void ui_debug_capture(const GameState *game, const char *path)
     ExportImage(image, path);
     UnloadImage(image);
 }
+
+void ui_report_save(bool success) { if(!success) toast("存档失败，请检查目录权限；退出前可重试",true,5.0f); }

@@ -46,6 +46,7 @@ typedef enum {
     UI_BTN_NONE = 0,
     UI_BTN_BACKDROP,            /* 弹层遮罩：点空白处关闭，只做命中不做绘制 */
     UI_BTN_CLICK,               /* → ACTION_CLICK_ATP */
+    UI_BTN_CAPACITY, UI_BTN_RESERVE, UI_BTN_TECH,
     UI_BTN_UPGRADE,             /* target_id = RunUpgradeType → ACTION_BUY_RUN_UPGRADE */
     UI_BTN_OPEN_MUTATION,       /* → ACTION_GENERATE_MUTATION_OFFER */
     UI_BTN_CHOOSE_MUTATION,     /* option = 候选下标 → ACTION_CHOOSE_MUTATION */
@@ -97,6 +98,7 @@ typedef struct {
 
     int keep_parent;  /* 分化弹层：0 不保留亲本，1 保留 */
     int codex_tab;
+    int branch_view;
 
     float toast_t;    /* 提示条剩余时间 */
     char toast[192];
@@ -285,3 +287,5 @@ void ui_debug_capture(const GameState *game, const char *path);
 bool ui_debug_map_button(int id, int target, int option, GameAction *out);
 
 #endif /* UI_INTERNAL_H */
+
+void screens_debug_tree_page(int page);

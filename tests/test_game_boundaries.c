@@ -59,7 +59,7 @@ static void test_invalid_rules_are_atomic(void)
     GameState game;
     rules_stub_reset();
     game_init(&game);
-    SpeciesRates rate = {1.0, 0.5, 0.2, 2.0, 1.0, 80.0, false};
+    SpeciesRates rate = {1.0, 0.5, 0.2, 0.0, 2.0, 1.0, 80.0, false};
     rules_stub.override_rates = true;
     rules_stub.rates[0] = rate;
     GameState before = game;
@@ -172,9 +172,9 @@ static void test_economy_boundaries(void)
     GameState game;
     rules_stub_reset();
     game_init(&game);
-    close_to(economy_upgrade_cost(UPGRADE_METABOLISM, 1), 33.0);
-    close_to(economy_upgrade_cost(UPGRADE_REPRODUCTION, 1), 59.0);
-    close_to(economy_upgrade_cost(UPGRADE_GENOME, 1), 43.0);
+    close_to(economy_upgrade_cost(UPGRADE_METABOLISM, 1), 25.0);
+    close_to(economy_upgrade_cost(UPGRADE_REPRODUCTION, 1), 45.0);
+    close_to(economy_upgrade_cost(UPGRADE_GENOME, 1), 32.0);
     assert(isinf(economy_upgrade_cost(UPGRADE_GENOME, INT_MAX)));
     assert(isinf(economy_upgrade_cost(UPGRADE_GENOME, -1)));
     assert(economy_biomass_milestone(99.999) == 0);
@@ -199,8 +199,8 @@ static void test_economy_boundaries(void)
 
     game.phase = PHASE_LEGACY;
     game.run.reward_claimed = true;
-    game.legacy.evolution_points = 15;
-    for (int i = 0; i < 5; ++i) {
+    game.legacy.evolution_points = 36;
+    for (int i = 0; i < 8; ++i) {
         ActionResult result = game_apply_action(&game, action(ACTION_BUY_LEGACY, LEGACY_MUTATION));
         assert(result.code == ACTION_OK);
         close_to(result.amount_spent, i + 1.0);

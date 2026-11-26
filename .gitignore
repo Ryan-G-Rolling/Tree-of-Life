@@ -5,3 +5,12 @@ tests/*.bin.tmp
 # Local CLI setup is specific to this machine.
 claude-ds.ps1
 CLAUDE_DS.md
+
+.local/
+.vs/
+tests/.vs/
+assets/
+saves/
+shot_*.png
+treeoflife.exe
+deliverables/

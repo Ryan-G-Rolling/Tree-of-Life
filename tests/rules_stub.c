@@ -82,3 +82,25 @@ ActionCode legacy_validate_upgrade(const GameState *game, LegacyBranch branch)
     (void)game; (void)branch;
     return ACTION_OK;
 }
+
+void environment_init_run(GameState *g) { (void)g; }
+void legacy_apply_new_run_bonuses(GameState *g) {
+    if (g->legacy.levels[LEGACY_METABOLISM] >= 3) { g->run.atp=50.; g->run.run_upgrade_levels[0]=1; }
+}
+int legacy_upgrade_cost(int level) { return level+1; }
+void environment_apply_step(GameState *g, const EnvironmentStep *s) {
+    g->run.current_environment_id=s->current_environment_id;
+    g->run.next_environment_id=s->next_environment_id;
+    g->run.environment_time_left=s->environment_time_left;
+    g->run.event_interval_left=s->event_interval_left;
+    if(s->event_started) g->run.crisis_start_population=g->run.active_species[0].population;
+    if(s->event_ended) { if(s->crisis_survived) g->run.survived_crises[s->ended_environment_id]=true; g->run.adaptation_shield_active=false; }
+}
+ActionCode evolution_open_mutation_offer(GameState *g,int slot) { return g->run.mutation_offer.active && g->run.mutation_offer.species_slot==slot ? ACTION_OK : ACTION_REQUIREMENT_NOT_MET; }
+ActionCode evolution_apply_mutation(GameState *g,int slot,int id) { (void)g;(void)slot;(void)id;return ACTION_REQUIREMENT_NOT_MET; }
+ActionCode evolution_apply_speciation(GameState *g,int slot,int id,int option) { (void)g;(void)slot;(void)id;(void)option;return ACTION_REQUIREMENT_NOT_MET; }
+ActionCode evolution_apply_sub_upgrade(GameState *g,int slot) { (void)g;(void)slot;return ACTION_REQUIREMENT_NOT_MET; }
+ActionCode evolution_apply_capacity_upgrade(GameState *g) { (void)g;return ACTION_REQUIREMENT_NOT_MET; }
+ActionCode evolution_apply_reserve(GameState *g) { (void)g;return ACTION_REQUIREMENT_NOT_MET; }
+
+int evolution_main_stage(const GameState *g) { return g->run.era; }

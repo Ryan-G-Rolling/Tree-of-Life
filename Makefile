@@ -1,3 +1,4 @@
+.DEFAULT_GOAL := all
 CC = gcc
 CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -Werror -Iinclude
 LDLIBS = -lm
@@ -11,7 +12,14 @@ EXE =
 endif
 TESTS = $(BUILD)/test_member_a$(EXE) $(BUILD)/test_game_boundaries$(EXE) $(BUILD)/test_save_validation$(EXE)
 
-.PHONY: all test clean headers
+.PHONY: all test clean headers game integration
+
+game:
+	powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1 -SkipTests
+
+integration:
+	powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
+
 all: $(TESTS)
 
 $(BUILD):

@@ -1,3 +1,5 @@
+> 2026-11-26：A+B+C 已接通，统一构建请在仓库根目录运行 `./build.ps1`。本页以下保留该成员独立开发时的说明；整合状态以根目录 README.md 和 INTEGRATION_NOTES.md 为准。
+
 # Tree of Life · Member B 规则层
 
 本目录是 B 负责的规则实现、自测与演示，不包含 Raylib，也不包含 A/C 的经济与界面代码。

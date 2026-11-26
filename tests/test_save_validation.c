@@ -10,7 +10,8 @@
 #include "save.h"
 
 #define SAVE_PATH "tests/save-validation.bin"
-#define VERSION 1u
+#include "../data/balance.h"
+#define VERSION SAVE_VERSION
 
 static void raw_write(const unsigned char *payload, size_t length,
                       uint32_t declared_size, uint32_t version,
@@ -57,6 +58,11 @@ static void test_payload_ranges(const GameState *good)
     REJECT(run.biomass, -1.0);
     REJECT(run.elapsed_time, NAN);
     REJECT(run.era, -1);
+    REJECT(run.knowledge, NAN);
+    REJECT(run.crisis_min_population, -1.0);
+    REJECT(run.capacity_levels, -1);
+    REJECT(run.reserve_levels, 6);
+    REJECT(run.tech_levels[0], -1);
     REJECT(run.active_species_count, 0);
     REJECT(run.active_species_count, MAX_ACTIVE_SPECIES + 1);
     REJECT(run.active_species[0].species_id, MAX_SPECIES);
@@ -70,11 +76,11 @@ static void test_payload_ranges(const GameState *good)
     REJECT(run.environment_time_left, -1.0);
     REJECT(run.event_interval_left, NAN);
     REJECT(run.crisis_start_population, INFINITY);
-    REJECT(run.highest_biomass_milestone, 6);
+    REJECT(run.highest_biomass_milestone, 11);
     REJECT(run.reward_claimed, true);
     REJECT(run.mutation_offer.choice_count, MAX_MUTATION_CHOICES + 1);
     REJECT(legacy.evolution_points, -1);
-    REJECT(legacy.levels[0], 6);
+    REJECT(legacy.levels[0], 9);
     REJECT(legacy.best_biomass, NAN);
     REJECT(legacy.best_era, -1);
 #undef REJECT
