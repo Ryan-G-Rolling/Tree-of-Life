@@ -1,0 +1,9 @@
+build/
+dist/
+*.exe
+*.o
+*.obj
+.screenshots/
+.trae-html-share-packages/
+__pycache__/
+*.pyc
