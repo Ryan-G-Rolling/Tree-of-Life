@@ -1,22 +1,16 @@
-# 构建产物与实验数据（可由 build.ps1 -Report 重新生成）
-TreeOfLife/build/*
-!TreeOfLife/build/*.py
+build/
 *.exe
-*.obj
 *.o
-*.pdb
-*.ilk
-
-# 实验/调试输出
-*.csv
-*.log
-
-# 临时目录
-.screenshots/
-.trae-html-share-packages/
-.trae/
-.vscode/
-
-# 系统文件
-Thumbs.db
-desktop.ini
+*.obj
+*.sav
+*.sav.tmp
+shot_*.png
+.local/
+.vs/
+tests/.vs/
+saves/
+deliverables/
+data.zip
+claude-ds.ps1
+CLAUDE_DS.md
+assets/fonts/

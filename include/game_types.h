@@ -1,9 +1,15 @@
 #ifndef GAME_TYPES_H
 #define GAME_TYPES_H
 
-/* Canonical A+B+C state and identifiers. All modules include this definition.
- * Based on Member B's uploaded content expansion; integration save version 7.
- * Keep UI-only state in ui/include/ui_internal.h.
+/*
+ * 共享数据结构（01-三人分工与接口约定 §5）
+ *
+ * 本文件由三人共同评审后使用，任何人都不得私自复制另一份。
+ * 相对 §5 草案的补充只有以下两类，含义与所有权不变：
+ *   1. 共享编号枚举（02-数据与计算规则 §5.1、§5.2、§6.1、§7.1）
+ *   2. EnvironmentStep 中两个只由 B 产生、由 A 写回的临时结果字段
+ *      （instant_population_loss_ratio、adaptation_shield_triggered）
+ * 这两个字段不进入存档，不影响存档格式与版本号。
  */
 
 #include <stdbool.h>
@@ -42,6 +48,13 @@ typedef enum {
     SPECIES_SINGULARITY,
     /* 第十二轮：第 11 阶，奇点之后 */
     SPECIES_TRANSCENDENCE,
+    /* 第十三轮：6 条侧支（不延长主线） */
+    SPECIES_PHOTOSYNTHETIC_MAT,
+    SPECIES_VENT_SWARM,
+    SPECIES_CHITIN_REEF,
+    SPECIES_SAPROTROPHIC_FOREST,
+    SPECIES_HIVE_POLITY,
+    SPECIES_ORBITAL_SWARM,
     SPECIES_COUNT
 } SpeciesId;
 
@@ -97,6 +110,17 @@ typedef enum {
     MUTATION_MACHINE_INTELLIGENCE,
     /* 第十二轮：第 11 阶的前置突变 */
     MUTATION_OMEGA_POINT,
+    /* 第十三轮：侧支与构筑件 */
+    MUTATION_PHOTONIC_SKIN,
+    MUTATION_SULFUR_METABOLISM,
+    MUTATION_CHITIN_SCAFFOLD,
+    MUTATION_ENZYME_CASCADE,
+    MUTATION_COLLECTIVE_MEMORY,
+    MUTATION_ORBITAL_INDUSTRY,
+    MUTATION_SYMBIOTIC_COGNITION,
+    MUTATION_CRYO_ARCHIVE,
+    MUTATION_ATMOSPHERIC_CONTROL,
+    MUTATION_DEEP_TIME_ARCHIVE,
     MUTATION_COUNT
 } MutationId;
 
@@ -212,7 +236,6 @@ typedef struct {
     bool survived_crises[MAX_ENVIRONMENTS];
 
     double max_biomass;
-    int highest_biomass_milestone; /* Derived cache for UI; reward derives from max_biomass. */
     int capacity_levels;
     int reserve_levels;
     int tech_levels[MAX_SPECIES]; /* 第九轮：每个物种的子升级（科技分层）已购层数 */
@@ -229,6 +252,7 @@ typedef struct {
     int best_era;
     int best_evolution_points;
     double best_biomass;
+    unsigned int achievement_flags;
 } LegacyState;
 
 typedef struct {

@@ -100,6 +100,8 @@ const SpeciesKeystone *species_keystone(int species_id);
 
 /* 突变共振 */
 int evolution_synergy_count(void);
+/* 第十三轮：少数突变直接加成理念产出（不在 MutationDef 中，保持公开结构不变） */
+double evolution_mutation_knowledge_bonus(int mutation_id);
 const MutationSynergyDef *evolution_synergy_get(int index);
 bool evolution_synergy_active(const GameState *game, int species_slot, int synergy_index);
 int evolution_active_synergy_count(const GameState *game, int species_slot);

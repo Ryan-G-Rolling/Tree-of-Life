@@ -43,7 +43,6 @@ static void reset_run(GameState *game, unsigned int seed)
     legacy_apply_new_run_bonuses(game);
     if (era > 0) game->run.dna = LEGACY_STARTING_DNA;
     game->run.max_biomass = game->run.biomass;
-    game->run.highest_biomass_milestone = economy_biomass_milestone(game->run.max_biomass);
     environment_init_run(game);
     game->legacy.codex_species[0] = true;
     game->phase = PHASE_RUNNING;
@@ -122,7 +121,6 @@ static bool fixed_step(GameState *game)
         || environment.instant_population_loss_ratio < 0.0
         || environment.instant_population_loss_ratio > 1.0) return false;
     environment_apply_step(&next, &environment);
-    next.run.highest_biomass_milestone = economy_biomass_milestone(next.run.max_biomass);
     *game = next;
     return true;
 }

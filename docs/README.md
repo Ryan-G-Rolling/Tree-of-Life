@@ -1,3 +1,5 @@
+> 2026-11-26 统一说明：当前唯一工程位于仓库根目录 src/、include/、data/；已接通 A/B/C。本文及规则报告保留设计依据和历史实验，最新构建、存档与验收结果以根目录 README.md 和 WORK_LOG.md 为准。原 TreeOfLife/build 的报告源脚本已迁入 tools/reports/。
+
 # Tree of Life 项目文档
 
 本目录是三人共同开发 Raylib 2D 生物进化增量游戏的设计基准。开发前先阅读两份文档。
