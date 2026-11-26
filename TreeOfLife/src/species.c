@@ -98,6 +98,29 @@ static const SpeciesDef k_species[SPECIES_COUNT] = {
     { "Transcendence", "Mind and matter merge into a single self-designing process.",
       11, ECO_MULTICELLULAR, 18.00, 9.00, 2.40, 1.60, 0.010, 6000.0, 4000000.0,
       { 3, 3, 3, 3, 3 } },
+    /* 第十三轮：阶段 2 侧支 */
+    { "Photosynthetic Mat", "Partner algae turn sunlight into a shared energy pool.",
+      2, ECO_PHOTOSYNTHETIC, 2.20, 0.90, 0.18, 0.0, 0.012, 300.0, 450.0,
+      { 0, 0, -1, 1, 0 } },
+    { "Vent Swarm", "Heat-loving cells swarm the chemical vents in relays.",
+      2, ECO_CHEMOSYNTHETIC, 1.50, 0.95, 0.22, 0.0, 0.012, 260.0, 450.0,
+      { 1, 0, 2, 0, 2 } },
+    /* 第十三轮：阶段 3 侧支 */
+    { "Chitin Reef", "A hard chitin lattice shelters a growing colony.",
+      3, ECO_HETEROTROPHIC, 2.60, 1.50, 0.28, 0.0, 0.011, 620.0, 1400.0,
+      { 1, 1, 0, 0, 1 } },
+    /* 第十三轮：阶段 5 侧支 */
+    { "Saprotrophic Forest", "A forest of decomposers recycles everything.",
+      5, ECO_HETEROTROPHIC, 3.80, 1.90, 0.60, 0.0, 0.010, 820.0, 7000.0,
+      { 1, 1, 0, 0, 2 } },
+    /* 第十三轮：阶段 6 侧支 */
+    { "Hive Polity", "A quorum-driven hive coordinates every caste at once.",
+      6, ECO_MULTICELLULAR, 5.40, 2.70, 0.72, 0.35, 0.010, 1300.0, 14000.0,
+      { 2, 2, 1, 2, 2 } },
+    /* 第十三轮：阶段 9 侧支 */
+    { "Orbital Swarm", "Thousands of orbital habitats act as one industry.",
+      9, ECO_EXTREMOPHILE, 9.50, 4.60, 1.25, 0.85, 0.010, 3000.0, 900000.0,
+      { 3, 3, 2, 2, 2 } },
 };
 
 /* 物种基石：让每条谱系有独立的成长手感，全部为只读加成 */
@@ -147,6 +170,19 @@ static const SpeciesKeystone k_keystones[SPECIES_COUNT] = {
     { "Omega Process", "A self-designing process lifts every output and the ceiling.",
       KEYSTONE_TRANSCENDENCE_PRODUCTION, KEYSTONE_TRANSCENDENCE_PRODUCTION,
       KEYSTONE_TRANSCENDENCE_PRODUCTION, KEYSTONE_TRANSCENDENCE_CAP, 0.0, 0.0, 0.0, 0.0 },
+    { "Sun Pool", "A shared photosynthetic pool lifts ATP in dim water.",
+      KEYSTONE_MAT_ATP, 0.0, 0.0, 0.0, 0.0, KEYSTONE_MAT_LOW_LIGHT, 0.0, 0.0 },
+    { "Sulfur Relay", "Chemical relays lift biomass and shrug off toxins.",
+      0.0, KEYSTONE_VENT_BIOMASS, 0.0, 0.0, 0.0, 0.0, KEYSTONE_VENT_TOXIN, 0.0 },
+    { "Chitin Lattice", "A rigid lattice lifts biomass and the ceiling.",
+      0.0, KEYSTONE_CHITIN_BIOMASS, 0.0, KEYSTONE_CHITIN_CAP, 0.0, 0.0, 0.0, 0.0 },
+    { "Detritus Engine", "Recycling detritus lifts DNA and biomass.",
+      0.0, KEYSTONE_SAPRO_BIOMASS, KEYSTONE_SAPRO_DNA, 0.0, 0.0, 0.0, 0.0, 0.0 },
+    { "Caste System", "Specialised castes lift every process and the ceiling.",
+      KEYSTONE_HIVE_PRODUCTION, KEYSTONE_HIVE_PRODUCTION, KEYSTONE_HIVE_PRODUCTION,
+      KEYSTONE_HIVE_CAP, 0.0, 0.0, 0.0, 0.0 },
+    { "Orbital Grid", "A grid of habitats lifts ATP and the ceiling.",
+      KEYSTONE_ORBITAL_ATP, 0.0, 0.0, KEYSTONE_ORBITAL_CAP, 0.0, 0.0, 0.0, 0.0 },
 };
 
 /* 第九轮：子升级（科技分层）。阶段 >= 6 的物种各有 3 层命名升级，
@@ -188,6 +224,19 @@ static const SubUpgradeDef k_sub_upgrades[] = {
       SPECIES_TRANSCENDENCE, 1, 1.35, 9600.0 },
     { "Omega Point", "The process becomes the purpose.",
       SPECIES_TRANSCENDENCE, 2, 1.35, 9600.0 },
+    /* 第十三轮：两条阶段 6/9 侧支各有 3 层 */
+    { "Division of Labour", "Each caste perfects one task.",
+      SPECIES_HIVE_POLITY, 0, 1.35, 300.0 },
+    { "Distributed Ledger", "The hive remembers everything at once.",
+      SPECIES_HIVE_POLITY, 1, 1.35, 300.0 },
+    { "Global Brain", "The polity thinks as a single mind.",
+      SPECIES_HIVE_POLITY, 2, 1.35, 300.0 },
+    { "Orbital Yards", "Habitats build habitats.",
+      SPECIES_ORBITAL_SWARM, 0, 1.35, 2400.0 },
+    { "Asteroid Mining", "Every rock becomes feedstock.",
+      SPECIES_ORBITAL_SWARM, 1, 1.35, 2400.0 },
+    { "Stellar Logistics", "Supplies cross the system on schedule.",
+      SPECIES_ORBITAL_SWARM, 2, 1.35, 2400.0 },
 };
 
 #define SUB_UPGRADE_COUNT ((int)(sizeof(k_sub_upgrades) / sizeof(k_sub_upgrades[0])))
@@ -273,6 +322,31 @@ static const SpeciationRule k_speciation_rules[] = {
     { SPECIES_TRANSCENDENCE,
       { SPECIES_SINGULARITY, -1, -1 },
       { MUTATION_OMEGA_POINT, -1 },
+      -1, 0 },
+    /* 第十三轮：6 条侧支，每条都要求一个原先偏装饰的突变 */
+    { SPECIES_PHOTOSYNTHETIC_MAT,
+      { SPECIES_ALGAL_EUKARYOTE, -1, -1 },
+      { MUTATION_PHOTOSYMBIOSIS, -1 },
+      -1, 0 },
+    { SPECIES_VENT_SWARM,
+      { SPECIES_CHEMOLITHOTROPH, -1, -1 },
+      { MUTATION_SULFUR_METABOLISM, -1 },
+      -1, 0 },
+    { SPECIES_CHITIN_REEF,
+      { SPECIES_MULTICELLULAR_COLONY, -1, -1 },
+      { MUTATION_CHITIN_WALL, -1 },
+      -1, 0 },
+    { SPECIES_SAPROTROPHIC_FOREST,
+      { SPECIES_FUNGAL_NETWORK, -1, -1 },
+      { MUTATION_DECOMPOSER_ENZYMES, MUTATION_MYCORRHIZAL_SYMBIOSIS, -1 },
+      -1, 0 },
+    { SPECIES_HIVE_POLITY,
+      { SPECIES_SAPIENT_LIFE, -1, -1 },
+      { MUTATION_QUORUM_SENSING, MUTATION_LANGUAGE, -1 },
+      -1, 0 },
+    { SPECIES_ORBITAL_SWARM,
+      { SPECIES_SPACE_AGE, -1, -1 },
+      { MUTATION_ORBITAL_HABITATS, -1 },
       -1, 0 },
     { -1, { -1, -1, -1 }, { -1, -1, -1, -1 }, -1, 0 },
 };

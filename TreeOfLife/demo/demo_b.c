@@ -277,12 +277,20 @@ static void choose_mutation(int slot)
     }
     int pick = -1;
     if (g_explore) {
-        /* 探索策略：在买得起的候选里随机选，不区分关键/图鉴 */
+        /* 图鉴策略：优先买尚未发现的，其次在买得起的候选里随机选 */
         int choices[MAX_MUTATION_CHOICES];
         int count = 0;
         for (int i = 0; i < offer->choice_count; ++i) {
-            if (g.run.dna >= offer->dna_costs[i]) {
+            if (g.run.dna >= offer->dna_costs[i] &&
+                !g.run.discovered_mutations[offer->mutation_ids[i]]) {
                 choices[count++] = i;
+            }
+        }
+        if (count == 0) {
+            for (int i = 0; i < offer->choice_count; ++i) {
+                if (g.run.dna >= offer->dna_costs[i]) {
+                    choices[count++] = i;
+                }
             }
         }
         if (count == 0) {
@@ -367,7 +375,8 @@ static void try_speciation_slot(int slot)
 {
     int target = planned_target(slot);
     if (g_explore) {
-        /* 探索策略：在所有合法后代里随机挑一个，覆盖自动主链到不了的支线 */
+        /* 图鉴策略：分化仍随机（优先新物种会让谱系卡在低阶段，
+         * 反而到不了高阶内容）；突变购买才优先未发现项。 */
         int children[SPECIES_COUNT];
         int child_count = species_children(g.run.active_species[slot].species_id, children,
                                            SPECIES_COUNT);

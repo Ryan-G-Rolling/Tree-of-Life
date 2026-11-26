@@ -61,7 +61,7 @@ static const EnvironmentDef k_environments[ENV_COUNT] = {
       TRAIT_HEAT, 0, 50.0, 0.0, 0, false, false },
     /* 第七轮：阶段 5 之后的工业污染危机 */
     { "Industrial Smog", "A growing technosphere chokes the water with particulates.",
-      TRAIT_TOXIN, 3, 45.0, 0.022, 5, false, true },
+      TRAIT_TOXIN, 3, 45.0, 0.026, 5, false, true },
 };
 
 static bool valid_environment(int environment_id)

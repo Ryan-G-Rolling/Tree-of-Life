@@ -34,17 +34,17 @@ python 'build/gen_constants.py' '--check'
 if ($LASTEXITCODE -ne 0) { throw 'docs constants out of sync' }
 
 if ($Report) {
-    Write-Host '[report] regenerate round-12 regression data' -ForegroundColor Cyan
-    & ./build/demo_b.exe --batch2 1000 | Set-Content -Path 'build/batch2_scan_round12.csv' -Encoding ascii
-    & ./build/demo_b.exe --batch3 1000 | Set-Content -Path 'build/batch3_scan_round12.csv' -Encoding ascii
+    Write-Host '[report] regenerate round-13 regression data' -ForegroundColor Cyan
+    & ./build/demo_b.exe --batch2 1000 | Set-Content -Path 'build/batch2_scan_round13.csv' -Encoding ascii
+    & ./build/demo_b.exe --batch3 1000 | Set-Content -Path 'build/batch3_scan_round13.csv' -Encoding ascii
     & ./build/demo_b.exe --batch3 1000 --explore |
-        Set-Content -Path 'build/batch3_explore_round12.csv' -Encoding ascii
+        Set-Content -Path 'build/batch3_explore_round13.csv' -Encoding ascii
 
-    python 'build/gen_round12.py'
+    python 'build/gen_round13.py'
     if ($LASTEXITCODE -ne 0) { throw 'report data generation failed' }
     python 'build/make_report_table.py'
     if ($LASTEXITCODE -ne 0) { throw 'acceptance table generation failed' }
-    Write-Host 'report data updated: ../tree-of-life-b/assets/round12.js + acceptance.js' -ForegroundColor Green
+    Write-Host 'report data updated: ../tree-of-life-b/assets/round13.js + acceptance.js' -ForegroundColor Green
 }
 
 Write-Host 'OK' -ForegroundColor Green

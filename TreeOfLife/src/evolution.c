@@ -154,6 +154,37 @@ static const MutationDef k_mutations[MUTATION_COUNT] = {
     { "Omega Point", "The process folds every layer of reality into one act of will.",
       200.0, 0.50, 0.0, 0.40, 0.50, 0.08, { 1, 1, 1, 1, 1 },
       2, 10, -1, MUTATION_RECURSIVE_SELF_IMPROVEMENT, -1, -1 },
+    /* 34–43：第十三轮，侧支前置与构筑件 */
+    { "Photonic Skin", "A light-absorbing skin feeds the mat directly.",
+      60.0, 0.30, 0.0, 0.0, 0.10, 0.0, { 0, 0, -1, 0, 0 },
+      1, 2, -1, MUTATION_PHOTOSYMBIOSIS, -1, -1 },
+    { "Sulfur Metabolism", "Sulfur bonds replace oxygen as the energy carrier.",
+      55.0, 0.0, 0.30, 0.0, 0.0, 0.02, { 1, 0, 1, 0, 2 },
+      1, 1, -1, MUTATION_CHEMOSYNTHESIS, -1, -1 },
+    { "Chitin Scaffold", "A scaffolding of chitin raises the colony ceiling.",
+      80.0, 0.0, 0.10, 0.0, 0.30, 0.05, { 0, 1, 0, 0, 0 },
+      0, 3, -1, MUTATION_CHITIN_WALL, -1, -1 },
+    { "Enzyme Cascade", "Chained enzymes squeeze more from every scrap.",
+      90.0, 0.0, 0.25, 0.15, 0.0, 0.0, { 0, 0, 0, 0, 1 },
+      1, 4, -1, MUTATION_DECOMPOSER_ENZYMES, -1, -1 },
+    { "Collective Memory", "The hive stores and recalls everything it learns.",
+      140.0, 0.0, 0.0, 0.20, 0.15, 0.0, { 0, 0, 0, 0, 0 },
+      2, 6, -1, MUTATION_QUORUM_SENSING, -1, -1 },
+    { "Orbital Industry", "Orbit-side factories build for the whole swarm.",
+      200.0, 0.30, 0.0, 0.20, 0.0, 0.0, { 0, 0, 0, 2, 0 },
+      2, 9, -1, MUTATION_ORBITAL_HABITATS, -1, -1 },
+    { "Symbiotic Cognition", "Partner minds think together, faster than alone.",
+      120.0, 0.15, 0.0, 0.0, 0.10, 0.02, { 0, 0, 0, 0, 0 },
+      1, 5, -1, MUTATION_NEURAL_SIGNALING, -1, -1 },
+    { "Cryo Archive", "A frozen archive protects the genome from any shock.",
+      110.0, 0.0, 0.0, 0.30, 0.0, 0.0, { 0, 2, 0, 0, 0 },
+      1, 7, -1, -1, -1, -1 },
+    { "Atmospheric Control", "The biosphere steers its own climate.",
+      130.0, 0.0, 0.10, 0.0, 0.10, 0.08, { 1, 1, 0, 0, 0 },
+      1, 8, -1, -1, -1, -1 },
+    { "Deep Time Archive", "Ten billion years of data, compressed.",
+      150.0, 0.0, 0.0, 0.25, 0.0, 0.0, { 0, 0, 0, 0, 0 },
+      2, 10, -1, MUTATION_RECURSIVE_SELF_IMPROVEMENT, -1, -1 },
 };
 
 /* 突变共振：同一谱系同时拥有两个突变时解锁的构筑加成 */
@@ -195,6 +226,16 @@ static const MutationSynergyDef k_synergies[] = {
     { "Dyson Swarm", "Rocketry + Orbital Habitats: industry wraps the star.",
       MUTATION_ROCKETRY, MUTATION_ORBITAL_HABITATS,
       SYNERGY_DYSON_ATP, 0.0, 0.0, SYNERGY_DYSON_CAP, 0.0, { 0, 0, 0, 1, 0 } },
+    /* 第十三轮：三条新构筑的共振 */
+    { "Photonic Mat", "Photosymbiosis + Photonic Skin: a light-harvesting mat.",
+      MUTATION_PHOTOSYMBIOSIS, MUTATION_PHOTONIC_SKIN,
+      SYNERGY_PHOTONIC_ATP, 0.0, 0.0, SYNERGY_PHOTONIC_CAP, 0.0, { 0, 0, -1, 0, 0 } },
+    { "Vent Thermals", "Extremozyme Cocktail + Sulfur Metabolism: a vent-fed swarm.",
+      MUTATION_EXTREMOZYME_COCKTAIL, MUTATION_SULFUR_METABOLISM,
+      0.0, SYNERGY_VENT_BIOMASS, 0.0, 0.0, SYNERGY_VENT_GROWTH, { 1, 0, 0, 0, 1 } },
+    { "Chitin Architecture", "Chitin Wall + Chitin Scaffold: a reef that builds itself.",
+      MUTATION_CHITIN_WALL, MUTATION_CHITIN_SCAFFOLD,
+      0.0, 0.0, 0.0, SYNERGY_CHITIN_CAP, SYNERGY_CHITIN_GROWTH, { 0, 1, 0, 0, 0 } },
 };
 
 #define SYNERGY_COUNT ((int)(sizeof(k_synergies) / sizeof(k_synergies[0])))
@@ -223,6 +264,32 @@ static double late_mutation_multiplier(int mutation_id, int phase)
         }
     }
     return 1.0;
+}
+
+/* 第十三轮：少数突变直接加成理念产出。单独成表，避免改动 MutationDef 的
+ * 公开结构（A/C 已按旧字段读取）。 */
+typedef struct {
+    int mutation_id;
+    double knowledge_bonus;
+} KnowledgeMutation;
+
+static const KnowledgeMutation k_knowledge_mutations[] = {
+    { MUTATION_COLLECTIVE_MEMORY, 0.30 },
+    { MUTATION_SYMBIOTIC_COGNITION, 0.20 },
+    { MUTATION_DEEP_TIME_ARCHIVE, 0.20 },
+};
+
+#define KNOWLEDGE_MUTATION_COUNT \
+    ((int)(sizeof(k_knowledge_mutations) / sizeof(k_knowledge_mutations[0])))
+
+double evolution_mutation_knowledge_bonus(int mutation_id)
+{
+    for (int i = 0; i < KNOWLEDGE_MUTATION_COUNT; ++i) {
+        if (k_knowledge_mutations[i].mutation_id == mutation_id) {
+            return k_knowledge_mutations[i].knowledge_bonus;
+        }
+    }
+    return 0.0;
 }
 
 static bool valid_slot(const GameState *game, int slot)
@@ -1099,6 +1166,7 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
     double mutation_dna = 0.0;
     double mutation_cap = 0.0;
     double mutation_growth = 0.0;
+    double mutation_knowledge = 0.0;
     for (int id = 0; id < MUTATION_COUNT; ++id) {
         if (!species->mutations[id]) {
             continue;
@@ -1112,6 +1180,7 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
         mutation_dna += mutation->dna_bonus;
         mutation_cap += mutation->cap_bonus;
         mutation_growth += mutation->growth_bonus;
+        mutation_knowledge += evolution_mutation_knowledge_bonus(id);
     }
 
     const RunState *run = &game->run;
@@ -1178,7 +1247,8 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
                            (1.0 + mutation_dna) * environment * permanent_dna * diversity *
                            production * eco_dna * sub * early_dna;
     rates.knowledge_per_second = def->base_knowledge * knowledge_scale * run_genome *
-                                 environment * production * diversity * sub;
+                                 (1.0 + mutation_knowledge) * environment * production *
+                                 diversity * sub;
 
     double cap = def->base_cap * (1.0 + mutation_cap) * legacy_cap_multiplier(&game->legacy) *
                  syn_cap * key_cap;

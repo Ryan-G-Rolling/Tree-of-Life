@@ -87,7 +87,7 @@ static void test_rng(void)
 
 static void test_species_data(void)
 {
-    CHECK(SPECIES_COUNT == 20);
+    CHECK(SPECIES_COUNT == 26);
     CHECK(species_phase(SPECIES_PROTOCELL) == 0);
     CHECK(species_phase(SPECIES_MULTICELLULAR_COLONY) == 3);
     CHECK(species_phase(SPECIES_DIFFERENTIATED_TISSUE) == 4);
@@ -100,7 +100,7 @@ static void test_species_data(void)
     int children[SPECIES_COUNT];
     CHECK(species_children(SPECIES_PROTOCELL, children, SPECIES_COUNT) == 2);
     CHECK(species_children(SPECIES_PROTOZOAN, children, SPECIES_COUNT) == 3);
-    CHECK(species_children(SPECIES_MULTICELLULAR_COLONY, children, SPECIES_COUNT) == 4);
+    CHECK(species_children(SPECIES_MULTICELLULAR_COLONY, children, SPECIES_COUNT) == 5);
     CHECK(species_children(SPECIES_DIFFERENTIATED_TISSUE, children, SPECIES_COUNT) == 1);
     CHECK(species_has_parent(SPECIES_EXTREMOPHILE_COLONY, SPECIES_PROTOZOAN));
     CHECK(species_has_parent(SPECIES_COGNITIVE_BIOSPHERE, SPECIES_SYMBIOTIC_SUPERORGANISM));
@@ -693,11 +693,11 @@ static void test_prestige(void)
     full.run.max_biomass = 10000000.0;
     EraReward max_reward = prestige_preview_reward(&full);
     CHECK(max_reward.era_points == 20);
-    CHECK(max_reward.mutation_points == 11);
-    CHECK(max_reward.species_points == 9);
+    CHECK(max_reward.mutation_points == 14);
+    CHECK(max_reward.species_points == 12);
     CHECK(max_reward.crisis_points == 6);
     CHECK(max_reward.biomass_points == 10);
-    CHECK(max_reward.total_points == 56);
+    CHECK(max_reward.total_points == 62);
 
     /* 第十二轮阶段 11 后的理论上限：2*11 + 34/3 + 19/2 + 6 + 10 = 58 */
     GameState full11;
@@ -714,11 +714,11 @@ static void test_prestige(void)
     full11.run.max_biomass = 10000000.0;
     EraReward max11 = prestige_preview_reward(&full11);
     CHECK(max11.era_points == 22);
-    CHECK(max11.mutation_points == 11);
-    CHECK(max11.species_points == 9);
+    CHECK(max11.mutation_points == 14);
+    CHECK(max11.species_points == 12);
     CHECK(max11.crisis_points == 6);
     CHECK(max11.biomass_points == 10);
-    CHECK(max11.total_points == 58);
+    CHECK(max11.total_points == 64);
 
     /* 危机最多计 6 个（上限翻倍） */
     game.run.survived_crises[ENV_LOW_LIGHT_PERIOD] = true;
@@ -886,12 +886,14 @@ static void simulate_fixed_step(GameState *game, double dt)
     double atp = 0.0;
     double biomass = 0.0;
     double dna = 0.0;
+    double knowledge = 0.0;
 
     for (int i = 0; i < game->run.active_species_count && i < MAX_ACTIVE_SPECIES; ++i) {
         rates[i] = evolution_calculate_species_rates(game, i);
         atp += rates[i].atp_per_second;
         biomass += rates[i].biomass_per_second;
         dna += rates[i].dna_per_second;
+        knowledge += rates[i].knowledge_per_second;
         double population = game->run.active_species[i].population +
                             rates[i].population_delta_per_second * dt;
         if (population < MIN_ACTIVE_POPULATION) {
@@ -908,6 +910,7 @@ static void simulate_fixed_step(GameState *game, double dt)
     game->run.atp += atp * dt;
     game->run.biomass += biomass * dt;
     game->run.dna += dna * dt;
+    game->run.knowledge += knowledge * dt;
     if (game->run.biomass > game->run.max_biomass) {
         game->run.max_biomass = game->run.biomass;
     }
@@ -999,7 +1002,7 @@ static void test_synergy(void)
 
     GameState game;
     reset_game(&game, SPECIES_PROTOCELL);
-    CHECK(evolution_synergy_count() == 12);
+    CHECK(evolution_synergy_count() == 15);
     CHECK(evolution_active_synergy_count(&game, 0) == 0);
 
     game.run.active_species[0].mutations[MUTATION_PHOTOSYNTHESIS] = true;
@@ -1109,7 +1112,7 @@ static void test_knowledge_and_sub_upgrades(void)
     CHECK_NEAR(evolution_knowledge_per_second(&game), 3.0, 0.0001);
 
     /* 子升级表：6 个高阶物种各 3 层，成本逐层 ×6 */
-    CHECK(evolution_sub_upgrade_count() == 18);
+    CHECK(evolution_sub_upgrade_count() == 24);
     const SubUpgradeDef *first = evolution_sub_upgrade_get(0);
     CHECK(first != 0);
     CHECK(first->species_id == SPECIES_SAPIENT_LIFE);
@@ -1126,7 +1129,12 @@ static void test_knowledge_and_sub_upgrades(void)
     CHECK(omega->species_id == SPECIES_TRANSCENDENCE);
     CHECK(omega->tier == 2);
     CHECK_NEAR(evolution_sub_upgrade_cost(omega), 345600.0, 0.001);
-    CHECK(evolution_sub_upgrade_get(18) == 0);
+    /* 第十三轮：两条侧支各 3 层，最后一条为 Stellar Logistics（2400 × 36） */
+    const SubUpgradeDef *stellar = evolution_sub_upgrade_get(23);
+    CHECK(stellar->species_id == SPECIES_ORBITAL_SWARM);
+    CHECK(stellar->tier == 2);
+    CHECK_NEAR(evolution_sub_upgrade_cost(stellar), 86400.0, 0.001);
+    CHECK(evolution_sub_upgrade_get(24) == 0);
 
     /* 低阶物种没有子升级 */
     reset_game(&game, SPECIES_MULTICELLULAR_COLONY);
@@ -1443,6 +1451,193 @@ static void test_round12_stage11_and_crisis(void)
     CHECK(!step2.crisis_survived); /* 68 < 70 */
 }
 
+static void test_round13_content_and_fuzz(void)
+{
+    /* 新增侧支的结构 */
+    CHECK(species_phase(SPECIES_PHOTOSYNTHETIC_MAT) == 2);
+    CHECK(species_phase(SPECIES_VENT_SWARM) == 2);
+    CHECK(species_phase(SPECIES_CHITIN_REEF) == 3);
+    CHECK(species_phase(SPECIES_SAPROTROPHIC_FOREST) == 5);
+    CHECK(species_phase(SPECIES_HIVE_POLITY) == 6);
+    CHECK(species_phase(SPECIES_ORBITAL_SWARM) == 9);
+    CHECK(species_has_parent(SPECIES_SAPROTROPHIC_FOREST, SPECIES_FUNGAL_NETWORK));
+    CHECK(species_has_parent(SPECIES_ORBITAL_SWARM, SPECIES_SPACE_AGE));
+
+    int required[4];
+    CHECK(species_required_mutations(SPECIES_HIVE_POLITY, required, 4) == 2);
+    CHECK(required[0] == MUTATION_QUORUM_SENSING);
+    CHECK(required[1] == MUTATION_LANGUAGE);
+    CHECK(evolution_synergy_count() == 15);
+
+    /* 理念加成突变（侧表实现，不扩 MutationDef） */
+    CHECK_NEAR(evolution_mutation_knowledge_bonus(MUTATION_COLLECTIVE_MEMORY), 0.30, 1e-9);
+    CHECK_NEAR(evolution_mutation_knowledge_bonus(MUTATION_DEEP_TIME_ARCHIVE), 0.20, 1e-9);
+    CHECK_NEAR(evolution_mutation_knowledge_bonus(MUTATION_NUCLEUS), 0.0, 1e-9);
+
+    GameState game;
+    reset_game(&game, SPECIES_SAPIENT_LIFE);
+    double base_knowledge = evolution_calculate_species_rates(&game, 0).knowledge_per_second;
+    game.run.active_species[0].mutations[MUTATION_COLLECTIVE_MEMORY] = true;
+    double boosted = evolution_calculate_species_rates(&game, 0).knowledge_per_second;
+    CHECK_NEAR(boosted, base_knowledge * 1.30, 1e-6);
+
+    /* 全组合：产率与成本必须有限且非负 */
+    for (int species_id = 0; species_id < SPECIES_COUNT; ++species_id) {
+        GameState probe;
+        reset_game(&probe, species_id);
+        SpeciesRates rates = evolution_calculate_species_rates(&probe, 0);
+        CHECK(isfinite(rates.atp_per_second) && rates.atp_per_second >= 0.0);
+        CHECK(isfinite(rates.biomass_per_second) && rates.biomass_per_second >= 0.0);
+        CHECK(isfinite(rates.dna_per_second) && rates.dna_per_second >= 0.0);
+        CHECK(isfinite(rates.knowledge_per_second) && rates.knowledge_per_second >= 0.0);
+        CHECK(isfinite(rates.final_population_cap) && rates.final_population_cap >= 1.0);
+        CHECK(isfinite(evolution_capacity_cost(&probe)));
+        for (int mutation_id = 0; mutation_id < MUTATION_COUNT; ++mutation_id) {
+            double cost = evolution_mutation_cost(&probe, mutation_id);
+            CHECK(isfinite(cost) && cost >= 0.0);
+        }
+    }
+
+    /* 模糊测试：随机动作下不变量必须成立 */
+    for (int seed = 0; seed < 2; ++seed) {
+        GameState fuzz;
+        reset_game(&fuzz, SPECIES_PROTOCELL);
+        environment_init_run(&fuzz);
+        fuzz.run.rng_state = 0xA5A50000u + (unsigned int)seed * 7919u;
+        unsigned int actions = 0x1357u + (unsigned int)seed * 104729u;
+        for (int step = 0; step < 2500; ++step) {
+            simulate_fixed_step(&fuzz, FIXED_STEP_SECONDS);
+            unsigned int roll = tof_rng_next(&actions);
+            if (roll % 6u == 0) {
+                evolution_open_mutation_offer(&fuzz, 0);
+                if (fuzz.run.mutation_offer.active) {
+                    int pick = (int)(roll % (unsigned int)fuzz.run.mutation_offer.choice_count);
+                    evolution_apply_mutation(&fuzz, 0,
+                                             fuzz.run.mutation_offer.mutation_ids[pick]);
+                }
+            }
+            if (roll % 9u == 0) {
+                evolution_apply_capacity_upgrade(&fuzz);
+            }
+            if (roll % 13u == 0) {
+                evolution_apply_reserve(&fuzz);
+            }
+            if (roll % 17u == 0) {
+                evolution_apply_sub_upgrade(&fuzz, 0);
+            }
+            if (roll % 23u == 0) {
+                int children[SPECIES_COUNT];
+                int count = species_children(fuzz.run.active_species[0].species_id, children,
+                                             SPECIES_COUNT);
+                for (int c = 0; c < count; ++c) {
+                    int target = children[((int)roll + c) % count];
+                    if (evolution_validate_speciation(&fuzz, 0, target) == ACTION_OK) {
+                        evolution_apply_speciation(&fuzz, 0, target, 0);
+                        break;
+                    }
+                }
+            }
+            if (step % 5 != 0) {
+                continue;
+            }
+            CHECK(isfinite(fuzz.run.atp) && fuzz.run.atp >= 0.0);
+            CHECK(isfinite(fuzz.run.biomass) && fuzz.run.biomass >= 0.0);
+            CHECK(isfinite(fuzz.run.dna) && fuzz.run.dna >= 0.0);
+            CHECK(isfinite(fuzz.run.knowledge) && fuzz.run.knowledge >= 0.0);
+            CHECK(fuzz.run.active_species_count >= 1);
+            CHECK(fuzz.run.active_species_count <= MAX_ACTIVE_SPECIES);
+            CHECK(fuzz.run.current_environment_id >= 0 &&
+                  fuzz.run.current_environment_id < ENV_COUNT);
+            for (int i = 0; i < fuzz.run.active_species_count; ++i) {
+                const SpeciesState *species = &fuzz.run.active_species[i];
+                CHECK(species->species_id >= 0 && species->species_id < SPECIES_COUNT);
+                CHECK(isfinite(species->population) &&
+                      species->population >= MIN_ACTIVE_POPULATION);
+                CHECK(fuzz.run.tech_levels[species->species_id] >= 0 &&
+                      fuzz.run.tech_levels[species->species_id] <= 3);
+            }
+            if (g_failures > 0) {
+                return;
+            }
+        }
+    }
+}
+
+/* 每个物种都能实际分化、每个突变都能实际买到：
+ * 直接构造“前置条件齐备”的状态并提交，防止出现不可达的死内容。 */
+static void test_every_content_playable(void)
+{
+    for (int species_id = 1; species_id < SPECIES_COUNT; ++species_id) {
+        int parent = -1;
+        for (int candidate = 0; candidate < SPECIES_COUNT; ++candidate) {
+            if (species_has_parent(species_id, candidate)) {
+                parent = candidate;
+                break;
+            }
+        }
+        CHECK(parent >= 0);
+        if (parent < 0) {
+            continue;
+        }
+        GameState game;
+        reset_game(&game, parent);
+        game.run.discovered_species[parent] = true;
+        int required[4];
+        int count = species_required_mutations(species_id, required, 4);
+        for (int i = 0; i < count; ++i) {
+            game.run.active_species[0].mutations[required[i]] = true;
+            game.run.discovered_mutations[required[i]] = true;
+        }
+        int branch = -1;
+        int level = 0;
+        if (species_requires_legacy(species_id, &branch, &level) && branch >= 0) {
+            game.legacy.levels[branch] = level;
+        }
+        game.run.biomass = evolution_speciation_cost(&game, species_id) + 1.0;
+        CHECK(evolution_validate_speciation(&game, 0, species_id) == ACTION_OK);
+        CHECK(evolution_apply_speciation(&game, 0, species_id, 0) == ACTION_OK);
+        CHECK(game.run.active_species[0].species_id == species_id);
+    }
+
+    for (int mutation_id = 0; mutation_id < MUTATION_COUNT; ++mutation_id) {
+        const MutationDef *def = mutation_get(mutation_id);
+        CHECK(def != 0);
+        if (!def) {
+            continue;
+        }
+        int host = -1;
+        for (int species_id = 0; species_id < SPECIES_COUNT; ++species_id) {
+            int phase = species_phase(species_id);
+            if (phase >= def->min_phase && (def->max_phase < 0 || phase <= def->max_phase)) {
+                host = species_id;
+                break;
+            }
+        }
+        CHECK(host >= 0);
+        if (host < 0) {
+            continue;
+        }
+        GameState game;
+        reset_game(&game, host);
+        if (def->requires_mutation >= 0) {
+            game.run.active_species[0].mutations[def->requires_mutation] = true;
+        }
+        if (def->requires_branch >= 0) {
+            game.legacy.levels[def->requires_branch] = def->requires_level;
+        }
+        game.run.dna = evolution_mutation_cost(&game, mutation_id) + 1.0;
+        CHECK(evolution_mutation_available(&game, 0, mutation_id));
+        /* apply_mutation 只接受“当前候选”中的突变，这里构造一个单候选 */
+        game.run.mutation_offer.active = true;
+        game.run.mutation_offer.species_slot = 0;
+        game.run.mutation_offer.choice_count = 1;
+        game.run.mutation_offer.mutation_ids[0] = mutation_id;
+        game.run.mutation_offer.dna_costs[0] = evolution_mutation_cost(&game, mutation_id);
+        CHECK(evolution_apply_mutation(&game, 0, mutation_id) == ACTION_OK);
+        CHECK(game.run.active_species[0].mutations[mutation_id]);
+    }
+}
+
 static void test_codex_and_resilience(void)
 {
     LegacyState legacy;
@@ -1502,6 +1697,8 @@ int main(int argc, char **argv)
         test_round10_economy,
         test_reachability,
         test_round12_stage11_and_crisis,
+        test_round13_content_and_fuzz,
+        test_every_content_playable,
         test_codex_and_resilience,
         test_long_run_simulation,
     };

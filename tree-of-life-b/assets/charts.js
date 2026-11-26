@@ -2744,6 +2744,163 @@
   }
 })();
 
+/* ---------------- 第十三轮：侧支拓展与稳定性 ---------------- */
+(function () {
+  var R = window.ROUND13;
+  if (!R || !window.echarts) {
+    return;
+  }
+
+  var style = getComputedStyle(document.documentElement);
+  var accent = style.getPropertyValue('--accent').trim();
+  var accent2 = style.getPropertyValue('--accent2').trim();
+  var ink = style.getPropertyValue('--ink').trim();
+  var muted = style.getPropertyValue('--muted').trim();
+  var rule = style.getPropertyValue('--rule').trim();
+  var bg2 = style.getPropertyValue('--bg2').trim();
+
+  var baseText = { fontFamily: 'Bricolage, "Microsoft YaHei", sans-serif', color: ink };
+  var axisCommon = {
+    axisLine: { lineStyle: { color: rule } },
+    axisTick: { show: false },
+    axisLabel: { color: muted, fontSize: 11 },
+    splitLine: { lineStyle: { color: rule, type: 'dashed', opacity: 0.7 } }
+  };
+  var tooltipBase = {
+    appendToBody: true,
+    backgroundColor: bg2,
+    borderColor: rule,
+    textStyle: { color: ink, fontSize: 12 }
+  };
+
+  var stageEl = document.getElementById('chart-round13-stage');
+  if (stageEl) {
+    var stage = echarts.init(stageEl, null, { renderer: 'svg' });
+    var buckets = [];
+    for (var s = 1; s <= 11; ++s) { buckets.push(s); }
+    var countFor = function (list, value) {
+      for (var i = 0; i < list.length; ++i) {
+        if (list[i].value === value) { return list[i].count; }
+      }
+      return 0;
+    };
+    stage.setOption({
+      animation: false,
+      textStyle: baseText,
+      grid: { left: 56, right: 24, top: 40, bottom: 40 },
+      legend: { top: 0, textStyle: { color: muted, fontSize: 11 } },
+      tooltip: Object.assign({ trigger: 'axis' }, tooltipBase),
+      xAxis: Object.assign({}, axisCommon, {
+        type: 'category', data: buckets.map(String), name: '阶段', nameGap: 10,
+        nameTextStyle: { color: muted, fontSize: 11 },
+        axisLabel: { color: ink, fontSize: 11 }, splitLine: { show: false }
+      }),
+      yAxis: Object.assign({}, axisCommon, {
+        type: 'value', name: '种子数', nameGap: 12,
+        nameTextStyle: { color: muted, fontSize: 11 }
+      }),
+      series: [
+        { name: '纪元 1', type: 'bar', barMaxWidth: 18,
+          itemStyle: { color: accent, opacity: 0.55 },
+          data: buckets.map(function (x) { return countFor(R.scan.stage.era1, x); }) },
+        { name: '纪元 3', type: 'bar', barMaxWidth: 18,
+          itemStyle: { color: '#3a5a8c', opacity: 0.85 },
+          data: buckets.map(function (x) { return countFor(R.scan.stage.era3, x); }) }
+      ]
+    });
+    window.addEventListener('resize', function () { stage.resize(); });
+  }
+
+  var epEl = document.getElementById('chart-round13-ep');
+  if (epEl) {
+    var ep = echarts.init(epEl, null, { renderer: 'svg' });
+    ep.setOption({
+      animation: false,
+      textStyle: baseText,
+      grid: { left: 56, right: 24, top: 36, bottom: 40 },
+      tooltip: Object.assign({}, tooltipBase),
+      xAxis: Object.assign({}, axisCommon, {
+        type: 'category', data: ['纪元 1', '纪元 2', '纪元 3'],
+        axisLabel: { color: ink, fontSize: 12 }, splitLine: { show: false }
+      }),
+      yAxis: Object.assign({}, axisCommon, {
+        type: 'value', name: 'EP', nameGap: 12,
+        nameTextStyle: { color: muted, fontSize: 11 }
+      }),
+      series: [{
+        type: 'boxplot', boxWidth: [28, 28, 28],
+        itemStyle: { color: 'rgba(255,255,255,0.78)', borderColor: accent, borderWidth: 1.4 },
+        data: [R.scan.ep.era1.box, R.scan.ep.era2.box, R.scan.ep.era3.box]
+      }]
+    });
+    window.addEventListener('resize', function () { ep.resize(); });
+  }
+
+  var crisisEl = document.getElementById('chart-round13-crisis');
+  if (crisisEl) {
+    var crisis = echarts.init(crisisEl, null, { renderer: 'svg' });
+    var names = {1: 'Warming', 2: 'Cooling', 3: 'Low Light', 4: 'Oxygen', 5: 'Toxic',
+                 6: 'Meteor', 13: 'Smog'};
+    crisis.setOption({
+      animation: false,
+      textStyle: baseText,
+      grid: { left: 56, right: 24, top: 30, bottom: 44 },
+      tooltip: Object.assign({ trigger: 'axis' }, tooltipBase),
+      xAxis: Object.assign({}, axisCommon, {
+        type: 'category',
+        data: R.scan.crisis.per_type.map(function (x) { return names[x.env] || ('#' + x.env); }),
+        name: '危机类型（纪元 1）', nameGap: 12,
+        nameTextStyle: { color: muted, fontSize: 11 },
+        axisLabel: { color: ink, fontSize: 10 }, splitLine: { show: false }
+      }),
+      yAxis: Object.assign({}, axisCommon, {
+        type: 'value', name: '通过率 %', min: 0, max: 100, nameGap: 12,
+        nameTextStyle: { color: muted, fontSize: 11 }
+      }),
+      series: [{
+        type: 'bar', barMaxWidth: 26,
+        itemStyle: { color: accent2, opacity: 0.8 },
+        data: R.scan.crisis.per_type.map(function (x) { return x.rate; }),
+        markLine: {
+          symbol: 'none',
+          lineStyle: { color: muted, type: 'dashed' },
+          label: { color: muted, fontSize: 10 },
+          data: [{ yAxis: 40, label: { formatter: '下限 40%' } },
+                 { yAxis: 65, label: { formatter: '上限 65%' } }]
+        }
+      }]
+    });
+    window.addEventListener('resize', function () { crisis.resize(); });
+  }
+
+  var coverEl = document.getElementById('chart-round13-coverage');
+  if (coverEl) {
+    var cover = echarts.init(coverEl, null, { renderer: 'svg' });
+    cover.setOption({
+      animation: false,
+      textStyle: baseText,
+      grid: { left: 56, right: 24, top: 36, bottom: 44 },
+      tooltip: Object.assign({ trigger: 'axis' }, tooltipBase),
+      xAxis: Object.assign({}, axisCommon, {
+        type: 'category',
+        data: R.scan.coverage.species.map(function (r) { return '#' + r.id; }),
+        name: '物种编号', nameGap: 12, nameTextStyle: { color: muted, fontSize: 11 },
+        axisLabel: { color: ink, fontSize: 10 }, splitLine: { show: false }
+      }),
+      yAxis: Object.assign({}, axisCommon, {
+        type: 'value', name: '出现的种子数', nameGap: 12,
+        nameTextStyle: { color: muted, fontSize: 11 }
+      }),
+      series: [{
+        type: 'bar', barMaxWidth: 16,
+        itemStyle: { color: accent2, opacity: 0.75 },
+        data: R.scan.coverage.species.map(function (r) { return r.count; })
+      }]
+    });
+    window.addEventListener('resize', function () { cover.resize(); });
+  }
+})();
+
 /* ---------------- 第十二轮：阶段 11 与危机标定 ---------------- */
 (function () {
   var R = window.ROUND12;

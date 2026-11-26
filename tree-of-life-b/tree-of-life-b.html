@@ -2606,6 +2606,132 @@
     </div>
   </section>
 
+  <section>
+    <h2><span class="num">30</span>第十三轮：六条侧支、十个突变与稳定性</h2>
+    <p>
+      本轮只拓宽、不延长：主线仍停在阶段 11，新增 6 条侧支（每条都要求一个原先偏装饰的突变）、
+      10 个构筑型突变、3 条共振；理念首次有了专属突变加成。
+      同时把“稳定性”做成可执行的验证：全内容可玩性断言 + 随机动作模糊测试。
+    </p>
+
+    <h3>1. 六条侧支</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th class="num">ID</th><th>物种</th><th class="num">阶段</th><th>亲本</th><th>前置突变</th><th>定位</th></tr></thead>
+        <tbody>
+          <tr><td class="num">20</td><td>Photosynthetic Mat</td><td class="num">2</td><td>Algal Eukaryote</td><td>Photosymbiosis</td><td>ATP / 低光</td></tr>
+          <tr><td class="num">21</td><td>Vent Swarm</td><td class="num">2</td><td>Chemolithotroph</td><td>Sulfur Metabolism</td><td>Biomass / 毒素</td></tr>
+          <tr><td class="num">22</td><td>Chitin Reef</td><td class="num">3</td><td>Multicellular Colony</td><td>Chitin Wall</td><td>容量</td></tr>
+          <tr><td class="num">23</td><td>Saprotrophic Forest</td><td class="num">5</td><td>Fungal Network</td><td>Decomposer + Mycorrhizal</td><td>DNA / Biomass</td></tr>
+          <tr><td class="num">24</td><td>Hive Polity</td><td class="num">6</td><td>Sapient Life</td><td>Quorum Sensing + Language</td><td>理念 / 全能</td></tr>
+          <tr><td class="num">25</td><td>Orbital Swarm</td><td class="num">9</td><td>Space Age</td><td>Orbital Habitats</td><td>ATP / 容量</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      这 6 条支线让 7 个此前“有数据但没人要”的突变变成了路线门票：
+      光合/化能/几丁/分解/菌根/群体感应/轨道居住。蜂群政体与轨道蜂群另有 3 层子升级。
+    </p>
+
+    <h3>2. 十个构筑型突变</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th class="num">ID</th><th>突变</th><th>开放条件</th><th>效果</th></tr></thead>
+        <tbody>
+          <tr><td class="num">34</td><td>Photonic Skin</td><td>阶段 2 · Photosymbiosis</td><td>ATP +30%、Cap +10%、Low Light −1</td></tr>
+          <tr><td class="num">35</td><td>Sulfur Metabolism</td><td>阶段 1 · Chemosynthesis</td><td>Biomass +30%、增长 +2%、Toxin +2</td></tr>
+          <tr><td class="num">36</td><td>Chitin Scaffold</td><td>阶段 3 · Chitin Wall</td><td>Cap +30%、Biomass +10%、增长 +5%</td></tr>
+          <tr><td class="num">37</td><td>Enzyme Cascade</td><td>阶段 4 · Decomposer Enzymes</td><td>Biomass +25%、DNA +15%</td></tr>
+          <tr><td class="num">38</td><td>Collective Memory</td><td>阶段 6 · Quorum Sensing</td><td><b>理念 +30%</b>、Cap +15%</td></tr>
+          <tr><td class="num">39</td><td>Orbital Industry</td><td>阶段 9 · Orbital Habitats</td><td>ATP +30%、DNA +20%</td></tr>
+          <tr><td class="num">40</td><td>Symbiotic Cognition</td><td>阶段 5 · Neural Signaling</td><td><b>理念 +20%</b>、ATP +15%</td></tr>
+          <tr><td class="num">41</td><td>Cryo Archive</td><td>阶段 7</td><td>DNA +30%、Cold +2</td></tr>
+          <tr><td class="num">42</td><td>Atmospheric Control</td><td>阶段 8</td><td>增长 +8%、Cap +10%、冷热 +1</td></tr>
+          <tr><td class="num">43</td><td>Deep Time Archive</td><td>阶段 10 · Recursive Self-Improvement</td><td>DNA +25%、<b>理念 +20%</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      理念加成用独立侧表实现（<code>evolution_mutation_knowledge_bonus</code>），
+      不扩 <code>MutationDef</code>，A/C 已按旧字段读取的代码无需改动。
+    </p>
+
+    <h3>3. 稳定性：可玩性断言 + 模糊测试</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>检查</th><th>做法</th><th>结果</th></tr></thead>
+        <tbody>
+          <tr><td>每个物种都能分化</td><td>构造亲本 + 前置突变 + 足量 Biomass，逐个提交</td><td class="num">25/25 通过</td></tr>
+          <tr><td>每个突变都能购买</td><td>构造阶段窗口 + 前置突变 + 足量 DNA，构造单候选提交</td><td class="num">44/44 通过</td></tr>
+          <tr><td>全组合产率/成本有限</td><td>26 物种 × 44 突变逐一断言 <code>isfinite</code> 且非负</td><td class="num">1,144 组合通过</td></tr>
+          <tr><td>随机动作模糊</td><td>2 个种子 × 2,500 步，随机买突变/容量/储备/子升级/分化</td><td class="num">不变量全成立</td></tr>
+          <tr><td>可达性不动点</td><td>只依赖数据表推导全部物种与突变可达</td><td class="num">26/44 全可达</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>4. 结果（1000 种子 × 三纪元）</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>指标</th><th class="num">纪元 1</th><th class="num">纪元 2</th><th class="num">纪元 3</th></tr></thead>
+        <tbody>
+          <tr><td>EP 中位</td><td class="num">25（σ 2.99）</td><td class="num">38</td><td class="num">49</td></tr>
+          <tr><td>阶段中位</td><td class="num">5</td><td class="num">—</td><td class="num">10（17.3% 到 11）</td></tr>
+          <tr><td>6/6 危机</td><td class="num">34.0%</td><td class="num">19.6%</td><td class="num">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      首分化 p50 仍是 238.7 s，阶段 ≤3 的低尾 0/1000； ATP 结余 266 万；
+      逐类型危机 63 / 64 / 50 / 49 / 63 / 55 / 60%，7 类全部落在 40–65%。
+      随机策略覆盖 20/25 物种、42/44 突变（38 个 ≥50 次），其余内容由可玩性断言保证。
+    </p>
+
+    <figure class="chart-figure">
+      <figcaption>图 67：纪元 1 与纪元 3 的阶段分布<span class="hint">侧支没有拉长主线，纪元 1 仍停在阶段 5</span></figcaption>
+      <div id="chart-round13-stage" class="chart-container tall"></div>
+    </figure>
+
+    <figure class="chart-figure">
+      <figcaption>图 68：三纪元 EP 箱线<span class="hint">扩容后 25 / 38 / 49，方差与原节奏一致</span></figcaption>
+      <div id="chart-round13-ep" class="chart-container tall"></div>
+    </figure>
+
+    <figure class="chart-figure">
+      <figcaption>图 69：七个危机类型的通过率<span class="hint">Smog 伤害上调后从 72% 回到 60%</span></figcaption>
+      <div id="chart-round13-crisis" class="chart-container tall"></div>
+    </figure>
+
+    <figure class="chart-figure">
+      <figcaption>图 70：26 个物种的随机策略覆盖<span class="hint">#20–25 为新增侧支；#6 仍只由图鉴策略覆盖</span></figcaption>
+      <div id="chart-round13-coverage" class="chart-container tall"></div>
+    </figure>
+
+    <div class="callout">
+      <b>达成：</b>宽度上新增 6 物种 / 10 突变 / 3 共振 / 6 层子升级，并把 7 个装饰性突变变成路线门票；
+      深度上引入理念加成突变与图鉴策略；稳定性上新增全内容可玩性断言与 5,000 步模糊测试，
+      自测从 36,498 项提升到 <b>48,153 项</b>。
+    </div>
+
+    <div class="callout">
+      <b>偏差：</b>6/6 危机 34.0%，比目标下限 35% 低 1 个百分点。逐类型为主指标且 7/7 达标，
+      故未再为凑 6/6 加宽通过线（会把单类型推过 65%）。
+      另外随机策略只覆盖 20/25 物种——不是内容不可达，而是自动策略不主动走侧支；
+      可玩性由 <code>test_every_content_playable</code> 逐个验证。
+    </div>
+
+    <div class="callout">
+      <b>影响面：</b><code>SPECIES_COUNT=26</code>、<code>MUTATION_COUNT=44</code>、
+      共振 15、子升级 24；EP 上限 58 → <b>64</b>。
+      存档结构未变（仍为 v6 / 824 B），A/C 只需同步枚举与数据表。
+    </div>
+
+    <div class="callout">
+      <b>复现：</b><code>build.ps1 -Report</code> 生成 <code>assets/round13.js</code> 与验收表；
+      内容可玩性与模糊测试随 <code>test_b</code> 一起运行。
+    </div>
+  </section>
+
 </main>
 
 <footer>
@@ -2626,6 +2752,7 @@
   第 27 节含第十轮三段标定、验收对照与标定网格；
   第 28 节含第十一轮 ATP 出口、危机真判定、必需链定价与覆盖率；
   第 29 节含第十二轮指标可信化、危机分类型标定与阶段 11；
+  第 30 节含第十三轮六条侧支、十个突变与稳定性验证；
   图表由 ECharts 直接读取这份导出数据绘制。</p>
   <p><b>复现</b>：<code>demo_b.exe --csv --batch 20 &gt; demo_run.csv</code>，再运行
   <code>python build/gen_report_data.py</code> 生成 <code>assets/data.js</code>；
@@ -2641,7 +2768,8 @@
   第九轮回归数据由 <code>python build/gen_round9.py</code> 生成 <code>assets/round9.js</code>；
   第十轮回归数据由 <code>python build/gen_round10.py</code> 生成 <code>assets/round10.js</code>；
   第十一轮回归数据由 <code>python build/gen_round11.py</code> 生成 <code>assets/round11.js</code>；
-  第十二轮回归数据由 <code>python build/gen_round12.py</code> 生成 <code>assets/round12.js</code>，
+  第十二轮回归数据由 <code>python build/gen_round12.py</code> 生成 <code>assets/round12.js</code>；
+  第十三轮回归数据由 <code>python build/gen_round13.py</code> 生成 <code>assets/round13.js</code>，
   验收表由 <code>python build/make_report_table.py</code> 生成 <code>assets/acceptance.js</code>。</p>
   <p><b>相关文件</b>：demo/demo_b.c、src/evolution.c、src/species.c、src/environment.c、
   src/prestige.c、src/legacy.c、tests/test_b.c。</p>
@@ -2664,6 +2792,7 @@
 <script src="./assets/round10.js"></script>
 <script src="./assets/round11.js"></script>
 <script src="./assets/round12.js"></script>
+<script src="./assets/round13.js"></script>
 <script src="./assets/acceptance.js"></script>
 <script src="./_shared/js/echarts.min.js"></script>
 <script src="./assets/charts.js"></script>

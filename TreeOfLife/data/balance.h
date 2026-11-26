@@ -193,10 +193,10 @@
 #ifndef DNA_POPULATION_EXPONENT
 #define DNA_POPULATION_EXPONENT 0.25
 #endif
-/* 第十一轮：1.34 → 1.48。可选突变已移出成本链，链内只剩必需突变，
- * 需要更陡的指数才能把纪元 1 压回阶段 5（见报告第 28 节网格）。 */
+/* 第十三轮：1.48 → 1.47。新增 10 个可选突变后候选池变宽，
+ * 必需链降一档即可让纪元 1 回到阶段 5、纪元 2 EP 回到 38。 */
 #ifndef MUTATION_COST_GROWTH
-#define MUTATION_COST_GROWTH 1.48
+#define MUTATION_COST_GROWTH 1.47
 #endif
 #define CAPACITY_COST_PER_CAP 25.0
 #define CAPACITY_GAIN_PER_LEVEL 0.05
@@ -240,6 +240,27 @@
 /* 第十二轮：阶段 11 的基石 */
 #define KEYSTONE_TRANSCENDENCE_PRODUCTION 0.30
 #define KEYSTONE_TRANSCENDENCE_CAP 0.30
+
+/* 第十三轮：6 条侧支的基石与 3 条共振 */
+#define KEYSTONE_MAT_ATP 0.12
+#define KEYSTONE_MAT_LOW_LIGHT 0.15
+#define KEYSTONE_VENT_BIOMASS 0.15
+#define KEYSTONE_VENT_TOXIN 0.15
+#define KEYSTONE_CHITIN_CAP 0.15
+#define KEYSTONE_CHITIN_BIOMASS 0.10
+#define KEYSTONE_SAPRO_DNA 0.20
+#define KEYSTONE_SAPRO_BIOMASS 0.12
+#define KEYSTONE_HIVE_PRODUCTION 0.10
+#define KEYSTONE_HIVE_CAP 0.15
+#define KEYSTONE_ORBITAL_ATP 0.30
+#define KEYSTONE_ORBITAL_CAP 0.20
+
+#define SYNERGY_PHOTONIC_ATP 0.12
+#define SYNERGY_PHOTONIC_CAP 0.06
+#define SYNERGY_VENT_BIOMASS 0.12
+#define SYNERGY_VENT_GROWTH 0.05
+#define SYNERGY_CHITIN_CAP 0.10
+#define SYNERGY_CHITIN_GROWTH 0.05
 
 /* ---------------- 第九轮：理念（Knowledge）与子升级 ---------------- */
 /* 理念产率随种群规模开方增长（参照 DNA 的 0.25 次幂，放缓后期膨胀） */

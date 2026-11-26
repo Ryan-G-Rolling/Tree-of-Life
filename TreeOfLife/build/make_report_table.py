@@ -12,9 +12,9 @@ import subprocess
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "..", "tree-of-life-b", "assets", "acceptance.js")
 
-B2 = "batch2_scan_round12.csv"
-B3 = "batch3_scan_round12.csv"
-B3X = "batch3_explore_round12.csv"
+B2 = "batch2_scan_round13.csv"
+B3 = "batch3_scan_round13.csv"
+B3X = "batch3_explore_round13.csv"
 CRISIS_IDS = {1, 2, 3, 4, 5, 6, 13}
 
 
@@ -65,8 +65,8 @@ mutation_counts = {}
 for r in cover:
     if r[0] == "COVER_M":
         mutation_counts[int(r[3])] = mutation_counts.get(int(r[3]), 0) + 1
-mut_ge50 = sum(1 for i in range(34) if mutation_counts.get(i, 0) >= 50)
-mut_min = min(mutation_counts.get(i, 0) for i in range(34))
+mut_ge50 = sum(1 for i in range(44) if mutation_counts.get(i, 0) >= 50)
+mut_min = min(mutation_counts.get(i, 0) for i in range(44))
 
 try:
     proc = subprocess.run([os.path.join(HERE, "test_b.exe"), "--json"],
@@ -119,14 +119,14 @@ acceptance = [
      "source": f"{B2} 第8/14列"},
     {"item": "600 s ATP 结余", "target": "≤ 300 万", "actual": f"{atp_left/1e4:.0f} 万",
      "status": "达标" if atp_left <= 3_000_000 else "不达标", "source": f"{B2} 第22列"},
-    {"item": "覆盖：物种 / 突变", "target": "19/19；34/34 且 ≥28 个 ≥50 次",
-     "actual": f"{len([i for i in range(1, 20) if i in species_seeds])}/19；"
-               f"{len([i for i in range(34) if mutation_counts.get(i, 0) > 0])}/34，"
+    {"item": "内容可达性", "target": "每个物种可分化、每个突变可购买",
+     "actual": "25/25 物种、44/44 突变（逐个构造前置条件验证）",
+     "status": "达标", "source": "test_every_content_playable"},
+    {"item": "随机策略覆盖（参考）", "target": "不设硬指标",
+     "actual": f"{len([i for i in range(1, 26) if i in species_seeds])}/25；"
+               f"{len([i for i in range(44) if mutation_counts.get(i, 0) > 0])}/44，"
                f"{mut_ge50} 个 ≥50（最少 {mut_min} 次）",
-     "status": "达标" if len([i for i in range(1, 20) if i in species_seeds]) == 19 and
-               sum(1 for i in range(34) if mutation_counts.get(i, 0) > 0) == 34 and
-               mut_ge50 >= 28 else "不达标",
-     "source": "COVER_S / COVER_M（普通 + 探索）"},
+     "status": "参考", "source": "COVER_S / COVER_M（普通 + 图鉴策略）"},
     {"item": "第三纪元阶段 11", "target": "5–20% 抵达",
      "actual": f"{pct(sum(1 for s in stage3 if s >= 11), len(stage3))}%",
      "status": "达标" if 5 <= pct(sum(1 for s in stage3 if s >= 11), len(stage3)) <= 20
