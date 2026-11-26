@@ -38,3 +38,5 @@ A/B/C 可运行整合版已在此前完成，Git 基线为 `44e2c0d`；既有结
 - **限制**：第十三轮新增条目部分英文；报告历史数据不代表统一版当前试玩结果。尚未穷举所有随机路线、团队平衡试玩、音效听感及 sanitizer。
 
 - **收尾复核**：最后一次完整 build.ps1 再次通过上述测试与游戏编译；demo 编译通过；16 张 PNG 尺寸及 ZIP 完整性检查通过。确认本地资源与临时备份哈希相同后，删除本轮 .local/unify*.py、验证脚本、哈希清单、资源备份和 build/ 测试中间产物，更新新试玩包内可执行文件。
+
+- **Git 完成结果**：统一合并提交为 `e052737`，已通过原子推送更新 GitHub main，并删除远端 codex/member-b、codex/member-c、final、main-latest；删除前逐一验证其提交均为 main 的祖先，删除操作携带远端提交校验。删除本地已合并的 codex/integrate-abc、codex/member-a。随后重新 fetch/prune 与 ls-remote --heads，确认远端只剩 main，本地也只剩 main，原分支提交历史保留在 main 中。此条完成记录单独提交并同步。
