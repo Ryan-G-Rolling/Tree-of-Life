@@ -538,7 +538,8 @@ void ui_notify_result(const GameState *game, GameAction action, ActionResult res
         case ACTION_CLICK_ATP: {
             /* 采集反馈走皿上的漂浮数字，不进全局提示条 */
             int slot = g_ui.gain_slot++ % 3;
-            g_ui.gain_val[slot] = a;
+            /* Clicks earn ATP; amount_spent is zero for this action. */
+            g_ui.gain_val[slot] = ua_click_atp(game);
             g_ui.gain_t[slot] = 1.0f;
             break;
         }

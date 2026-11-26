@@ -19,4 +19,5 @@ if (!(Test-Path -LiteralPath 'assets/fonts/ui_zh.ttf')) {
 Run-Native python @('tools/gen_glyphs.py')
 if (!$SkipTests) { Run-Native mingw32-make @('-B','test','WARN=-Wall -Wextra -Wpedantic -Werror') }
 Run-Native mingw32-make @('all')
+if (!$SkipTests) { Run-Native mingw32-make @('test-ui') }
 Write-Host 'Ready: .\treeoflife.exe (unified A+B+C)'

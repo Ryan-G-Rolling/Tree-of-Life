@@ -1,4 +1,4 @@
-# Tree of Life
+﻿# Tree of Life
 
 三人 C 语言课程项目，使用 Raylib 2D。采集 ATP、积累生物量和 DNA，选择突变和物种分化，经历环境事件，通过纪元结算获得 EP 与永久强化。
 
@@ -25,6 +25,7 @@ Windows 下安装 MinGW-w64 GCC、mingw32-make 和 Python，并加入 PATH：
 
 ```powershell
 mingw32-make test          # 三组真实规则/集成回归，无测试替身
+mingw32-make test-ui       # 真实点击入账与界面飘字一致性
 mingw32-make demo          # 可选的规则实验控制台
 .\treeoflife.exe --shot --ss 3  # 16 张 3840×2160 演示截图
 ```

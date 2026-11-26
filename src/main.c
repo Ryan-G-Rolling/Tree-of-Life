@@ -463,7 +463,9 @@ static void capture_screen(const GameState *base, const char *first_file)
     ui_debug_set_info_tab(0);
 
     /* 采集反馈：皿上浮字 + 星火粒子 */
-    ui_debug_poke_click(1240.0);
+    GameAction click = { ACTION_CLICK_ATP, 0, 0, 0 };
+    ActionResult click_result = game_apply_action(&game, click);
+    ui_notify_result(&game, click, click_result);
     ui_debug_capture(&game, "shot_01c_click.png");
     ui_debug_poke_click(-1.0);   /* 复位，别跟进下一张 */
 

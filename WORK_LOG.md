@@ -40,3 +40,12 @@ A/B/C 可运行整合版已在此前完成，Git 基线为 `44e2c0d`；既有结
 - **收尾复核**：最后一次完整 build.ps1 再次通过上述测试与游戏编译；demo 编译通过；16 张 PNG 尺寸及 ZIP 完整性检查通过。确认本地资源与临时备份哈希相同后，删除本轮 .local/unify*.py、验证脚本、哈希清单、资源备份和 build/ 测试中间产物，更新新试玩包内可执行文件。
 
 - **Git 完成结果**：统一合并提交为 `e052737`，已通过原子推送更新 GitHub main，并删除远端 codex/member-b、codex/member-c、final、main-latest；删除前逐一验证其提交均为 main 的祖先，删除操作携带远端提交校验。删除本地已合并的 codex/integrate-abc、codex/member-a。随后重新 fetch/prune 与 ls-remote --heads，确认远端只剩 main，本地也只剩 main，原分支提交历史保留在 main 中。此条完成记录单独提交并同步。
+
+## 2026-11-26 · Codex · 修复点击飘字 +0 与持续同步约定
+
+- **原因**：用户报告点击后显示 +0，要求修复后直接同步 GitHub，并明确后续在原有分支替换旧实现、持续记日志。
+- **根因与修复**：src/ui.c 的点击飘字误读 ActionResult.amount_spent；点击不消耗资源，此字段为 0，但 A 已正常增加 ATP。现通过只读适配接口 ua_click_atp 查询真实经济公式的点击收益，保持规则与金额来源一致，不改变经济或存档格式。
+- **验证改进**：新增 tests/test_click_feedback.c 和 Makefile test-ui 目标，build.ps1 完整构建自动执行；覆盖基础、单轮升级、永久代谢、两者叠加 4 类状态共 20 次点击，逐次比较实际 ATP 增量与飘字数值（含三槽轮换）。截图模式 src/main.c 改走真实 game_apply_action + ui_notify_result，不再注入虚构的 1240 收益；新点击截图可见 +3.5，与该演示局面的点击收益一致。
+- **结果**：build.ps1 通过：48,153 项规则检查、36 项接线检查、60 分钟真实集成回归、新增 20 次点击反馈检查均通过；正式程序编译、启动及 16 张截图导出通过。更新同名根目录程序、deliverables/Tree-of-Life/treeoflife.exe、Tree-of-Life-20261126.zip 与截图，不另留旧交付版本。
+- **长期约定**：AGENTS.md 追加用户明确授权：后续直接沿用 main，修改并验证原有实现后提交同步 GitHub，不另开平行版本；README.md 增加界面反馈测试入口。本轮沿用 main 提交与推送。
+- **收尾**：核实本轮 build/ 为刚生成的编译对象、测试程序与回归存档后删除；截图已移至 deliverables/screens/，无根目录残留截图。用户存档和原有资料保留。

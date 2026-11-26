@@ -98,3 +98,11 @@ shot: $(TARGET)
 
 clean:
 	@$(CLEAN_CMD)
+
+# Exercise the real action-to-UI feedback path without opening a window.
+build/test_click_feedback.exe: tests/test_click_feedback.c $(filter-out build/src/main.o,$(OBJ))
+	$(CC) $(TEST_FLAGS) $^ -o $@ $(LIBS)
+
+.PHONY: test-ui
+test-ui: build/test_click_feedback.exe
+	build/test_click_feedback.exe
