@@ -71,7 +71,7 @@ static bool valid_environment(int environment_id)
 
 const char *environment_name(int environment_id)
 {
-    return valid_environment(environment_id) ? k_environments[environment_id].name : "Unknown";
+    return valid_environment(environment_id) ? k_environments[environment_id].name : "未知环境";
 }
 
 const char *environment_description(int environment_id)

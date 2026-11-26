@@ -71,3 +71,12 @@ A/B/C 可运行整合版已在此前完成，Git 基线为 `44e2c0d`；既有结
   `--shot --ss 3` 正常导出 16 张 3840×2160，中文、星云、底片纹理均来自内存解码。
 - **交付**：`deliverables/TreeOfLife.exe`（单文件版副本）；`README.md` 增"单文件版"小节。
 - **未完成**：`_trash_20261126` 仍在等用户确认后整体删除；`dist/` 与 `deliverables/` 各存一份同一份 exe。
+
+## 2026-11-27 · Agent · 突变图谱 + 星图间距 + 全中文
+
+- **授权**：用户要求「一个区域能点开看当前获得的全部突变」「进化树图标太挤，要清晰展现每条分化路线」「突变里的英文全部转中文」，随后追加「还是做成星图形状，只把空间距离拉开」。
+- **突变图谱**：新增 `UI_OVL_MUT_LIST` / `UI_BTN_OPEN_MUT_LIST`（`include/ui_internal.h`、`src/ui.c`），入口三个 —— 顶栏第三个入口「突变」、物种卡突变 chip 行右端的「全部 N >」（整行可点）、快捷键 `V`。绘制在 `src/screens.c:draw_mut_list_overlay()`：按物种分栏（1–2 个一行两栏、3–4 个 2×2），每栏列出该物种**全部**已获得突变（3 列格子，装不下标「还有 N 项」），底部「本轮共振」列出已触发共振与它的两个前置突变，页脚给本轮总数 / 图鉴收录 / 共振进度。适配层新增只读接口 `ua_synergy_count/name/desc/pair/active`（`include/ui_adapter.h`、`src/ui_adapter.c`），共振判定仍由 B 提供，UI 不自己比对。
+- **星图进化树**：`draw_tree_overlay()` + `tree_layout()` 保持极坐标星图，重算几何拉开间距 —— 椭圆比 1.75（原 2.3）、角度按叶子数等分、每圈整体旋转 0.085 rad、内圈半径 26→58、节点半径 9.5；标签用八候选 + 两档距离避让、外扩 3px，挤不下就不画（当前/选中/路线上的一定画）；圈号去掉文字只留刻度点。另加节点点击（`UI_BTN_TREE_NODE`，`tree_sel` 存在 `UIState`）：点节点高亮它到原始细胞的整条路线，再点一次取消，底部详情条同步显示该物种的生态/阶段/分化自/在场种群。中途曾改成层状树（列=阶段、行=先序），用户要求回到星图后已回退，改动未留在最终代码里。
+- **全中文**：`src/evolution.c` 的 10 条突变（34–43）、4 条共振（戴森云/光子菌席/热泉暖流/几丁质建筑）与 4 条规则层提示串；`src/species.c` 的 6 条侧支物种、6 条基石、6 条子升级、「未知物种」；`src/environment.c` 的「未知环境」。
+- **验证**：`OS=Unix mingw32-make` 0 warning / 0 error；`test` 48,153 项规则 + 36 项接线 + 60 分钟回归全绿；`test-ui` 20 次点击一致；`python tools/gen_glyphs.py` 后字形 837 字；`--shot --ss 3` 导出 17 张 3840×2160（新增 `shot_05b_mutations.png`）并覆盖 `deliverables/screens/`；`make dist` 重建单文件版 22.87 MB，空目录运行导出 17 张截图正常，已覆盖 `deliverables/TreeOfLife.exe`。
+- **文档**：`README.md` 补「界面补充（2026-11-27）」小节、操作说明加 `V` 与节点点击、截图数改 17；`docs/art/01-visual-identity.md` 增 v5 章节。

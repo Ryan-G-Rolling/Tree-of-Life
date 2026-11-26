@@ -504,6 +504,10 @@ static void capture_screen(const GameState *base, const char *first_file)
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_TREE);
     ui_debug_capture(&game, "shot_05_tree.png");
 
+    /* 突变图谱：本轮已获得的全部突变 + 共振 */
+    ui_debug_force(UI_SCREEN_MAIN, UI_OVL_MUT_LIST);
+    ui_debug_capture(&game, "shot_05b_mutations.png");
+
     game.phase = PHASE_END_ERA_PREVIEW;
     ui_debug_force(UI_SCREEN_END_ERA, UI_OVL_NONE);
     ui_debug_capture(&game, "shot_06_end_era.png");

@@ -245,6 +245,41 @@ bool ua_mutation_is_rare(int mutation_id)
     return def && def->rarity >= 1;
 }
 
+int ua_synergy_count(void)
+{
+    return evolution_synergy_count();
+}
+
+const char *ua_synergy_name(int index)
+{
+    const MutationSynergyDef *def = evolution_synergy_get(index);
+    return def ? def->name : "未知共振";
+}
+
+const char *ua_synergy_desc(int index, char *buf, int buf_size)
+{
+    const MutationSynergyDef *def = evolution_synergy_get(index);
+    if (!def) {
+        snprintf(buf, (size_t)buf_size, "-");
+        return buf;
+    }
+    snprintf(buf, (size_t)buf_size, "%s", def->description);
+    return buf;
+}
+
+void ua_synergy_pair(int index, int out[2])
+{
+    if (!out) return;
+    const MutationSynergyDef *def = evolution_synergy_get(index);
+    out[0] = def ? def->mutation_a : -1;
+    out[1] = def ? def->mutation_b : -1;
+}
+
+bool ua_synergy_active(const GameState *game, int species_slot, int index)
+{
+    return evolution_synergy_active(game, species_slot, index);
+}
+
 /* ================= B 侧：环境 ================= */
 
 const char *ua_environment_name(int environment_id)

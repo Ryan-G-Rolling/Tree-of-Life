@@ -40,7 +40,8 @@ typedef enum {
     UI_OVL_MUTATION,
     UI_OVL_SPECIATION,
     UI_OVL_CODEX,
-    UI_OVL_TREE
+    UI_OVL_TREE,
+    UI_OVL_MUT_LIST     /* 突变图谱：本轮已获得的全部突变 + 已触发共振 */
 } UiOverlay;
 
 /* ---------------- 按钮 ----------------
@@ -63,6 +64,8 @@ typedef enum {
     UI_BTN_START_NEW_RUN,       /* → ACTION_START_NEW_RUN */
     UI_BTN_OPEN_CODEX,          /* 仅打开弹层 */
     UI_BTN_OPEN_TREE,           /* 仅打开弹层 */
+    UI_BTN_OPEN_MUT_LIST,       /* 仅打开“突变图谱”弹层 */
+    UI_BTN_TREE_NODE,           /* 进化树节点：target_id = 物种，选中后高亮它的整条路线 */
     UI_BTN_CLOSE_OVERLAY,       /* 仅关闭弹层 */
     UI_BTN_CODEX_TAB,           /* option = 0 物种 / 1 突变 / 2 记录 */
     UI_BTN_STORE_TAB,           /* 主界面商店页签：option = 0 机能 / 1 分化 */
@@ -121,6 +124,7 @@ typedef struct {
     int codex_tab;
     int store_tab;    /* 主界面商店：0 机能升级 / 1 分支分化 */
     int info_tab;     /* 主界面情报面板：0 下一步 / 1 产出 / 2 纪录 */
+    int tree_sel;     /* 进化树选中的物种，-1 表示跟随主谱系 */
 
     /* 产出曲线：三条资源各自 72 点环形缓冲（每 0.25s 采一次 = 18 秒窗口）。
      * 只用于画面，不参与任何数值计算。 */

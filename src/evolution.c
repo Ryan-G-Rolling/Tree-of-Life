@@ -155,34 +155,34 @@ static const MutationDef k_mutations[MUTATION_COUNT] = {
       200.0, 0.50, 0.0, 0.40, 0.50, 0.08, { 1, 1, 1, 1, 1 },
       2, 10, -1, MUTATION_RECURSIVE_SELF_IMPROVEMENT, -1, -1 },
     /* 34–43：第十三轮，侧支前置与构筑件 */
-    { "Photonic Skin", "A light-absorbing skin feeds the mat directly.",
+    { "光子表皮", "吸收光线的表皮，直接为菌席供能。",
       60.0, 0.30, 0.0, 0.0, 0.10, 0.0, { 0, 0, -1, 0, 0 },
       1, 2, -1, MUTATION_PHOTOSYMBIOSIS, -1, -1 },
-    { "Sulfur Metabolism", "Sulfur bonds replace oxygen as the energy carrier.",
+    { "硫代谢", "以硫键替代氧，作为新的能量载体。",
       55.0, 0.0, 0.30, 0.0, 0.0, 0.02, { 1, 0, 1, 0, 2 },
       1, 1, -1, MUTATION_CHEMOSYNTHESIS, -1, -1 },
-    { "Chitin Scaffold", "A scaffolding of chitin raises the colony ceiling.",
+    { "几丁质骨架", "几丁质支架撑起更高的群落上限。",
       80.0, 0.0, 0.10, 0.0, 0.30, 0.05, { 0, 1, 0, 0, 0 },
       0, 3, -1, MUTATION_CHITIN_WALL, -1, -1 },
-    { "Enzyme Cascade", "Chained enzymes squeeze more from every scrap.",
+    { "酶级联", "串联的酶从每一点碎屑里再榨一层。",
       90.0, 0.0, 0.25, 0.15, 0.0, 0.0, { 0, 0, 0, 0, 1 },
       1, 4, -1, MUTATION_DECOMPOSER_ENZYMES, -1, -1 },
-    { "Collective Memory", "The hive stores and recalls everything it learns.",
+    { "集体记忆", "蜂群把学到的一切都存下来，随时调取。",
       140.0, 0.0, 0.0, 0.20, 0.15, 0.0, { 0, 0, 0, 0, 0 },
       2, 6, -1, MUTATION_QUORUM_SENSING, -1, -1 },
-    { "Orbital Industry", "Orbit-side factories build for the whole swarm.",
+    { "轨道工业", "轨道工厂为整个群体生产。",
       200.0, 0.30, 0.0, 0.20, 0.0, 0.0, { 0, 0, 0, 2, 0 },
       2, 9, -1, MUTATION_ORBITAL_HABITATS, -1, -1 },
-    { "Symbiotic Cognition", "Partner minds think together, faster than alone.",
+    { "共生认知", "伙伴的心智一起思考，比独自更快。",
       120.0, 0.15, 0.0, 0.0, 0.10, 0.02, { 0, 0, 0, 0, 0 },
       1, 5, -1, MUTATION_NEURAL_SIGNALING, -1, -1 },
-    { "Cryo Archive", "A frozen archive protects the genome from any shock.",
+    { "冷冻档案", "冷冻档案让基因组免受任何冲击。",
       110.0, 0.0, 0.0, 0.30, 0.0, 0.0, { 0, 2, 0, 0, 0 },
       1, 7, -1, -1, -1, -1 },
-    { "Atmospheric Control", "The biosphere steers its own climate.",
+    { "大气调控", "生物圈开始掌控自己的气候。",
       130.0, 0.0, 0.10, 0.0, 0.10, 0.08, { 1, 1, 0, 0, 0 },
       1, 8, -1, -1, -1, -1 },
-    { "Deep Time Archive", "Ten billion years of data, compressed.",
+    { "深时档案", "一百亿年的数据，压缩归档。",
       150.0, 0.0, 0.0, 0.25, 0.0, 0.0, { 0, 0, 0, 0, 0 },
       2, 10, -1, MUTATION_RECURSIVE_SELF_IMPROVEMENT, -1, -1 },
 };
@@ -223,17 +223,17 @@ static const MutationSynergyDef k_synergies[] = {
       MUTATION_LANGUAGE, MUTATION_URBANIZATION,
       0.0, SYNERGY_GLOBAL_NETWORK_BIOMASS, SYNERGY_GLOBAL_NETWORK_DNA, 0.0, 0.0,
       { 0, 0, 0, 0, 1 } },
-    { "Dyson Swarm", "Rocketry + Orbital Habitats: industry wraps the star.",
+    { "戴森云", "火箭技术 + 轨道居所：工业把恒星裹起来。",
       MUTATION_ROCKETRY, MUTATION_ORBITAL_HABITATS,
       SYNERGY_DYSON_ATP, 0.0, 0.0, SYNERGY_DYSON_CAP, 0.0, { 0, 0, 0, 1, 0 } },
     /* 第十三轮：三条新构筑的共振 */
-    { "Photonic Mat", "Photosymbiosis + Photonic Skin: a light-harvesting mat.",
+    { "光子菌席", "光合共生 + 光子表皮：一张捕光的席。",
       MUTATION_PHOTOSYMBIOSIS, MUTATION_PHOTONIC_SKIN,
       SYNERGY_PHOTONIC_ATP, 0.0, 0.0, SYNERGY_PHOTONIC_CAP, 0.0, { 0, 0, -1, 0, 0 } },
-    { "Vent Thermals", "Extremozyme Cocktail + Sulfur Metabolism: a vent-fed swarm.",
+    { "热泉暖流", "极端酶鸡尾酒 + 硫代谢：热泉喂养的群体。",
       MUTATION_EXTREMOZYME_COCKTAIL, MUTATION_SULFUR_METABOLISM,
       0.0, SYNERGY_VENT_BIOMASS, 0.0, 0.0, SYNERGY_VENT_GROWTH, { 1, 0, 0, 0, 1 } },
-    { "Chitin Architecture", "Chitin Wall + Chitin Scaffold: a reef that builds itself.",
+    { "几丁质建筑", "几丁质壁 + 几丁质骨架：自我建造的礁。",
       MUTATION_CHITIN_WALL, MUTATION_CHITIN_SCAFFOLD,
       0.0, 0.0, 0.0, SYNERGY_CHITIN_CAP, SYNERGY_CHITIN_GROWTH, { 0, 1, 0, 0, 0 } },
 };
@@ -582,23 +582,23 @@ static int find_key_mutation(const GameState *game, const SpeciesState *species,
 const char *evolution_offer_block_reason(const GameState *game, int species_slot)
 {
     if (game->phase != PHASE_RUNNING) {
-        return "Evolution is paused.";
+        return "演化已暂停。";
     }
     if (!valid_slot(game, species_slot)) {
-        return "No such species slot.";
+        return "没有这个物种槽。";
     }
     if (game->run.mutation_offer.active) {
         if (game->run.mutation_offer.species_slot == species_slot) {
             return 0;
         }
-        return "Another species already has a pending mutation offer.";
+        return "另一个物种还有待选的突变。";
     }
     for (int id = 0; id < MUTATION_COUNT; ++id) {
         if (evolution_mutation_available(game, species_slot, id)) {
             return 0;
         }
     }
-    return "No mutation is available for this species yet.";
+    return "这个物种暂时没有可用的突变。";
 }
 
 MutationOfferState evolution_generate_mutation_offer_rng(const GameState *game, int species_slot,

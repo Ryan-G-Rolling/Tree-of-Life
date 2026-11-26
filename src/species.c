@@ -99,26 +99,26 @@ static const SpeciesDef k_species[SPECIES_COUNT] = {
       11, ECO_MULTICELLULAR, 18.00, 9.00, 2.40, 1.60, 0.010, 6000.0, 4000000.0,
       { 3, 3, 3, 3, 3 } },
     /* 第十三轮：阶段 2 侧支 */
-    { "Photosynthetic Mat", "Partner algae turn sunlight into a shared energy pool.",
+    { "光合菌席", "藻类伙伴把阳光变成共享的能量池。",
       2, ECO_PHOTOSYNTHETIC, 2.20, 0.90, 0.18, 0.0, 0.012, 300.0, 450.0,
       { 0, 0, -1, 1, 0 } },
-    { "Vent Swarm", "Heat-loving cells swarm the chemical vents in relays.",
+    { "热泉群", "嗜热细胞轮流涌向化学热泉。",
       2, ECO_CHEMOSYNTHETIC, 1.50, 0.95, 0.22, 0.0, 0.012, 260.0, 450.0,
       { 1, 0, 2, 0, 2 } },
     /* 第十三轮：阶段 3 侧支 */
-    { "Chitin Reef", "A hard chitin lattice shelters a growing colony.",
+    { "几丁质礁", "坚硬的几丁质格架庇护生长中的群落。",
       3, ECO_HETEROTROPHIC, 2.60, 1.50, 0.28, 0.0, 0.011, 620.0, 1400.0,
       { 1, 1, 0, 0, 1 } },
     /* 第十三轮：阶段 5 侧支 */
-    { "Saprotrophic Forest", "A forest of decomposers recycles everything.",
+    { "腐生森林", "由分解者组成的森林，把一切循环利用。",
       5, ECO_HETEROTROPHIC, 3.80, 1.90, 0.60, 0.0, 0.010, 820.0, 7000.0,
       { 1, 1, 0, 0, 2 } },
     /* 第十三轮：阶段 6 侧支 */
-    { "Hive Polity", "A quorum-driven hive coordinates every caste at once.",
+    { "蜂群政体", "群体感应驱动的蜂群同时调度每一个阶层。",
       6, ECO_MULTICELLULAR, 5.40, 2.70, 0.72, 0.35, 0.010, 1300.0, 14000.0,
       { 2, 2, 1, 2, 2 } },
     /* 第十三轮：阶段 9 侧支 */
-    { "Orbital Swarm", "Thousands of orbital habitats act as one industry.",
+    { "轨道群", "成千上万的轨道居所像同一个工业体那样协作。",
       9, ECO_EXTREMOPHILE, 9.50, 4.60, 1.25, 0.85, 0.010, 3000.0, 900000.0,
       { 3, 3, 2, 2, 2 } },
 };
@@ -170,18 +170,18 @@ static const SpeciesKeystone k_keystones[SPECIES_COUNT] = {
     { "欧米伽进程", "自我设计的过程提升所有产出与上限。",
       KEYSTONE_TRANSCENDENCE_PRODUCTION, KEYSTONE_TRANSCENDENCE_PRODUCTION,
       KEYSTONE_TRANSCENDENCE_PRODUCTION, KEYSTONE_TRANSCENDENCE_CAP, 0.0, 0.0, 0.0, 0.0 },
-    { "Sun Pool", "A shared photosynthetic pool lifts ATP in dim water.",
+    { "日轮池", "共享的光合池，让弱光水域也能抬高 ATP。",
       KEYSTONE_MAT_ATP, 0.0, 0.0, 0.0, 0.0, KEYSTONE_MAT_LOW_LIGHT, 0.0, 0.0 },
-    { "Sulfur Relay", "Chemical relays lift biomass and shrug off toxins.",
+    { "硫接力", "化学接力抬高生物量，还能卸掉毒素。",
       0.0, KEYSTONE_VENT_BIOMASS, 0.0, 0.0, 0.0, 0.0, KEYSTONE_VENT_TOXIN, 0.0 },
-    { "Chitin Lattice", "A rigid lattice lifts biomass and the ceiling.",
+    { "几丁格栅", "坚硬的格架同时抬高生物量与上限。",
       0.0, KEYSTONE_CHITIN_BIOMASS, 0.0, KEYSTONE_CHITIN_CAP, 0.0, 0.0, 0.0, 0.0 },
-    { "Detritus Engine", "Recycling detritus lifts DNA and biomass.",
+    { "碎屑引擎", "回收碎屑，抬高 DNA 与生物量。",
       0.0, KEYSTONE_SAPRO_BIOMASS, KEYSTONE_SAPRO_DNA, 0.0, 0.0, 0.0, 0.0, 0.0 },
-    { "Caste System", "Specialised castes lift every process and the ceiling.",
+    { "阶层分工", "专门的阶层抬高每一道工序与上限。",
       KEYSTONE_HIVE_PRODUCTION, KEYSTONE_HIVE_PRODUCTION, KEYSTONE_HIVE_PRODUCTION,
       KEYSTONE_HIVE_CAP, 0.0, 0.0, 0.0, 0.0 },
-    { "Orbital Grid", "A grid of habitats lifts ATP and the ceiling.",
+    { "轨道网格", "居所织成网格，抬高 ATP 与上限。",
       KEYSTONE_ORBITAL_ATP, 0.0, 0.0, KEYSTONE_ORBITAL_CAP, 0.0, 0.0, 0.0, 0.0 },
 };
 
@@ -225,17 +225,17 @@ static const SubUpgradeDef k_sub_upgrades[] = {
     { "欧米伽点", "过程本身成为目的。",
       SPECIES_TRANSCENDENCE, 2, 1.35, 9600.0 },
     /* 第十三轮：两条阶段 6/9 侧支各有 3 层 */
-    { "Division of Labour", "Each caste perfects one task.",
+    { "劳动分工", "每个阶层专精一件事。",
       SPECIES_HIVE_POLITY, 0, 1.35, 300.0 },
-    { "Distributed Ledger", "The hive remembers everything at once.",
+    { "分布式账本", "蜂群同时记住全部信息。",
       SPECIES_HIVE_POLITY, 1, 1.35, 300.0 },
-    { "Global Brain", "The polity thinks as a single mind.",
+    { "全球脑", "整个政体像一个心智那样思考。",
       SPECIES_HIVE_POLITY, 2, 1.35, 300.0 },
-    { "Orbital Yards", "Habitats build habitats.",
+    { "轨道船坞", "居所生产居所。",
       SPECIES_ORBITAL_SWARM, 0, 1.35, 2400.0 },
-    { "Asteroid Mining", "Every rock becomes feedstock.",
+    { "小行星采矿", "每一块岩石都变成原料。",
       SPECIES_ORBITAL_SWARM, 1, 1.35, 2400.0 },
-    { "Stellar Logistics", "Supplies cross the system on schedule.",
+    { "星际物流", "补给按时刻表穿过整个星系。",
       SPECIES_ORBITAL_SWARM, 2, 1.35, 2400.0 },
 };
 
@@ -374,7 +374,7 @@ const SpeciesDef *species_get(int species_id)
 const char *species_name(int species_id)
 {
     const SpeciesDef *def = species_get(species_id);
-    return def ? def->name : "Unknown";
+    return def ? def->name : "未知物种";
 }
 
 const char *species_description(int species_id)

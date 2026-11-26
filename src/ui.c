@@ -207,6 +207,15 @@ static void handle_local_button(const UiButton *b, const GameState *game)
         g_ui.overlay = UI_OVL_TREE;
         g_ui.ovl_t = 0.0f;
         break;
+    case UI_BTN_OPEN_MUT_LIST:
+        g_ui.overlay = UI_OVL_MUT_LIST;
+        g_ui.ovl_t = 0.0f;
+        break;
+    case UI_BTN_TREE_NODE:
+        /* 再点一次已选中的节点 = 取消选中，回到跟随主谱系。
+         * 只改 g_ui，不碰 GameState —— 选中只是“看哪条路线”，不是玩法动作。 */
+        g_ui.tree_sel = (g_ui.tree_sel == b->target_id) ? -1 : b->target_id;
+        break;
     case UI_BTN_CODEX_TAB:
         g_ui.codex_tab = b->option;
         break;
@@ -390,6 +399,7 @@ void ui_init(void)
     g_ui.hot = -1;
     g_ui.pressed = -1;
     g_ui.last_phase = -1;
+    g_ui.tree_sel = -1;
 
     if (emb_any()) TraceLog(LOG_INFO, "UI: single-file build, assets embedded");
     ui_font_init();
@@ -532,6 +542,10 @@ bool ui_update(const GameState *game, GameAction *pending_action)
         }
         if (input_key_pressed(KEY_C)) {
             g_ui.overlay = UI_OVL_CODEX;
+            g_ui.ovl_t = 0.0f;
+        }
+        if (input_key_pressed(KEY_V)) {
+            g_ui.overlay = UI_OVL_MUT_LIST;
             g_ui.ovl_t = 0.0f;
         }
         if (input_key_pressed(KEY_TAB)) {

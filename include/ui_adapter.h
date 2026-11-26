@@ -82,6 +82,16 @@ const char *ua_mutation_name(int mutation_id);
 const char *ua_mutation_desc(int mutation_id, char *buf, int buf_size);
 bool ua_mutation_is_rare(int mutation_id);
 
+/* 突变共振（同一物种凑齐两个突变才生效的构筑加成）。
+   “突变图谱”弹层要列出本轮已触发的共振，判定必须问 B，UI 不自己比对。 */
+int ua_synergy_count(void);
+const char *ua_synergy_name(int index);
+const char *ua_synergy_desc(int index, char *buf, int buf_size);
+/* 该共振由哪两个突变触发，out[0] / out[1] 为突变 id。 */
+void ua_synergy_pair(int index, int out[2]);
+/* 该物种槽当前是否已激活这条共振。 */
+bool ua_synergy_active(const GameState *game, int species_slot, int index);
+
 /* ================= B 侧：环境 ================= */
 
 const char *ua_environment_name(int environment_id);
