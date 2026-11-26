@@ -17,6 +17,7 @@
 #include "ui_internal.h"
 #include "ui_adapter.h"
 #include "ui_glyphs.h"
+#include "embedded.h"
 
 /* ================= 调色板 =================
  * 唯一允许出现颜色字面量的地方。界面代码只许引用 COL_* 名字。
@@ -231,7 +232,16 @@ void ui_font_init(void)
     ua_register_font_strings();
     register_ui_strings();
 
-    g_font = LoadFontEx("assets/fonts/ui_zh.ttf", UI_FONT_BASE_SIZE, g_cp, g_cp_count);
+    /* 单文件版把字体编进 exe：LoadFontFromMemory 拿到的是一块只读数据，
+     * 码点表仍然由 ui_font_register 动态攒（与文件版完全一致）。
+     * 普通构建 emb_get() 恒 false，走原来的 LoadFontEx(路径)。 */
+    const unsigned char *emb = NULL;
+    int emb_size = 0;
+    if (emb_get(EMB_FONT, &emb, &emb_size)) {
+        g_font = LoadFontFromMemory(".ttf", emb, emb_size, UI_FONT_BASE_SIZE, g_cp, g_cp_count);
+    } else {
+        g_font = LoadFontEx("assets/fonts/ui_zh.ttf", UI_FONT_BASE_SIZE, g_cp, g_cp_count);
+    }
     if (g_font.texture.id == 0) {
         g_font = GetFontDefault();
         g_font_ready = false;

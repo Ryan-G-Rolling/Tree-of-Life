@@ -22,6 +22,7 @@
 #include "ui.h"
 #include "ui_internal.h"
 #include "ui_adapter.h"
+#include "embedded.h"
 #include "atmosphere.h"
 
 UIState g_ui;
@@ -31,6 +32,25 @@ static Sound g_snd_click = { 0 };
 static Sound g_snd_buy = { 0 };
 static Sound g_snd_evolve = { 0 };
 static bool g_audio = false;
+
+/* 音效加载：内嵌优先（单文件版），否则退回文件路径。
+ * 波形先解到内存再转 Sound，解完立刻 UnloadWave —— 与 LoadSound 内部一致。
+ * 缺任何一个都不算错：静音不影响玩法（原代码也是用 FileExists 挡一层）。 */
+static Sound load_sound(EmbId id, const char *path)
+{
+    const unsigned char *data = NULL;
+    int size = 0;
+    Wave w = { 0 };
+    if (emb_get(id, &data, &size)) {
+        w = LoadWaveFromMemory(".wav", data, size);
+    } else if (FileExists(path)) {
+        w = LoadWave(path);
+    }
+    if (!IsWaveValid(w)) return (Sound){ 0 };
+    Sound snd = LoadSoundFromWave(w);
+    UnloadWave(w);
+    return snd;
+}
 
 /* ================= 超采样画布 ================= */
 
@@ -371,15 +391,16 @@ void ui_init(void)
     g_ui.pressed = -1;
     g_ui.last_phase = -1;
 
+    if (emb_any()) TraceLog(LOG_INFO, "UI: single-file build, assets embedded");
     ui_font_init();
 
     g_ss = 0;
     canvas_ensure(compute_ss());
 
     if (IsAudioDeviceReady()) {
-        if (FileExists("assets/sfx/click.wav"))  g_snd_click  = LoadSound("assets/sfx/click.wav");
-        if (FileExists("assets/sfx/buy.wav"))    g_snd_buy    = LoadSound("assets/sfx/buy.wav");
-        if (FileExists("assets/sfx/evolve.wav")) g_snd_evolve = LoadSound("assets/sfx/evolve.wav");
+        g_snd_click  = load_sound(EMB_CLICK,  "assets/sfx/click.wav");
+        g_snd_buy    = load_sound(EMB_BUY,    "assets/sfx/buy.wav");
+        g_snd_evolve = load_sound(EMB_EVOLVE, "assets/sfx/evolve.wav");
         g_audio = IsSoundValid(g_snd_click);
     }
 

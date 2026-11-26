@@ -49,3 +49,25 @@ A/B/C 可运行整合版已在此前完成，Git 基线为 `44e2c0d`；既有结
 - **结果**：build.ps1 通过：48,153 项规则检查、36 项接线检查、60 分钟真实集成回归、新增 20 次点击反馈检查均通过；正式程序编译、启动及 16 张截图导出通过。更新同名根目录程序、deliverables/Tree-of-Life/treeoflife.exe、Tree-of-Life-20261126.zip 与截图，不另留旧交付版本。
 - **长期约定**：AGENTS.md 追加用户明确授权：后续直接沿用 main，修改并验证原有实现后提交同步 GitHub，不另开平行版本；README.md 增加界面反馈测试入口。本轮沿用 main 提交与推送。
 - **收尾**：核实本轮 build/ 为刚生成的编译对象、测试程序与回归存档后删除；截图已移至 deliverables/screens/，无根目录残留截图。用户存档和原有资料保留。
+
+## 2026-11-26 · Agent · 工作区清理 + 单文件 exe
+
+- **授权与原因**：用户要求清理旧产物，并额外产出一个能直接运行游戏的单独 exe。
+- **清理**（移到 `E:/智C作业/小组作业/_trash_20261126/`，未删除，可随时找回，合计约 351 MB）：
+  工作区根 `tree/`（B 旧工程）、`Tree-of-Life-main/` 与 `Tree-of-Life-main.zip`（A 旧工程）、
+  `TreeOfLife/`（C 旧工程）、`.gitpush_tmp/`（推送用的临时克隆）；
+  工程内 `docs/screens/final/`（已被 deliverables/screens 取代的旧截图）、
+  根目录 16 张 `shot_*.png` 与 `shot_log.txt`、`imcrop.exe`。
+  另删除根目录 `libraylib.dll`、`glfw3.dll` —— raylib 改为静态链接后不再需要。
+- **单文件版**：新增 `include/embedded.h`、`src/embedded.c`（`emb_get()` / `emb_any()`），
+  字体（render.c）、星云（atmosphere.c）、标本底片（tex.c）、三个音效（ui.c）四类加载点改为
+  内嵌优先、失败退回文件路径；`Makefile` 增加 `EMB_OBJS`（`objcopy -I binary -O pe-x86-64`
+  把 6 个资源转成 .o）、`build/emb_obj/embedded.o`（`-DEMBED_ASSETS`）与 `dist` 目标
+  （`-static -static-libgcc`，链接补 `-lole32 -lshell32`）。`.local/deps/raylib-5.5_win64_mingw-w64`
+  换成 raylib 官方静态包（glfw 已编入；原 MSYS2 包引 `__imp_glfw*`，无法静态链接）。
+- **验证**：`OS=Unix mingw32-make`（Git Bash 必须带 `OS=Unix`）0 warning / 0 error；
+  `test` 48,153 项规则 + 36 项接线 + 60 分钟回归全通过；`test-ui` 20 次点击数值一致；
+  `make dist` 产出 22.9 MB `dist/TreeOfLife.exe`，在**空目录**（无 assets/、无 DLL）运行
+  `--shot --ss 3` 正常导出 16 张 3840×2160，中文、星云、底片纹理均来自内存解码。
+- **交付**：`deliverables/TreeOfLife.exe`（单文件版副本）；`README.md` 增"单文件版"小节。
+- **未完成**：`_trash_20261126` 仍在等用户确认后整体删除；`dist/` 与 `deliverables/` 各存一份同一份 exe。

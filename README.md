@@ -27,10 +27,22 @@ Windows 下安装 MinGW-w64 GCC、mingw32-make 和 Python，并加入 PATH：
 mingw32-make test          # 三组真实规则/集成回归，无测试替身
 mingw32-make test-ui       # 真实点击入账与界面飘字一致性
 mingw32-make demo          # 可选的规则实验控制台
+mingw32-make dist          # 单文件版：资源编进 exe → dist/TreeOfLife.exe
 .\treeoflife.exe --shot --ss 3  # 16 张 3840×2160 演示截图
 ```
 
-截图模式使用人工构造的中后期局面，正常新游戏从原始细胞和零资源开始。程序从可执行文件所在目录加载资源，统一存档路径为 `saves/treeoflife-v8.sav`；早期存档不自动迁移或覆盖。
+### 单文件版（免安装、不用旁边的资源目录）
+
+`mingw32-make dist` 产出 `dist/TreeOfLife.exe`（约 22 MB）：用 `objcopy -I binary` 把
+`assets/` 里的等线字体、两张纹理、三个音效编成目标文件链进可执行文件，运行时由
+`src/embedded.c` 从内存解码（`LoadFontFromMemory` / `LoadImageFromMemory` /
+`LoadWaveFromMemory`），并用 `-static -static-libgcc` 静态链接 raylib 与 GCC 运行时。
+拷到任何目录双击即可开玩，只依赖系统自带的 user32/gdi32/opengl32 等 DLL。
+
+普通构建（`mingw32-make`）不带 `-DEMBED_ASSETS`，`emb_get()` 恒返回 false，仍按
+`assets/` 相对路径读盘 —— 开发期换图、换字体立刻生效，不用重编内嵌数据。
+
+截图模式使用人工构造的中后期局面，正常新游戏从原始细胞和零资源开始。程序启动时把工作目录切到可执行文件所在目录，资源与 `saves/` 都相对它；统一存档路径为 `saves/treeoflife-v8.sav`，早期存档不自动迁移或覆盖。
 
 ## 操作
 

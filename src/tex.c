@@ -8,6 +8,9 @@
 #include "tex.h"
 
 #include <stdbool.h>
+#include <stddef.h>
+
+#include "embedded.h"
 
 #define TEX_PATH "assets/tex/specimen.png"
 
@@ -20,9 +23,18 @@ static void tex_ensure(void)
     if (g_tried) return;
     g_tried = true;
 
-    if (!FileExists(TEX_PATH)) return;
-
-    g_tex = LoadTexture(TEX_PATH);
+    /* 内嵌版不读盘；普通构建缺文件就静默跳过（这一层本来就是可选的） */
+    const unsigned char *emb = NULL;
+    int emb_size = 0;
+    if (emb_get(EMB_SPECIMEN, &emb, &emb_size)) {
+        Image img = LoadImageFromMemory(".png", emb, emb_size);
+        if (!IsImageValid(img)) return;
+        g_tex = LoadTextureFromImage(img);
+        UnloadImage(img);
+    } else {
+        if (!FileExists(TEX_PATH)) return;
+        g_tex = LoadTexture(TEX_PATH);
+    }
     g_ok = (g_tex.id != 0 && g_tex.width > 0 && g_tex.height > 0);
 }
 

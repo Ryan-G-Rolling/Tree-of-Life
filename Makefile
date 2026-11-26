@@ -19,16 +19,28 @@ RAYLIB_DIR ?= .local/deps/raylib-5.5_win64_mingw-w64
 INC     ?= -Iinclude -Idata
 ifneq ($(wildcard $(RAYLIB_DIR)/include/raylib.h),)
 INC += -I$(RAYLIB_DIR)/include
-LIBS = $(RAYLIB_DIR)/lib/libraylib.a -lopengl32 -lgdi32 -lwinmm -lm
+LIBS = $(RAYLIB_DIR)/lib/libraylib.a -lopengl32 -lgdi32 -lwinmm -lole32 -lshell32 -lm
 endif
-LIBS    ?= -lraylib -lopengl32 -lgdi32 -lwinmm -lm
+LIBS    ?= -lraylib -lopengl32 -lgdi32 -lwinmm -lole32 -lshell32 -lm
 
 TARGET  := treeoflife.exe
+
+# ---- 单文件发布（make dist）--------------------------------------------------
+# 把 assets/ 里的字体、两张纹理、三个音效用 objcopy 编成 .o 链进 exe，
+# 运行时从内存解码，不需要旁边的 assets/ 目录；再 -static 把 libgcc 也并进去，
+# 结果只有一个依赖系统 DLL（user32/gdi32/opengl32 等）的 TreeOfLife.exe。
+DIST_DIR   := dist
+DIST_EXE   := $(DIST_DIR)/TreeOfLife.exe
+EMB_DIR    := build/emb
+EMB_OBJS   := $(EMB_DIR)/font.o $(EMB_DIR)/nebula.o $(EMB_DIR)/specimen.o \
+              $(EMB_DIR)/click.o $(EMB_DIR)/buy.o $(EMB_DIR)/evolve.o
+EMB_OBJCOPY = objcopy -I binary -O pe-x86-64 -B i386:x86-64
+DIST_LDFLAGS = -static -static-libgcc
 
 CORE_SRC := src/game.c src/economy.c src/save.c \
             src/evolution.c src/species.c src/environment.c src/prestige.c src/legacy.c
 UI_SRC   := src/main.c src/ui.c src/render.c src/screens.c src/input.c src/atmosphere.c src/tex.c \
-            src/ui_adapter.c
+            src/ui_adapter.c src/embedded.c
 
 RULES_SRC   := src/evolution.c src/species.c src/environment.c src/prestige.c src/legacy.c
 CONTROL_SRC := src/game.c src/economy.c src/save.c
@@ -46,12 +58,16 @@ TEST_FLAGS  := -std=c11 -Wall -Wextra -Wpedantic -Werror -O2 $(INC)
 ifeq ($(OS),Windows_NT)
 MKDIR_P  = if not exist "$(subst /,\,$(1))" mkdir "$(subst /,\,$(1))"
 CLEAN_CMD = if exist build rmdir /s /q build & if exist $(TARGET) del /q $(TARGET) & del /q shot_*.png 2>nul & exit /b 0
+EMB_COPY = copy /y
+CDDIR    = cd /d $(subst /,\,$(1))
 else
 MKDIR_P  = mkdir -p $(1)
 CLEAN_CMD = rm -rf build $(TARGET) shot_*.png
+EMB_COPY = cp -f
+CDDIR    = cd $(1)
 endif
 
-.PHONY: all clean glyphs run shot test
+.PHONY: all clean glyphs run shot test dist
 
 all: $(TARGET)
 
@@ -95,6 +111,51 @@ run: $(TARGET)
 
 shot: $(TARGET)
 	./$(TARGET) --shot --ss 3
+
+# ---- 单文件发布 --------------------------------------------------------------
+# objcopy 的符号名取自**输入文件名**（带路径时斜杠也会变下划线），所以先把资源
+# 拷成 build/emb/ 下的短名再转，符号才稳定是 _binary_font_ttf_start / _end。
+$(EMB_DIR)/font.o: assets/fonts/ui_zh.ttf
+	@$(call MKDIR_P,$(EMB_DIR))
+	$(EMB_COPY) $< $(EMB_DIR)/font.ttf
+	$(call CDDIR,$(EMB_DIR)) && $(EMB_OBJCOPY) font.ttf font.o
+
+$(EMB_DIR)/nebula.o: assets/tex/nebula.png
+	@$(call MKDIR_P,$(EMB_DIR))
+	$(EMB_COPY) $< $(EMB_DIR)/nebula.png
+	$(call CDDIR,$(EMB_DIR)) && $(EMB_OBJCOPY) nebula.png nebula.o
+
+$(EMB_DIR)/specimen.o: assets/tex/specimen.png
+	@$(call MKDIR_P,$(EMB_DIR))
+	$(EMB_COPY) $< $(EMB_DIR)/specimen.png
+	$(call CDDIR,$(EMB_DIR)) && $(EMB_OBJCOPY) specimen.png specimen.o
+
+$(EMB_DIR)/click.o: assets/sfx/click.wav
+	@$(call MKDIR_P,$(EMB_DIR))
+	$(EMB_COPY) $< $(EMB_DIR)/click.wav
+	$(call CDDIR,$(EMB_DIR)) && $(EMB_OBJCOPY) click.wav click.o
+
+$(EMB_DIR)/buy.o: assets/sfx/buy.wav
+	@$(call MKDIR_P,$(EMB_DIR))
+	$(EMB_COPY) $< $(EMB_DIR)/buy.wav
+	$(call CDDIR,$(EMB_DIR)) && $(EMB_OBJCOPY) buy.wav buy.o
+
+$(EMB_DIR)/evolve.o: assets/sfx/evolve.wav
+	@$(call MKDIR_P,$(EMB_DIR))
+	$(EMB_COPY) $< $(EMB_DIR)/evolve.wav
+	$(call CDDIR,$(EMB_DIR)) && $(EMB_OBJCOPY) evolve.wav evolve.o
+
+# embedded.c 编两份：普通版（无宏，全部退回文件路径）与内嵌版（-DEMBED_ASSETS）。
+build/emb_obj/embedded.o: src/embedded.c include/embedded.h
+	@$(call MKDIR_P,build/emb_obj)
+	$(CC) $(CFLAGS) -DEMBED_ASSETS -c $< -o $@
+
+# 单文件 exe：复用普通构建的 .o，只把 embedded.o 换成内嵌版并追加资源 .o。
+dist: $(OBJ) build/emb_obj/embedded.o $(EMB_OBJS)
+	@$(call MKDIR_P,$(DIST_DIR))
+	$(CC) $(filter-out build/src/embedded.o,$(OBJ)) build/emb_obj/embedded.o $(EMB_OBJS) \
+	      -o $(DIST_EXE) $(LIBS) $(DIST_LDFLAGS)
+	@echo "dist: $(DIST_EXE)"
 
 clean:
 	@$(CLEAN_CMD)
