@@ -1,16 +1,10 @@
 build/
-tests/*.bin
-tests/*.bin.tmp
-.local/claude-ds/
-# Local CLI setup is specific to this machine.
-claude-ds.ps1
-CLAUDE_DS.md
-
-.local/
-.vs/
-tests/.vs/
-assets/
-saves/
+*.exe
+*.o
+*.obj
 shot_*.png
-treeoflife.exe
-deliverables/
+*.sav
+
+# 4K 归档截图是交付物，根目录临时截图仍忽略
+!docs/screens/final/
+!docs/screens/final/*.png

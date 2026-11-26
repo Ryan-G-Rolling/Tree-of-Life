@@ -9,8 +9,12 @@
 #include "game_types.h"
 
 /* ---------------- EP 结算 ---------------- */
-double prestige_biomass_milestone_threshold(int level);
 int prestige_biomass_milestone_level(double max_biomass);
+/* 第 level 档里程碑的门槛 Biomass（level 0 = 0）。供 UI 画进度条，
+ * 与 prestige_biomass_milestone_level 共用同一张表，避免 UI 复制数值。 */
+double prestige_milestone_threshold(int level);
+/* 里程碑总档数（含 0 档）。 */
+int prestige_milestone_count(void);
 /* 输出 E、M、S、C 原始数量，供 End of Era 页面显示；指针可为 NULL */
 void prestige_run_stats(const GameState *game, int *stages, int *mutations, int *species,
                         int *crises);

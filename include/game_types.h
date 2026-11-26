@@ -1,9 +1,15 @@
 #ifndef GAME_TYPES_H
 #define GAME_TYPES_H
 
-/* Canonical A+B+C state and identifiers. All modules include this definition.
- * Based on Member B's uploaded content expansion; integration save version 7.
- * Keep UI-only state in ui/include/ui_internal.h.
+/*
+ * 共享数据结构（01-三人分工与接口约定 §5）
+ *
+ * 本文件由三人共同评审后使用，任何人都不得私自复制另一份。
+ * 相对 §5 草案的补充只有以下两类，含义与所有权不变：
+ *   1. 共享编号枚举（02-数据与计算规则 §5.1、§5.2、§6.1、§7.1）
+ *   2. EnvironmentStep 中两个只由 B 产生、由 A 写回的临时结果字段
+ *      （instant_population_loss_ratio、adaptation_shield_triggered）
+ * 这两个字段不进入存档，不影响存档格式与版本号。
  */
 
 #include <stdbool.h>
@@ -162,9 +168,7 @@ typedef enum {
     ACTION_CONFIRM_END_ERA,
     ACTION_BUY_LEGACY,
     ACTION_START_NEW_RUN,
-    ACTION_BUY_SUB_UPGRADE,
-    ACTION_BUY_CAPACITY,
-    ACTION_BUY_RESERVE
+    ACTION_BUY_SUB_UPGRADE
 } ActionType;
 
 typedef struct {
@@ -212,7 +216,6 @@ typedef struct {
     bool survived_crises[MAX_ENVIRONMENTS];
 
     double max_biomass;
-    int highest_biomass_milestone; /* Derived cache for UI; reward derives from max_biomass. */
     int capacity_levels;
     int reserve_levels;
     int tech_levels[MAX_SPECIES]; /* 第九轮：每个物种的子升级（科技分层）已购层数 */
@@ -229,6 +232,11 @@ typedef struct {
     int best_era;
     int best_evolution_points;
     double best_biomass;
+
+    /* Member C 提案 #4：成就位标记，跨轮保留。位含义由成就表定义
+     * （见 ui_adapter.c 的成就表，与 ua_achievement_count 同序）。
+     * 不改变 B 的结算公式，只由图鉴记录页读取。 */
+    unsigned int achievement_flags;
 } LegacyState;
 
 typedef struct {

@@ -1,0 +1,146 @@
+INFO: Initializing raylib 5.5
+INFO: Platform backend: DESKTOP (GLFW)
+INFO: Supported raylib modules:
+INFO:     > rcore:..... loaded (mandatory)
+INFO:     > rlgl:...... loaded (mandatory)
+INFO:     > rshapes:... loaded (optional)
+INFO:     > rtextures:. loaded (optional)
+INFO:     > rtext:..... loaded (optional)
+INFO:     > rmodels:... loaded (optional)
+INFO:     > raudio:.... loaded (optional)
+INFO: DISPLAY: Trying to enable VSYNC
+INFO: DISPLAY: Device initialized successfully
+INFO:     > Display size: 2560 x 1600
+INFO:     > Screen size:  1600 x 900
+INFO:     > Render size:  1600 x 900
+INFO:     > Viewport offsets: 0, 0
+INFO: GLAD: OpenGL extensions loaded successfully
+INFO: GL: Supported extensions count: 247
+INFO: GL: OpenGL device information:
+INFO:     > Vendor:   Intel
+INFO:     > Renderer: Intel(R) Graphics
+INFO:     > Version:  3.3.0 - Build 32.0.101.8860
+INFO:     > GLSL:     3.30 - Build 32.0.101.8860
+INFO: GL: VAO extension detected, VAO functions loaded successfully
+INFO: GL: NPOT textures extension detected, full NPOT textures supported
+INFO: GL: DXT compressed textures supported
+INFO: GL: ETC2/EAC compressed textures supported
+INFO: PLATFORM: DESKTOP (GLFW - Win32): Initialized successfully
+INFO: TEXTURE: [ID 1] Texture loaded successfully (1x1 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 1] Default texture loaded successfully
+INFO: SHADER: [ID 1] Vertex shader compiled successfully
+INFO: SHADER: [ID 2] Fragment shader compiled successfully
+INFO: SHADER: [ID 3] Program shader loaded successfully
+INFO: SHADER: [ID 3] Default shader loaded successfully
+INFO: RLGL: Render batch vertex buffers loaded successfully in RAM (CPU)
+INFO: RLGL: Render batch vertex buffers loaded successfully in VRAM (GPU)
+INFO: RLGL: Default OpenGL state initialized successfully
+INFO: TEXTURE: [ID 2] Texture loaded successfully (128x128 | GRAY_ALPHA | 1 mipmaps)
+INFO: FONT: Default font loaded successfully (224 glyphs)
+INFO: SYSTEM: Working Directory: E:\��C��ҵ\С����ҵ\TreeOfLife-Final
+INFO: TIMER: Target time per frame: 16.667 milliseconds
+INFO: AUDIO: Device initialized successfully
+INFO:     > Backend:       miniaudio | WASAPI
+INFO:     > Format:        32-bit IEEE Floating Point -> 32-bit IEEE Floating Point
+INFO:     > Channels:      2 -> 2
+INFO:     > Sample rate:   48000 -> 48000
+INFO:     > Periods size:  1440
+INFO: FILEIO: [assets/fonts/ui_zh.ttf] File loaded successfully
+INFO: TEXTURE: [ID 3] Texture loaded successfully (4096x4096 | GRAY_ALPHA | 1 mipmaps)
+INFO: FONT: Data loaded successfully (120 pixel size | 881 glyphs)
+INFO: UI font: 881 glyphs loaded
+INFO: TEXTURE: [ID 4] Texture loaded successfully (3840x2160 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 1] Depth renderbuffer loaded successfully (32 bits)
+INFO: FBO: [ID 1] Framebuffer object created successfully
+INFO: TEXTURE: [ID 5] Texture loaded successfully (3840x2160 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 2] Depth renderbuffer loaded successfully (32 bits)
+INFO: FBO: [ID 2] Framebuffer object created successfully
+INFO: FILEIO: [assets/tex/nebula.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (2048x1152 | R8G8B8 | 1 mipmaps)
+INFO: TEXTURE: [ID 6] Texture loaded successfully (2048x1152 | R8G8B8 | 1 mipmaps)
+INFO: ATM: nebula backdrop 2048x1152 loaded
+INFO: TEXTURE: [ID 5] Pixel data retrieved successfully
+INFO: TEXTURE: [ID 7] Texture loaded successfully (3840x2160 | R8G8B8A8 | 1 mipmaps)
+INFO: FBO: [ID 2] Unloaded framebuffer from VRAM (GPU)
+INFO: ATM: cosmic backdrop baked 3840x2160 (SS=3)
+INFO: UI canvas: 3840x2160 (SS=3) for window 1600x900
+INFO: FILEIO: [assets/sfx/click.wav] File loaded successfully
+INFO: WAVE: Data loaded successfully (22050 Hz, 16 bit, 1 channels)
+INFO: FILEIO: [assets/sfx/buy.wav] File loaded successfully
+INFO: WAVE: Data loaded successfully (22050 Hz, 16 bit, 1 channels)
+INFO: FILEIO: [assets/sfx/evolve.wav] File loaded successfully
+INFO: WAVE: Data loaded successfully (22050 Hz, 16 bit, 1 channels)
+INFO: CAPTURE shot_01_main.png: atm draw calls=5
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_01_main.png] File saved successfully
+INFO: FILEIO: [shot_01_main.png] Image exported successfully
+INFO: CAPTURE shot_01e_info_output.png: atm draw calls=5
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_01e_info_output.png] File saved successfully
+INFO: FILEIO: [shot_01e_info_output.png] Image exported successfully
+INFO: CAPTURE shot_01f_info_record.png: atm draw calls=5
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_01f_info_record.png] File saved successfully
+INFO: FILEIO: [shot_01f_info_record.png] Image exported successfully
+INFO: CAPTURE shot_01c_click.png: atm draw calls=5
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_01c_click.png] File saved successfully
+INFO: FILEIO: [shot_01c_click.png] Image exported successfully
+INFO: CAPTURE shot_01d_toast.png: atm draw calls=5
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_01d_toast.png] File saved successfully
+INFO: FILEIO: [shot_01d_toast.png] Image exported successfully
+INFO: CAPTURE shot_01b_store_branch.png: atm draw calls=5
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_01b_store_branch.png] File saved successfully
+INFO: FILEIO: [shot_01b_store_branch.png] Image exported successfully
+INFO: CAPTURE shot_03_speciation.png: atm draw calls=5
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_03_speciation.png] File saved successfully
+INFO: FILEIO: [shot_03_speciation.png] Image exported successfully
+INFO: CAPTURE shot_02_mutation.png: atm draw calls=5
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_02_mutation.png] File saved successfully
+INFO: FILEIO: [shot_02_mutation.png] Image exported successfully
+INFO: CAPTURE shot_04_codex.png: atm draw calls=5
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_04_codex.png] File saved successfully
+INFO: FILEIO: [shot_04_codex.png] Image exported successfully
+INFO: CAPTURE shot_04b_codex_mut.png: atm draw calls=5
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_04b_codex_mut.png] File saved successfully
+INFO: FILEIO: [shot_04b_codex_mut.png] Image exported successfully
+INFO: CAPTURE shot_04c_codex_record.png: atm draw calls=5
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_04c_codex_record.png] File saved successfully
+INFO: FILEIO: [shot_04c_codex_record.png] Image exported successfully
+INFO: CAPTURE shot_05_tree.png: atm draw calls=5
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_05_tree.png] File saved successfully
+INFO: FILEIO: [shot_05_tree.png] Image exported successfully
+INFO: CAPTURE shot_06_end_era.png: atm draw calls=7
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_06_end_era.png] File saved successfully
+INFO: FILEIO: [shot_06_end_era.png] Image exported successfully
+INFO: CAPTURE shot_07_legacy.png: atm draw calls=7
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_07_legacy.png] File saved successfully
+INFO: FILEIO: [shot_07_legacy.png] Image exported successfully
+INFO: CAPTURE shot_08_crisis.png: atm draw calls=5
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_08_crisis.png] File saved successfully
+INFO: FILEIO: [shot_08_crisis.png] Image exported successfully
+INFO: CAPTURE shot_09_singularity.png: atm draw calls=5
+INFO: TEXTURE: [ID 4] Pixel data retrieved successfully
+INFO: FILEIO: [shot_09_singularity.png] File saved successfully
+INFO: FILEIO: [shot_09_singularity.png] Image exported successfully
+INFO: shot capture done: 16 frames
+INFO: TEXTURE: [ID 7] Unloaded texture data from VRAM (GPU)
+INFO: TEXTURE: [ID 6] Unloaded texture data from VRAM (GPU)
+INFO: FBO: [ID 1] Unloaded framebuffer from VRAM (GPU)
+INFO: TEXTURE: [ID 3] Unloaded texture data from VRAM (GPU)
+INFO: AUDIO: Device closed successfully
+INFO: TEXTURE: [ID 2] Unloaded texture data from VRAM (GPU)
+INFO: SHADER: [ID 3] Default shader unloaded successfully
+INFO: TEXTURE: [ID 1] Default texture unloaded successfully
+INFO: Window closed successfully

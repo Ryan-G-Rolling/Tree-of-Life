@@ -1,3 +1,18 @@
+/*
+ * game.c  ——  Member A · 控制层（集成版）
+ *
+ * 职责边界（01 §1）：
+ *   - A 负责时钟、固定步、动作分发、原子提交与存档时机。
+ *   - 所有规则与扣款由 B 的 *_apply_* 一次性提交函数完成，A 不重复计算成本。
+ *   - 任何一步失败都丢弃候选状态（GameState next），不改动调用者的 game。
+ *
+ * 与单独开发版的差别：
+ *   - 突变 / 分化 / 子升级 / 容量 / 储备 / 结算全部接 B 的真实实现，
+ *     不再返回 ACTION_REQUIREMENT_NOT_MET。
+ *   - 环境走 environment_calculate_step + environment_apply_step，
+ *     A 不再手写事件字段。
+ *   - 删除了 highest_biomass_milestone 缓存，里程碑统一由 B 从 max_biomass 派生。
+ */
 #include "game.h"
 #include "game_internal.h"
 
@@ -28,25 +43,24 @@ static ActionResult result(ActionCode code, double spent, int affected)
 
 static void reset_run(GameState *game, unsigned int seed)
 {
-    int era = game->run.era;
     memset(&game->run, 0, sizeof game->run);
-    game->run.era = era < INT_MAX ? era + 1 : INT_MAX;
     game->run.active_species_count = 1;
-    game->run.active_species[0].species_id = 0;
+    game->run.active_species[0].species_id = SPECIES_PROTOCELL;
     game->run.active_species[0].is_main_lineage = true;
     game->run.active_species[0].population = STARTING_POPULATION;
-    game->run.discovered_species[0] = true;
-    game->run.current_environment_id = 0;
+    game->run.discovered_species[SPECIES_PROTOCELL] = true;
+    game->run.current_environment_id = ENV_NORMAL_OCEAN;
     game->run.next_environment_id = -1;
-    game->run.event_interval_left = FIRST_EVENT_DELAY;
     game->run.rng_state = seed ? seed : 1u;
-    legacy_apply_new_run_bonuses(game);
-    if (era > 0) game->run.dna = LEGACY_STARTING_DNA;
-    game->run.max_biomass = game->run.biomass;
-    game->run.highest_biomass_milestone = economy_biomass_milestone(game->run.max_biomass);
-    environment_init_run(game);
-    game->legacy.codex_species[0] = true;
+
+    game->legacy.codex_species[SPECIES_PROTOCELL] = true;
     game->phase = PHASE_RUNNING;
+
+    /* B 负责首次事件计时与预抽下一事件（会消耗 rng_state，故必须在设种子之后）。 */
+    environment_init_run(game);
+    /* B 负责 Metabolism Lv.3 / Lv.7 的新轮资源与等级奖励。 */
+    legacy_apply_new_run_bonuses(game);
+
     game_reset_timing();
 }
 
@@ -96,15 +110,16 @@ static bool fixed_step(GameState *game)
         dna += rates[i].dna_per_second * FIXED_STEP_SECONDS;
         knowledge += rates[i].knowledge_per_second * FIXED_STEP_SECONDS;
     }
-    if (!isfinite(atp) || !isfinite(biomass) || !isfinite(dna)) return false;
+    if (!isfinite(atp) || !isfinite(biomass) || !isfinite(dna) || !isfinite(knowledge))
+        return false;
     next.run.atp = fmax(0.0, next.run.atp + atp);
     next.run.biomass = fmax(0.0, next.run.biomass + biomass);
     next.run.dna = fmax(0.0, next.run.dna + dna);
-    next.run.knowledge += knowledge;
-    if (!isfinite(next.run.knowledge)) return false;
+    next.run.knowledge = fmax(0.0, next.run.knowledge + knowledge);
     next.run.elapsed_time += FIXED_STEP_SECONDS;
     if (!isfinite(next.run.atp) || !isfinite(next.run.biomass)
-        || !isfinite(next.run.dna) || !isfinite(next.run.elapsed_time)) return false;
+        || !isfinite(next.run.dna) || !isfinite(next.run.knowledge)
+        || !isfinite(next.run.elapsed_time)) return false;
     if (next.run.biomass > next.run.max_biomass)
         next.run.max_biomass = next.run.biomass;
 
@@ -116,13 +131,15 @@ static bool fixed_step(GameState *game)
         || environment.next_environment_id >= MAX_ENVIRONMENTS
         || !isfinite(environment.environment_time_left) || environment.environment_time_left < 0.0
         || !isfinite(environment.event_interval_left) || environment.event_interval_left < 0.0
+        || !isfinite(environment.instant_population_loss_ratio)
+        || environment.instant_population_loss_ratio < 0.0
+        || environment.instant_population_loss_ratio > 1.0
         || (environment.event_ended && (environment.ended_environment_id <= 0
             || environment.ended_environment_id >= MAX_ENVIRONMENTS))) return false;
-    if (!isfinite(environment.instant_population_loss_ratio)
-        || environment.instant_population_loss_ratio < 0.0
-        || environment.instant_population_loss_ratio > 1.0) return false;
+
+    /* 计时、事件切换、危机统计、即时损失、保护标记全部由 B 一次写回。 */
     environment_apply_step(&next, &environment);
-    next.run.highest_biomass_milestone = economy_biomass_milestone(next.run.max_biomass);
+
     *game = next;
     return true;
 }
@@ -154,6 +171,7 @@ ActionResult game_apply_action(GameState *game, GameAction action)
         next.run.atp += economy_click_atp(game);
         if (!isfinite(next.run.atp)) return result(ACTION_REQUIREMENT_NOT_MET, 0.0, -1);
         break;
+
     case ACTION_BUY_RUN_UPGRADE: {
         if (game->phase != PHASE_RUNNING) return result(ACTION_INVALID_PHASE, 0.0, -1);
         if (action.target_id < UPGRADE_METABOLISM || action.target_id > UPGRADE_GENOME)
@@ -161,7 +179,7 @@ ActionResult game_apply_action(GameState *game, GameAction action)
         int level = game->run.run_upgrade_levels[action.target_id];
         double cost = economy_upgrade_cost((RunUpgradeType)action.target_id, level);
         double *wallet = action.target_id == UPGRADE_GENOME ? &next.run.biomass : &next.run.atp;
-        if (!isfinite(cost) || level >= RUN_UPGRADE_MAX_LEVEL) return result(ACTION_LEVEL_MAXED, 0.0, -1);
+        if (!isfinite(cost)) return result(ACTION_LEVEL_MAXED, 0.0, -1);
         if (*wallet < cost)
             return result(action.target_id == UPGRADE_GENOME ? ACTION_NOT_ENOUGH_BIOMASS
                                                               : ACTION_NOT_ENOUGH_ATP, 0.0, -1);
@@ -170,78 +188,82 @@ ActionResult game_apply_action(GameState *game, GameAction action)
         answer.amount_spent = cost;
         break;
     }
+
     case ACTION_OPEN_END_ERA:
         if (game->phase != PHASE_RUNNING) return result(ACTION_INVALID_PHASE, 0.0, -1);
         next.phase = PHASE_END_ERA_PREVIEW;
         break;
+
     case ACTION_CANCEL_END_ERA:
         if (game->phase != PHASE_END_ERA_PREVIEW) return result(ACTION_INVALID_PHASE, 0.0, -1);
         next.phase = PHASE_RUNNING;
         break;
+
     case ACTION_CONFIRM_END_ERA: {
         if (game->phase != PHASE_END_ERA_PREVIEW) return result(ACTION_INVALID_PHASE, 0.0, -1);
-        if (game->run.reward_claimed) return result(ACTION_ALREADY_CLAIMED, 0.0, -1);
-        EraReward reward = prestige_preview_reward(game);
-        if (reward.total_points < 0 || reward.total_points > INT_MAX - game->legacy.evolution_points)
-            return result(ACTION_REQUIREMENT_NOT_MET, 0.0, -1);
-        next.run.reward_claimed = true;
-        next.phase = PHASE_LEGACY;
-        next.legacy.evolution_points += reward.total_points;
-        int stage = evolution_main_stage(game);
-        if (stage > next.legacy.best_era) next.legacy.best_era = stage;
-        if (next.run.max_biomass > next.legacy.best_biomass)
-            next.legacy.best_biomass = next.run.max_biomass;
-        if (reward.total_points > next.legacy.best_evolution_points)
-            next.legacy.best_evolution_points = reward.total_points;
+        /* B 负责 reward_claimed 检查、EP 入账、最佳记录与阶段切换。 */
+        ActionCode code = prestige_commit_end_era(&next);
+        if (code != ACTION_OK) return result(code, 0.0, -1);
         break;
     }
+
     case ACTION_BUY_LEGACY: {
         if (game->phase != PHASE_LEGACY) return result(ACTION_INVALID_PHASE, 0.0, -1);
         if (action.target_id < LEGACY_METABOLISM || action.target_id > LEGACY_DIVERSIFICATION)
             return result(ACTION_INVALID_TARGET, 0.0, -1);
         int level = game->legacy.levels[action.target_id];
-        if (level >= LEGACY_MAX_LEVEL) return result(ACTION_LEVEL_MAXED, 0.0, -1);
-        ActionCode code = legacy_validate_upgrade(game, (LegacyBranch)action.target_id);
-        if (code != ACTION_OK) return result(code, 0.0, -1);
         int cost = legacy_upgrade_cost(level);
-        if (game->legacy.evolution_points < cost) return result(ACTION_NOT_ENOUGH_EP, 0.0, -1);
-        next.legacy.evolution_points -= cost;
-        next.legacy.levels[action.target_id]++;
+        /* B 负责前置校验、EP 扣款与等级递增。 */
+        ActionCode code = legacy_apply_upgrade(&next, (LegacyBranch)action.target_id);
+        if (code != ACTION_OK) return result(code, 0.0, -1);
         answer.amount_spent = cost;
         break;
     }
+
     case ACTION_START_NEW_RUN:
         if (game->phase != PHASE_LEGACY) return result(ACTION_INVALID_PHASE, 0.0, -1);
         game_start_new_run(&next);
         break;
-    case ACTION_GENERATE_MUTATION_OFFER:
-    case ACTION_CHOOSE_MUTATION:
-    case ACTION_SPECIATE:
-    case ACTION_BUY_SUB_UPGRADE:
-    case ACTION_BUY_CAPACITY:
-    case ACTION_BUY_RESERVE: {
+
+    case ACTION_GENERATE_MUTATION_OFFER: {
         if (game->phase != PHASE_RUNNING) return result(ACTION_INVALID_PHASE, 0.0, -1);
-        if (action.target_species_slot < 0 || action.target_species_slot >= game->run.active_species_count)
-            return result(ACTION_INVALID_TARGET, 0.0, -1);
-        if (action.type == ACTION_SPECIATE && action.option != 0 && action.option != 1)
-            return result(ACTION_INVALID_TARGET, 0.0, -1);
-        ActionCode code;
-        if (action.type == ACTION_GENERATE_MUTATION_OFFER)
-            code = evolution_open_mutation_offer(&next, action.target_species_slot);
-        else if (action.type == ACTION_CHOOSE_MUTATION)
-            code = evolution_apply_mutation(&next, action.target_species_slot, action.target_id);
-        else if (action.type == ACTION_SPECIATE)
-            code = evolution_apply_speciation(&next, action.target_species_slot, action.target_id, action.option);
-        else if (action.type == ACTION_BUY_SUB_UPGRADE)
-            code = evolution_apply_sub_upgrade(&next, action.target_species_slot);
-        else if (action.type == ACTION_BUY_CAPACITY)
-            code = evolution_apply_capacity_upgrade(&next);
-        else code = evolution_apply_reserve(&next);
+        /* B 负责候选生成、随机数推进与“同槽已有候选则原样返回”。 */
+        ActionCode code = evolution_open_mutation_offer(&next, action.target_species_slot);
         if (code != ACTION_OK) return result(code, 0.0, -1);
-        answer.amount_spent = (game->run.atp-next.run.atp) + (game->run.biomass-next.run.biomass)
-                            + (game->run.dna-next.run.dna) + (game->run.knowledge-next.run.knowledge);
         break;
     }
+
+    case ACTION_CHOOSE_MUTATION: {
+        if (game->phase != PHASE_RUNNING) return result(ACTION_INVALID_PHASE, 0.0, -1);
+        double cost = evolution_mutation_cost_for_slot(game, action.target_species_slot,
+                                                       action.target_id);
+        /* B 负责候选归属校验、DNA 扣款、突变写入与候选清空。 */
+        ActionCode code = evolution_apply_mutation(&next, action.target_species_slot,
+                                                   action.target_id);
+        if (code != ACTION_OK) return result(code, 0.0, -1);
+        answer.amount_spent = cost;
+        break;
+    }
+
+    case ACTION_SPECIATE: {
+        if (game->phase != PHASE_RUNNING) return result(ACTION_INVALID_PHASE, 0.0, -1);
+        double cost = evolution_speciation_cost(game, action.target_id);
+        /* B 负责前置校验、槽位分配、种群分摊与 Biomass 扣款。 */
+        ActionCode code = evolution_apply_speciation(&next, action.target_species_slot,
+                                                     action.target_id, action.option);
+        if (code != ACTION_OK) return result(code, 0.0, -1);
+        answer.amount_spent = cost;
+        break;
+    }
+
+    case ACTION_BUY_SUB_UPGRADE: {
+        if (game->phase != PHASE_RUNNING) return result(ACTION_INVALID_PHASE, 0.0, -1);
+        /* B 负责理念扣款、层数与乘数推进。 */
+        ActionCode code = evolution_apply_sub_upgrade(&next, action.target_species_slot);
+        if (code != ACTION_OK) return result(code, 0.0, -1);
+        break;
+    }
+
     default:
         return result(ACTION_INVALID_TARGET, 0.0, -1);
     }

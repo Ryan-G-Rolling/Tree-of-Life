@@ -60,24 +60,25 @@ static int valid_game(const GameState *game)
     if (game->save_version != SAVE_VERSION || game->phase < PHASE_RUNNING
         || game->phase > PHASE_LEGACY) return 0;
     if (!valid_nonnegative(run->atp) || !valid_nonnegative(run->biomass)
-        || !valid_nonnegative(run->knowledge)
-        || !valid_nonnegative(run->crisis_min_population)
-        || run->capacity_levels < 0 || run->reserve_levels < 0 || run->reserve_levels > RESERVE_MAX_LEVEL
-        || !valid_nonnegative(run->dna) || !valid_nonnegative(run->elapsed_time)
+        || !valid_nonnegative(run->dna) || !valid_nonnegative(run->knowledge)
+        || !valid_nonnegative(run->elapsed_time)
         || !valid_nonnegative(run->max_biomass)
         || !valid_nonnegative(run->environment_time_left)
         || !valid_nonnegative(run->event_interval_left)
         || !valid_nonnegative(run->crisis_start_population)
+        || !valid_nonnegative(run->crisis_min_population)
         || run->max_biomass < run->biomass || run->era < 0
-        || run->highest_biomass_milestone < 0 || run->highest_biomass_milestone > BIOMASS_MILESTONE_COUNT
+        || run->capacity_levels < 0
+        || (CAPACITY_MAX_LEVEL >= 0 && run->capacity_levels > CAPACITY_MAX_LEVEL)
+        || run->reserve_levels < 0 || run->reserve_levels > RESERVE_MAX_LEVEL
         || run->active_species_count < 1 || run->active_species_count > MAX_ACTIVE_SPECIES
-        || run->current_environment_id < 0 || run->current_environment_id >= ENV_COUNT
-        || run->next_environment_id < -1 || run->next_environment_id >= ENV_COUNT
+        || run->current_environment_id < 0 || run->current_environment_id >= MAX_ENVIRONMENTS
+        || run->next_environment_id < -1 || run->next_environment_id >= MAX_ENVIRONMENTS
         || run->rng_state == 0) return 0;
-    for (int i = 0; i < MAX_SPECIES; ++i)
-        if (run->tech_levels[i] < 0) return 0;
     for (int i = 0; i < 3; ++i)
         if (run->run_upgrade_levels[i] < 0) return 0;
+    for (int i = 0; i < MAX_SPECIES; ++i)
+        if (run->tech_levels[i] < 0) return 0;
     for (int i = 0; i < run->active_species_count; ++i) {
         const SpeciesState *species = &run->active_species[i];
         if (species->species_id < 0 || species->species_id >= SPECIES_COUNT
