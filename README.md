@@ -39,10 +39,20 @@ Windows + MinGW-w64 GCC + Python + PowerShell：
 mingw32-make -B test headers
 # 完整优化编译、A/B/真实集成测试、游戏编译
 .\build.ps1
-# 从真实联跑存档导出九张主要界面截图和三张后续进化树页；不修改试玩存档
+# 完整构建会重新生成 build/playthrough.sav；随后可导出截图，不修改试玩存档
 .\treeoflife.exe --shot --load build/playthrough.sav --ss 2
 ```
 
 `tests/test_integration.c` 覆盖真实突变与重复开候选、失败回滚、三谱系、双币容量、理念科技、Lv.8、陨石只扣一次、事件循环、固定步一致性、结算防重领、跨轮和存档往返，并从零资源自动模拟 60 分钟。它是固定种子与固定购买策略的回归验证，不能代表所有玩家的平衡体验。
 
 原始设计：[玩法](00-项目介绍与完整玩法.md) · [分工与接口](01-三人分工与接口约定.md) · [数据规则](02-数据与计算规则.md)。B 的扩充说明见 `b/docs/`，C 的视觉说明见 `ui/docs/art/`。
+
+## 工作日志与工作区
+
+所有后续项目对话均按 [AGENTS.md](AGENTS.md) 记录改动，日志见 [WORK_LOG.md](WORK_LOG.md)。工作结束后清理临时记录，保留最终结果。
+
+- `deliverables/Tree-of-Life-ABC/`：可直接试玩的目录。
+- `deliverables/Tree-of-Life-ABC-20261126.zip`：最终试玩压缩包。
+- `deliverables/screens/`：整合版结果截图。
+- `assets/`：根目录游戏需要的字体与音效；`.local/deps/`：构建依赖。
+- `build/`：构建与测试时重新生成的临时产物，收尾后可清理。
