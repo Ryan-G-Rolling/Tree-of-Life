@@ -34,7 +34,7 @@ sec_per_upgrade,单级耗时 p50,25,80,s,UPGSUM,P0-22 验收：每级 25–80 s
 capacity_era3,容量等级 · 纪元 3,6,14,级,SINKSUM era3,P0-22/23：每纪元 8–11 级、上限 20
 reserve_max_era3,储备最大等级 · 纪元 3,0,26,级,SINKSUM era3,P0-25：26 级触底
 reserve26_share,储备 26 级占比,0,40,%,SINKSUM,P0-25 验收：≤40%（v9 为 100%）
-content_playable,构造态可玩,1,1,bool,test_every_content_playable,186 物种（含原始细胞）、204 突变
+content_playable,构造态可玩,1,1,bool,test_every_content_playable,264 物种（含原始细胞）、282 突变
 save_bytes,存档大小,0,20000,B,test_b --json,v9
 coverage_run,单局物种覆盖（BSPEC 口径）,12,18,物种,BSPEC1/2/3,P1-11：主链 12 + 支线
 buff_collected_era1,随机因子收集 · 纪元 1,6,10,个,BUFFSUM era1,45–90 s 一个

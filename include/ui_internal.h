@@ -54,7 +54,8 @@ typedef enum {
     UI_BTN_CLICK,               /* → ACTION_CLICK_ATP */
     UI_BTN_UPGRADE,             /* target_id = RunUpgradeType → ACTION_BUY_RUN_UPGRADE */
     UI_BTN_OPEN_MUTATION,       /* → ACTION_GENERATE_MUTATION_OFFER */
-    UI_BTN_CHOOSE_MUTATION,     /* option = 候选下标 → ACTION_CHOOSE_MUTATION */
+    UI_BTN_CHOOSE_MUTATION,
+    UI_BTN_REFRESH_MUTATION,     /* → ACTION_REFRESH_MUTATIONS（v14 E3） */     /* option = 候选下标 → ACTION_CHOOSE_MUTATION */
     UI_BTN_OPEN_SPECIATION,     /* 仅打开弹层，不发动作 */
     UI_BTN_SPECIATE,            /* target_id = 物种 → ACTION_SPECIATE */
     UI_BTN_TOGGLE_KEEP_PARENT,  /* 仅切换 option，不发动作 */

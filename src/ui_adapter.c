@@ -198,22 +198,10 @@ int ua_speciation_children(const GameState *game, int *out, int max_out)
 {
     if (!game || !out || max_out <= 0) return 0;
     if (game->run.active_species_count <= 0) return 0;
-    int parent = game->run.active_species[0].species_id;
-    int total = species_children(parent, out, max_out);
-    /* v10 P1-11：主谱系阶段 ≥6 时并入“2 选 1”的同阶段支线候选，
-     * 让 171 个图鉴物种进玩法；校验仍走 evolution_validate_speciation。 */
-    if (game->run.active_species[0].is_main_lineage) {
-        int branches[SPECIES_COUNT];
-        int bn = species_branch_candidates(parent, branches, SPECIES_COUNT);
-        for (int i = 0; i < bn && total < max_out; ++i) {
-            bool dup = false;
-            for (int j = 0; j < total; ++j) {
-                if (out[j] == branches[i]) { dup = true; break; }
-            }
-            if (!dup) out[total++] = branches[i];
-        }
-    }
-    return total < max_out ? total : max_out;
+    /* v14 W5：主谱系一次分化只给“3 张方向卡 + 1 张主链保底”，
+     * 由规则层统一决定；校验仍走 evolution_validate_speciation。 */
+    int count = evolution_speciation_offers(game, 0, out, max_out);
+    return count < max_out ? count : max_out;
 }
 
 int ua_species_parents(int species_id, int *out, int max_out)
@@ -294,6 +282,11 @@ const char *ua_speciation_requirement(int target_species_id, char *buf, int buf_
 }
 
 /* ================= B 侧：突变 ================= */
+
+double ua_mutation_refresh_cost(const GameState *game)
+{
+    return evolution_mutation_refresh_cost(game);
+}
 
 const char *ua_mutation_name(int mutation_id)
 {

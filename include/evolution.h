@@ -130,6 +130,12 @@ double evolution_speciation_cost(const GameState *game, int target_species_id);
 /* v10 P1-11：主谱系阶段 ≥6 时的“2 选 1”支线候选——同阶段、非主线的全部物种。
  * 返回候选数，最多写入 max_ids 项；不是主线物种或没有同阶段候选时返回 0。 */
 int species_branch_candidates(int parent_id, int *out_ids, int max_ids);
+/* v14 W5：一次分化给“3 张方向卡 + 1 张主链保底”（主链后继永远第一张）。
+ * 槽位不是主谱系、或未到 BRANCH_SPECIATION_MIN_PHASE 时，退回全部直接子代。 */
+int evolution_speciation_offers(const GameState *game, int species_slot, int *out_ids,
+                                int max_ids);
+/* v14 E9/E10：是否主线节点。支线门票 ×1.25、基石与共振乘算减半。 */
+bool species_is_mainline(int species_id);
 
 /* ---------------- 突变 ---------------- */
 MutationOfferState evolution_generate_mutation_offer(const GameState *game, int species_slot);
@@ -141,6 +147,12 @@ MutationOfferState evolution_generate_mutation_offer_rng(
 
 /* 打开候选：已存在同槽候选时原样返回，不重新抽取，也不消耗随机数 */
 ActionCode evolution_open_mutation_offer(GameState *game, int species_slot);
+/* v14 E3：DNA 换一批候选。价格见 balance.h 的 MUTATION_REFRESH_*，每批 ≤3 次。 */
+double evolution_mutation_refresh_cost(const GameState *game);
+ActionCode evolution_refresh_mutation_offer(GameState *game, int species_slot);
+/* v14 E3 补充：放弃当前候选（不计购买）。三个槽位共用一个候选位，
+ * 候选里没有能推进分化的卡时，调用方需要释放它给其他槽位。 */
+void evolution_dismiss_mutation_offer(GameState *game);
 
 int evolution_mutation_choice_count(const GameState *game);
 double evolution_mutation_cost(const GameState *game, int mutation_id);

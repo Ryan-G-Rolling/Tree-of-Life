@@ -171,11 +171,21 @@ int main(void)
     g_ui.overlay = UI_OVL_TREE;
     screens_build(&g_ui.layout, &game, &g_ui);
     int nodes = 0, close = 0;
+    bool node_seen[SPECIES_COUNT] = { false };
     for (int i = 0; i < g_ui.layout.count; ++i) {
-        nodes += g_ui.layout.items[i].id == UI_BTN_TREE_NODE;
-        close += g_ui.layout.items[i].id == UI_BTN_CLOSE_OVERLAY;
+        const UiButton *b = &g_ui.layout.items[i];
+        if (b->id == UI_BTN_TREE_NODE) {
+            ++nodes;
+            assert(b->target_id >= 0 && b->target_id < SPECIES_COUNT);
+            node_seen[b->target_id] = true;
+        }
+        close += b->id == UI_BTN_CLOSE_OVERLAY;
     }
-    assert(nodes == SPECIES_COUNT && close == 1);
+    /* v14：星图只给“已发现 + 相邻”的节点入表，不再全量 264 个。 */
+    assert(nodes > 0 && nodes <= SPECIES_COUNT && close == 1);
+    for (int i = 0; i < SPECIES_COUNT; ++i) {
+        if (game.run.discovered_species[i] || game.legacy.codex_species[i]) assert(node_seen[i]);
+    }
     memset(&g_ui, 0, sizeof g_ui);
     game.run.buff_visible = true;
     game.run.knowledge = ua_insight_cost(&game);

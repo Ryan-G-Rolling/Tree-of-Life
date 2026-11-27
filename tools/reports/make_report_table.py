@@ -362,13 +362,13 @@ def build_metrics():
         "atp_unspent_era2": (atp_unspent(B2, 2), f"{atp_unspent(B2, 2)}%", "ATPSUM era2"),
         "atp_unspent_era3": (atp_unspent(B3, 3), f"{atp_unspent(B3, 3)}%", "ATPSUM era3"),
         "atp_left_600": (round(atp_left, 0), f"{atp_left/1e4:.0f} 万", f"{B2} 第22列"),
-        "content_playable": (1.0, "186 物种（含原始细胞）、204 突变", "test_every_content_playable"),
+        "content_playable": (1.0, "264 物种（含原始细胞）、282 突变", "test_every_content_playable"),
         "save_bytes": (float(self_test.get("game_state_bytes", 0)),
-                       f"v9，{self_test.get('game_state_bytes', 0)} B", "test_b --json"),
+                       f"v10，{self_test.get('game_state_bytes', 0)} B", "test_b --json"),
         "coverage_run": (float(run_species),
                          f"单局中位 {run_species} 个；随机策略覆盖 "
-                         f"{len([i for i in range(1, 186) if i in species_seeds])}/185 物种、"
-                         f"{len([i for i in range(1, 204) if mutation_counts.get(i, 0) > 0])}/204 突变",
+                         f"{len([i for i in range(1, 264) if i in species_seeds])}/263 物种、"
+                         f"{len([i for i in range(1, 282) if mutation_counts.get(i, 0) > 0])}/282 突变",
                          "COVER_S / BSPEC"),
         "buff_collected_era1": (buff_stat(B2, 1, 3),
                                 f"{buff_stat(B2, 1, 3)} 个", "BUFFSUM era1"),

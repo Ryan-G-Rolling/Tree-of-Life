@@ -229,6 +229,7 @@ ActionResult game_apply_action(GameState *game, GameAction action)
         break;
     case ACTION_GENERATE_MUTATION_OFFER:
     case ACTION_CHOOSE_MUTATION:
+    case ACTION_REFRESH_MUTATIONS:
     case ACTION_SPECIATE:
     case ACTION_BUY_SUB_UPGRADE:
     case ACTION_BUY_CAPACITY:
@@ -243,6 +244,8 @@ ActionResult game_apply_action(GameState *game, GameAction action)
             code = evolution_open_mutation_offer(&next, action.target_species_slot);
         else if (action.type == ACTION_CHOOSE_MUTATION)
             code = evolution_apply_mutation(&next, action.target_species_slot, action.target_id);
+        else if (action.type == ACTION_REFRESH_MUTATIONS)
+            code = evolution_refresh_mutation_offer(&next, action.target_species_slot);
         else if (action.type == ACTION_SPECIATE)
             code = evolution_apply_speciation(&next, action.target_species_slot, action.target_id, action.option);
         else if (action.type == ACTION_BUY_SUB_UPGRADE)

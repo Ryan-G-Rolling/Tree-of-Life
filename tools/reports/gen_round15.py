@@ -76,7 +76,7 @@ for r in cover:
     target[key] = target.get(key, 0) + 1
 
 species_stage = {}
-for i in range(1, 186):
+for i in range(1, 264):
     species_stage[i] = (i - 1) // 10 if i >= 46 else 0
 
 data = {
@@ -102,10 +102,10 @@ data = {
         },
         "speciation": {"p50": round(statistics.median(cf(b2, 18)), 1)},
         "coverage": {
-            "species": [{"id": i, "count": species_counts.get(i, 0)} for i in range(1, 186)],
+            "species": [{"id": i, "count": species_counts.get(i, 0)} for i in range(1, 264)],
             "species_hit": sum(1 for i in range(1, 186) if species_counts.get(i, 0) > 0),
-            "mutation_hit": sum(1 for i in range(204) if mutation_counts.get(i, 0) > 0),
-            "mutation_ge50": sum(1 for i in range(204) if mutation_counts.get(i, 0) >= 50),
+            "mutation_hit": sum(1 for i in range(282) if mutation_counts.get(i, 0) > 0),
+            "mutation_ge50": sum(1 for i in range(282) if mutation_counts.get(i, 0) >= 50),
         },
         "leftover": {
             "atp": round(statistics.median(cf(b2, 21)), 0),
@@ -154,4 +154,4 @@ print("EP", s["ep"]["era1"]["median"], s["ep"]["era2"]["median"], s["ep"]["era3"
 print("stage", s["stage"]["median"], "s11", s["stage"]["stage11_pct"],
       "s13", s["stage"]["stage13_pct"], "low3", s["stage"]["low3"])
 print("crisis", s["crisis"]["pass6_era1"], s["crisis"]["pass6_era2"], type_rows)
-print("coverage", s["coverage"]["species_hit"], "/185", s["coverage"]["mutation_hit"], "/204")
+print("coverage", s["coverage"]["species_hit"], "/263", s["coverage"]["mutation_hit"], "/282")

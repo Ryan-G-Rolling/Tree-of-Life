@@ -68,8 +68,11 @@ static const EnvironmentDef k_environments[ENV_COUNT] = {
     { "工业雾霾", "膨胀的技术圈用颗粒物窒息水体。",
       TRAIT_TOXIN, 3, 45.0, 0.0125, 5, false, true },
     /* v10 P0-26：纪元 3 的新危机类型，此前从未在任何纪元出现 */
+    /* v14 E13：0.70% → 1.50%/s。该类型 99.6% 通过，是唯一的“送分”危机；
+     * 它不是 instant_loss，reserve_damage_scale 不生效，所以只能直接抬持续伤害。
+     * 1.50% 与“毒素爆发”同级，45 s 累计 67%。 */
     { "酸雨沉降", "水体酸化，耐毒谱系在腐蚀中维持产出。",
-      TRAIT_TOXIN, 2, 45.0, 0.0070, 0, false, true },
+      TRAIT_TOXIN, 2, 45.0, 0.0150, 0, false, true },
     { "辐射尘暴", "电离辐射穿透水体，只有最全面的适应能保全种群。",
       TRAIT_HIGHEST, 3, 30.0, 0.0160, 5, false, true },
     /* v10 收口：补到 11 类危机，单局覆盖才有机会达到 10 类 */

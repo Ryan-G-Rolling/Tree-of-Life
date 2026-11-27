@@ -1,48 +1,48 @@
 key,value,actual,source
 compile,0.0,0 warning / 0 error（-Werror）,gcc
-selftest_failures,0.0,27 组 / 92622 项 / 0 失败,test_b --json
-first_spec_p50,152.0,152.0 s,batch2_scan_round15.csv 第19列
-first_spec_p90,173.4,173.4 s,batch2_scan_round15.csv 第19列
-first_mutation_p50,36.3,36.3 s,batch2_scan_round15.csv 第28列
+selftest_failures,0.0,27 组 / 130892 项 / 0 失败,test_b --json
+first_spec_p50,179.6,179.6 s,batch2_scan_round15.csv 第19列
+first_spec_p90,213.7,213.7 s,batch2_scan_round15.csv 第19列
+first_mutation_p50,60.1,60.1 s,batch2_scan_round15.csv 第28列
 low_tail,0.0,0 / 1000,batch2_scan_round15.csv 第5列
-ep1,46.0,46.0（σ 4.73）,batch2_scan_round15.csv 第4列
-ep2,55.0,55.0,batch2_scan_round15.csv 第10列
-ep3,64.0,64.0,batch3_scan_round15.csv 第6列
+ep1,45.0,45.0（σ 5.07）,batch2_scan_round15.csv 第4列
+ep2,59.0,59.0,batch2_scan_round15.csv 第10列
+ep3,65.0,65.0,batch3_scan_round15.csv 第6列
 ep3_gt_ep2,1.0,是,纪元 3 / 2 EP 中位
-ep3_sigma,5.46,σ 5.46,batch3_scan_round15.csv 第6列
-stage1,8.0,8,batch2_scan_round15.csv 第5列
+ep3_sigma,3.07,σ 3.07,batch3_scan_round15.csv 第6列
+stage1,7.0,7,batch2_scan_round15.csv 第5列
 stage2,10.0,10,batch2_scan_round15.csv 第11列
-stage3,12.0,12,batch3_scan_round15.csv 第7列
-stage8_arrive_era1,90.2,90.2%,batch2_scan_round15.csv 第5列 ≥8
-stage10_arrive_era2,100.0,100.0%,batch2_scan_round15.csv 第11列 ≥10
-stage12_arrive,74.3,74.3%,batch3_scan_round15.csv 第7列 ≥12
-stage13_arrive,15.3,15.3%,batch3_scan_round15.csv 第7列 ≥13
-cap_time_p50,507.4,507.4 s,RAMPTIME 到达封顶时刻
-crisis_type_era1,54.7,1:85.6% 2:83.5% 3:54.7% 4:80.1% 5:85.5%,batch2_scan_round15.csv CRISIS era1 下限
-crisis_type_era1_max,85.6,1:85.6% 2:83.5% 3:54.7% 4:80.1% 5:85.5%,batch2_scan_round15.csv CRISIS era1 上限
-meteor_min,61.4,1:None% / 2:61.4% / 3:None%,CRISIS env6
-crisis_all_era1,34.8,34.8%,CRISIS era1 全清
-crisis_all_era2,28.7,28.7%,CRISIS era2 全清
-crisis_all_era3,36.7,36.7%,CRISIS era3 全清
+stage3,11.0,11,batch3_scan_round15.csv 第7列
+stage8_arrive_era1,43.3,43.3%,batch2_scan_round15.csv 第5列 ≥8
+stage10_arrive_era2,84.5,84.5%,batch2_scan_round15.csv 第11列 ≥10
+stage12_arrive,35.6,35.6%,batch3_scan_round15.csv 第7列 ≥12
+stage13_arrive,0.0,0.0%,batch3_scan_round15.csv 第7列 ≥13
+cap_time_p50,566.7,566.7 s,RAMPTIME 到达封顶时刻
+crisis_type_era1,85.5,1:85.5% 2:85.9% 3:87.0% 4:88.1% 5:87.7%,batch2_scan_round15.csv CRISIS era1 下限
+crisis_type_era1_max,88.1,1:85.5% 2:85.9% 3:87.0% 4:88.1% 5:87.7%,batch2_scan_round15.csv CRISIS era1 上限
+meteor_min,97.7,1:None% / 2:97.7% / 3:None%,CRISIS env6
+crisis_all_era1,60.3,60.3%,CRISIS era1 全清
+crisis_all_era2,79.4,79.4%,CRISIS era2 全清
+crisis_all_era3,92.6,92.6%,CRISIS era3 全清
 crisis_types_run,10.0,中位 10 类/局,CRISIS 逐 run 去重
-atp_unspent_era1,11.0,11.0%,ATPSUM era1
-atp_unspent_era2,5.0,5.0%,ATPSUM era2
-atp_unspent_era3,9.5,9.5%,ATPSUM era3
-atp_left_600,250404.0,25 万,batch2_scan_round15.csv 第22列
-era3_spend,764293154.0,7.64e+08 ATP,ATPSUM era3 支出中位
-sec_per_upgrade,26.1,p50 26.1 s（UPGSUM 600 s / 购买次数）,UPGSUM
-capacity_era3,10.0,10 级,SINKSUM era3
-reserve_max_era3,5.0,5 级,SINKSUM era3 最大值
+atp_unspent_era1,9.8,9.8%,ATPSUM era1
+atp_unspent_era2,9.5,9.5%,ATPSUM era2
+atp_unspent_era3,14.4,14.4%,ATPSUM era3
+atp_left_600,75484.0,8 万,batch2_scan_round15.csv 第22列
+era3_spend,8081901.0,8.08e+06 ATP,ATPSUM era3 支出中位
+sec_per_upgrade,37.5,p50 37.5 s（UPGSUM 600 s / 购买次数）,UPGSUM
+capacity_era3,16.0,16 级,SINKSUM era3
+reserve_max_era3,16.0,16 级,SINKSUM era3 最大值
 reserve26_share,0.0,0%,SINKSUM 26 级占比
-content_playable,1.0,186 物种（含原始细胞）、204 突变,test_every_content_playable
-save_bytes,3224.0,v9，3224 B,test_b --json
-coverage_run,14.0,单局中位 14.0 个；随机策略覆盖 48/185 物种、200/204 突变,COVER_S / BSPEC
+content_playable,1.0,264 物种（含原始细胞）、282 突变,test_every_content_playable
+save_bytes,3936.0,v10，3936 B,test_b --json
+coverage_run,16.0,单局中位 16.0 个；随机策略覆盖 55/263 物种、96/282 突变,COVER_S / BSPEC
 buff_collected_era1,8.0,8.0 个,BUFFSUM era1
-buff_uptime_era1,180.0,180.0 s,BUFFSUM era1
-buff_uptime_era3,177.1,177.1 s,BUFFSUM era3
-insight_level_era3,4.0,Lv.4.0,BUFFSUM era3
-knowledge_left_era3,270.0,270.0,batch3_scan_round15.csv 第16列
+buff_uptime_era1,178.5,178.5 s,BUFFSUM era1
+buff_uptime_era3,180.0,180.0 s,BUFFSUM era3
+insight_level_era3,1.0,Lv.1.0,BUFFSUM era3
+knowledge_left_era3,52.0,52.0,batch3_scan_round15.csv 第16列
 sub_upgrade_era3,4.0,4.0 层,batch3_scan_round15.csv 第19列
-ramp_era1,90.2,到达 90.2%（中位 546.2 s）,RAMPTIME era1
-ramp_era3,15.3,到达 15.3%（中位 582.8 s）；v10 起纪元 3 起点仍为原始细胞,RAMPTIME era3
+ramp_era1,43.3,到达 43.3%（中位 577.6 s）,RAMPTIME era1
+ramp_era3,0.0,到达 0.0%（中位 0.0 s）；v10 起纪元 3 起点仍为原始细胞,RAMPTIME era3
 atp_ledger_gap,0.0,最大残差 0 ATP,ATPSUM 第6列

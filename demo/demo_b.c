@@ -257,8 +257,9 @@ static void print_status(double time)
  * 储备与容量永远分不到 ATP（v8 靠指数涨价造成的“余额堆积”才买到）。
  * 改成轮转：每步只尝试一个经济出口，5 个出口均分收入。 */
 static int g_buy_turn = 0;
-/* v10：候选连续拒绝计数，用于区分“再等等”与“候选死锁必须刷新” */
-static int g_offer_stale = 0;
+/* v14：每个槽位的候选冷却。放弃候选后冷却 30 秒，
+ * 防止靠“反复放弃 + 重开”白嫖候选刷新。 */
+static double g_slot_cooldown[MAX_ACTIVE_SPECIES];
 
 static void try_upgrade_type(int type)
 {
@@ -558,53 +559,26 @@ static void choose_mutation(int slot)
             }
         }
         if (pick < 0) {
-            /* 候选里没有推进主线的突变时，先忍几轮（别把 DNA 浪费在非门票上，
-             * 门票链 1.45^n 会被推高）；但连续拒绝超过 3 轮就买最便宜的一个，
-             * 否则候选永远不刷新，主线会永久卡死（实测 stage 8 死锁）。 */
-            /* 候选里没有推进主线的突变时先忍住（别把 DNA 浪费在非门票上，
-             * 门票链 1.45^n 会被推高）；但同一个候选连续拒绝 30 秒就买最便宜的一个强制刷新，
-             * 否则该槽的候选永远不消耗，主线会永久卡在阶段 8（实测纪元 2 死锁）。 */
-            if (target_missing && ++g_offer_stale <= 300) {
+            /* v14 E3：候选里没有能推进分化的卡时，先花 DNA 换一批（每批 ≤3 次）；
+             * 换不起或不划算就放弃候选、冷却 30 秒，把候选位让给别的槽位。
+             * 绝不买纯属性卡——扫货会把门票链推到 150+ 张，
+             * “era3 突变购买 10–16 张”这条硬门槛就失效了。 */
+            if (!target_missing) {
+                /* 该槽的前置已齐、在等生物量：候选留着只会占住三个槽位共用的候选位，
+                 * 让额外分支永远开不了候选（实测支线卡在阶段 1）。 */
+                g_slot_cooldown[slot] = g_time + 5.0;
+                evolution_dismiss_mutation_offer(&g);
                 return;
             }
-            int fallback = -1;
-            for (int i = 0; i < offer->choice_count; ++i) {
-                int mid = offer->mutation_ids[i];
-                if (evolution_mutation_is_required(mid) ||
-                    g.run.discovered_mutations[mid]) {
-                    continue;
-                }
-                if (g.run.dna < offer->dna_costs[i] ||
-                    g.run.atp < evolution_mutation_atp_cost(&g, mid)) {
-                    continue;
-                }
-                if (fallback < 0 ||
-                    offer->dna_costs[i] < offer->dna_costs[fallback]) {
-                    fallback = i;
-                }
-            }
-            if (fallback < 0) {
-                /* 没有纯属性突变时，退而购买任意未发现且买得起的突变，
-                 * 维持自动策略的生存力；真实玩家可自行取舍。 */
-                for (int i = 0; i < offer->choice_count; ++i) {
-                    int mid = offer->mutation_ids[i];
-                    if (g.run.discovered_mutations[mid]) {
-                        continue;
-                    }
-                    if (g.run.dna < offer->dna_costs[i] ||
-                        g.run.atp < evolution_mutation_atp_cost(&g, mid)) {
-                        continue;
-                    }
-                    if (fallback < 0 ||
-                        offer->dna_costs[i] < offer->dna_costs[fallback]) {
-                        fallback = i;
-                    }
-                }
-            }
-            if (fallback < 0) {
+            double refresh_cost = evolution_mutation_refresh_cost(&g);
+            if (g.run.mutation_refresh_count < MUTATION_REFRESH_LIMIT &&
+                g.run.dna >= refresh_cost * 3.0 &&
+                evolution_refresh_mutation_offer(&g, slot) == ACTION_OK) {
                 return;
             }
-            pick = fallback;
+            g_slot_cooldown[slot] = g_time + 30.0;
+            evolution_dismiss_mutation_offer(&g);
+            return;
         }
     }
     if (pick < 0) {
@@ -623,7 +597,6 @@ static void choose_mutation(int slot)
     double cost = offer->dna_costs[pick];
     double atp_before = g.run.atp;
     if (evolution_apply_mutation(&g, slot, mutation_id) == ACTION_OK) {
-        g_offer_stale = 0;
         g_atp_spent += atp_before - g.run.atp; /* P2：用实际扣款记账，避免改价静默漂移 */
         mark_purchase(); /* 第十轮：突变计入统一“末次有效购买”口径 */
         if (g_first_mutation < 0.0) {
@@ -636,7 +609,49 @@ static void choose_mutation(int slot)
         snprintf(detail, sizeof(detail), "%s;%.0f", name, cost);
         csv_event("mutation", detail);
         out("  >> Mutation acquired: %-24s (-%.0f DNA)\n", name, cost);
+    } else {
+        /* 买不下（价格在被选中后又被抬高 / 资源被别的出口吃掉）：
+         * 候选留着会永久占住候选位，三个槽位就一起卡死。 */
+        g_slot_cooldown[slot] = g_time + 3.0;
+        evolution_dismiss_mutation_offer(&g);
     }
+}
+
+static bool slot_target_missing(int slot)
+{
+    int target = planned_target(slot);
+    if (target < 0) {
+        return false;
+    }
+    const SpeciesState *species = &g.run.active_species[slot];
+    int required[4];
+    int count = species_required_mutations(target, required, 4);
+    for (int i = 0; i < count; ++i) {
+        if (!species->mutations[required[i]]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* v14 硬门槛 2/3：普通策略只买“能推进某个槽位分化”的突变，
+ * 不再买纯属性卡（那会把门票链推到 150+ 张，硬门槛 2 直接失效）。
+ * 三个槽位按轮转各拿候选——全给主线会让额外分支永远买不到自己的前置，
+ * 单局物种数就只能停在主链的 12–13 个。 */
+static int slot_needing_mutations(void)
+{
+    int count = g.run.active_species_count;
+    for (int i = 0; i < count; ++i) {
+        int slot = (g_offer_slot + i) % count;
+        if (g_time < g_slot_cooldown[slot]) {
+            continue;
+        }
+        if (slot_target_missing(slot)) {
+            g_offer_slot = slot + 1;
+            return slot;
+        }
+    }
+    return -1;
 }
 
 static void try_mutations(void)
@@ -645,27 +660,11 @@ static void try_mutations(void)
         choose_mutation(g.run.mutation_offer.species_slot);
         return;
     }
-    /* 第十五轮：普通策略只为主线开候选，避免额外分支的待选提案
-     * 长期占用唯一候选位，把主线前置卡死。
-     * v8 P1-9：主线到本纪元封顶后，轮转所有槽位，让三条并行支线都能推进。 */
     if (!g_explore) {
-        int main_slot = evolution_main_slot(&g);
-        bool capped = evolution_main_stage(&g) >= evolution_era_stage_cap(&g);
-        if (!capped) {
-            if (main_slot >= 0 && evolution_open_mutation_offer(&g, main_slot) == ACTION_OK) {
-                choose_mutation(main_slot);
-            }
-            return;
+        int slot = slot_needing_mutations();
+        if (slot >= 0 && evolution_open_mutation_offer(&g, slot) == ACTION_OK) {
+            choose_mutation(slot);
         }
-        for (int i = 0; i < g.run.active_species_count; ++i) {
-            int slot = (g_offer_slot + i) % g.run.active_species_count;
-            if (evolution_open_mutation_offer(&g, slot) == ACTION_OK) {
-                g_offer_slot = slot + 1;
-                choose_mutation(slot);
-                return;
-            }
-        }
-        g_offer_slot = 0;
         return;
     }
     /* 轮转候选槽位，让主谱系与额外分支都能拿到自己的前置突变 */
@@ -1150,6 +1149,7 @@ typedef struct {
     int ep;
     int stages;
     int mutations;
+    int atp_mutations; /* v14 硬门槛 2：收 ATP 门票的突变张数（阶段 >= MUTATION_ATP_MIN_PHASE） */
     int species;
     int crises;
     double max_biomass;
@@ -1185,6 +1185,7 @@ static EraSummary simulate_era(int steps)
     g_cap_reached_time = -1.0;
     g_first_species = -1;
     g_first_mutation = -1.0;
+    memset(g_slot_cooldown, 0, sizeof(g_slot_cooldown));
     g_last_purchase_time = -1.0;
     g_sub_upgrade_buys = 0;
     g_insight_buys = 0;
@@ -1215,6 +1216,17 @@ static EraSummary simulate_era(int steps)
     summary.ep = reward.total_points;
     prestige_run_stats(&g, &summary.stages, &summary.mutations, &summary.species,
                        &summary.crises);
+    /* v14：把“收 ATP 门票的购买张数”单独记一份。规则 B 的等比数列
+     * （10 s × 1.12^k）只对这批卡生效，硬门槛 2 必须按这个口径验收，
+     * 否则低阶免费突变会把张数灌到三位数。 */
+    summary.atp_mutations = 0;
+    for (int slot = 0; slot < g.run.active_species_count; ++slot) {
+        for (int id = 0; id < MUTATION_COUNT; ++id) {
+            if (!g.run.active_species[slot].mutations[id]) continue;
+            const MutationDef *def = mutation_get(id);
+            if (def && def->min_phase >= MUTATION_ATP_MIN_PHASE) ++summary.atp_mutations;
+        }
+    }
     if (g_quiet) {
         int slot = evolution_main_slot(&g);
         if (slot >= 0) {
@@ -1352,13 +1364,14 @@ static void run_batch3(int count, int steps)
         }
         buffs_init_run(&g);
         EraSummary era3 = simulate_era(steps);
-        printf("BATCH3,%d,%u,%d,%d,%d,%d,%d,%d,%d,%.0f,%.1f,%d,%d,%.1f,%.1f,%d,%d,%d,%.1f,%.1f,%.1f\n",
+        printf("BATCH3,%d,%u,%d,%d,%d,%d,%d,%d,%d,%.0f,%.1f,%d,%d,%.1f,%.1f,%d,%d,%d,%.1f,%.1f,%.1f,%d\n",
                index, seed,
                era1.ep, era2.ep, era3.ep, era3.stages, era3.mutations, era3.species,
                era3.crises, era3.max_biomass, era3.last_purchase, mutation_level,
                diversification_level, era3.first_speciation, era3.knowledge,
                era1.sub_upgrades, era2.sub_upgrades, era3.sub_upgrades,
-               era1.first_mutation, era2.first_mutation, era3.first_mutation);
+               era1.first_mutation, era2.first_mutation, era3.first_mutation,
+               era3.atp_mutations);
         printf("RAMPTIME,%d,1,%.1f,%d\n", index, era1.cap_reached_time,
                era1.first_speciation_instant);
         printf("RAMPTIME,%d,2,%.1f,%d\n", index, era2.cap_reached_time,

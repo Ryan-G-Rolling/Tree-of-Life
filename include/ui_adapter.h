@@ -90,6 +90,7 @@ const char *ua_speciation_requirement(int target_species_id, char *buf, int buf_
 
 /* ================= B 侧：突变 ================= */
 
+double ua_mutation_refresh_cost(const GameState *game);
 const char *ua_mutation_name(int mutation_id);
 const char *ua_mutation_desc(int mutation_id, char *buf, int buf_size);
 bool ua_mutation_is_rare(int mutation_id);

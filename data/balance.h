@@ -117,6 +117,11 @@
 #ifndef SPECIATION_PHASE12_MULT
 #define SPECIATION_PHASE12_MULT 1.25
 #endif
+/* v14 E7：纪元 2 的分化门票 ×1.18。era2 阶段 10 抵达率实测 100%，
+ * 需要一个唯一的阻力；纪元 1/3 不乘，避免把首分化与最终阶段一起推高。 */
+#ifndef SPECIATION_ERA2_MULT
+#define SPECIATION_ERA2_MULT 1.18
+#endif
 /* v10 P0-22 配套：常数地板整体 ×0.45。地板原按“线性收入的旧曲线”定的
  * （40/350/1200/1350…），sqrt 之后收入复合慢了一半，中段每张票要等 100–240 s，
  * 60 种子实测卡在 stage 4。缩地板恢复“每张票 15–60 s”的节奏（0.45 → 0.25）。 */
@@ -126,6 +131,10 @@
 /* v10 P1-11：阶段 6 起主谱系分化提供“2 选 1”——主链节点或同阶段支线物种 */
 #ifndef BRANCH_SPECIATION_MIN_PHASE
 #define BRANCH_SPECIATION_MIN_PHASE 6
+#endif
+/* v14 E9：支线门票 = 同阶段主链门票 ×1.25。 */
+#ifndef SPECIATION_BRANCH_MULT
+#define SPECIATION_BRANCH_MULT 1.25
 #endif
 /* v10：点击收益 = 3 秒主谱系产率（BASE_CLICK_ATP 保留为地板的一部分见 economy.c） */
 #ifndef CLICK_INCOME_SECONDS
@@ -358,12 +367,16 @@ static inline unsigned int era_crisis_pool(int era)
 /* v10 P0-22：储备改时间本位——每级 120 s 被动 ATP 产率（≈30 s 墙钟，含点击收入），
  * 每纪元 5–7 级，到 26 级要跨 3–4 个纪元；RESERVE_COST_ATP 保留为地板。 */
 #define RESERVE_COST_ATP 1000.0
+/* v14 E4：110 → 45 s。实测储备每局只买到 1.4 级，110 秒太贵，储备这条线等于不存在。
+ * 45 s 配合 E5 的 0.90 步进，目标 8–14 级/局。 */
 #ifndef RESERVE_ATP_SECONDS
-#define RESERVE_ATP_SECONDS 110.0
+#define RESERVE_ATP_SECONDS 45.0
 #endif
 /* v8 P0-15：储备减伤改为乘算，第 6 级之后仍有边际收益，约 22 级触底 */
+/* v14 E5：0.94 → 0.90，与 E4 降价配对，防止“便宜但无用”。
+ * 地板仍为 0.20（v10 实测值；v14 方案里写的 0.15 是旧基线，E6 本身标注“不变”，故不动）。 */
 #ifndef RESERVE_REDUCTION_STEP
-#define RESERVE_REDUCTION_STEP 0.94
+#define RESERVE_REDUCTION_STEP 0.90
 #endif
 #ifndef RESERVE_REDUCTION_FLOOR
 #define RESERVE_REDUCTION_FLOOR 0.20
@@ -512,8 +525,33 @@ static inline double reserve_damage_scale(int levels)
  * v10 收口：30 → 8。纪元 3 一局要买 150+ 张突变，30 秒/张把 ATP 全吃光，
  * 容量的生物量份额与三条升级轨被饿死（实测单级耗时 100 s、容量 1 级）。
  * 8 秒仍保留“突变要花 ATP”的机制，但不再是压倒性的出口。 */
+/* v14 E1：8 → 10 s。突变票改等比递增（E2），10 s 是第 1 张的基准秒数。 */
 #ifndef MUTATION_ATP_SECONDS
-#define MUTATION_ATP_SECONDS 8.0
+#define MUTATION_ATP_SECONDS 10.0
+#endif
+/* v14 E2：第 k+1 张突变票 = 10 s × 1.12^k（k = 本纪元已购张数）。
+ * 累计 12/16/20 张的秒数预算是 241.7 / 427.5 / 720.8 s，
+ * era3 约 600 s 产出 → 落点必然在 12–16 张，不随池子从 204 涨到 282 而漂移。 */
+#ifndef MUTATION_TICKET_GROWTH
+#define MUTATION_TICKET_GROWTH 1.12
+#endif
+/* v14 E3：DNA 换一批突变候选。
+ * 价格 = min(0.40×DNA 余额, max(10, 0.30×本批最便宜卡价)) × 1.7^n，n = 本批已刷新次数。
+ * 锚“最便宜卡价”而不是绝对值：DNA 余额/卡价跨 5 个数量级，只有相对锚才稳。每批 ≤3 次。 */
+#ifndef MUTATION_REFRESH_DNA_SHARE
+#define MUTATION_REFRESH_DNA_SHARE 0.40
+#endif
+#ifndef MUTATION_REFRESH_CHEAP_SHARE
+#define MUTATION_REFRESH_CHEAP_SHARE 0.30
+#endif
+#ifndef MUTATION_REFRESH_MIN
+#define MUTATION_REFRESH_MIN 10.0
+#endif
+#ifndef MUTATION_REFRESH_GROWTH
+#define MUTATION_REFRESH_GROWTH 1.7
+#endif
+#ifndef MUTATION_REFRESH_LIMIT
+#define MUTATION_REFRESH_LIMIT 3
 #endif
 #ifndef MUTATION_ATP_COST_MIN
 #define MUTATION_ATP_COST_MIN 10000000.0
@@ -625,6 +663,8 @@ static inline unsigned int tof_rng_next(unsigned int *state)
 /* Unified A/B/C state; old saves remain at their original paths. */
 /* v10 P0-26：RunState 新增 crisis_selection / crisis_seen（6 选 4 危机池与逐类型台账），
  * 存档结构变化，版本 8 → 9；更早的存档仍不自动迁移。 */
-#define SAVE_VERSION 9
+/* v14：MAX_SPECIES/MAX_MUTATIONS 256 → 320，GameState 体积与内部偏移全部变化，
+ * 版本 9 → 10。旧 v9 档按“版本不符”拒绝，不读入、不覆盖、不删除文件。 */
+#define SAVE_VERSION 10
 
 #endif

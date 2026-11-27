@@ -153,6 +153,7 @@ static bool action_needs_game(UiButtonId id)
     case UI_BTN_UPGRADE:
     case UI_BTN_OPEN_MUTATION:
     case UI_BTN_CHOOSE_MUTATION:
+    case UI_BTN_REFRESH_MUTATION:
     case UI_BTN_SPECIATE:
     case UI_BTN_OPEN_END_ERA:
     case UI_BTN_CANCEL_END_ERA:
@@ -177,6 +178,7 @@ static void fill_action(const UiButton *b, GameAction *out)
     case UI_BTN_UPGRADE:          out->type = ACTION_BUY_RUN_UPGRADE; out->target_id = b->target_id; break;
     case UI_BTN_OPEN_MUTATION:    out->type = ACTION_GENERATE_MUTATION_OFFER; out->target_species_slot = b->target_id; break;
     case UI_BTN_CHOOSE_MUTATION:  out->type = ACTION_CHOOSE_MUTATION; out->target_id = b->target_id; out->option = b->option; break;
+    case UI_BTN_REFRESH_MUTATION: out->type = ACTION_REFRESH_MUTATIONS; out->target_species_slot = b->target_id; break;
     case UI_BTN_SPECIATE:         out->type = ACTION_SPECIATE; out->target_species_slot = 0; out->target_id = b->target_id; out->option = b->option; break;
     case UI_BTN_OPEN_END_ERA:     out->type = ACTION_OPEN_END_ERA; break;
     case UI_BTN_CANCEL_END_ERA:   out->type = ACTION_CANCEL_END_ERA; break;

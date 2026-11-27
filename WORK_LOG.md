@@ -355,4 +355,54 @@ A/B/C 可运行整合版已在此前完成，Git 基线为 `44e2c0d`；既有结
   容量 10 级、储备 5 级（26 级占比 0%）；危机类型覆盖中位 10 类/局；全清 34.8 / 28.7 / 36.7%；存档 v9 3,224 B。
 - **未完成**：P1-13 `src/screens.c` 拆 6 个翻译单元仍未执行（同上轮原因）；`git push` 未执行（需用户明确授权）。
 - **清理**：删除本轮临时分析脚本 `build/tmp_analyze.py` 与中间扫描 `build/tmp_b2.csv`、`build/tmp_b3.csv`；
+=======
   `tools/reports/` 保留 `make report` 生成的正式 CSV。
+
+## 2026-11-27 夜 · v14 一次性扩容（264/282 + 星图重绘 + 时间本位定价终版）
+
+执行者：WorkBuddy（Agent）。依据 `C:/Users/ROG/Doubao/chats/2026-11-25/new-chat/TreeOfLife-优化方案-v14.md` 执行 W1–W13。
+
+- **结构**：`MAX_SPECIES / MAX_MUTATIONS` 256 → 320（`include/game_types.h`）；`SAVE_VERSION` 9 → 10（`data/balance.h`），
+  读到 v9 旧档返回 `SAVE_BAD_VERSION`，不覆盖、不删除。
+- **内容**：`src/species.c` 追加 78 物种（keystone / 子升级 / 分化规则），`src/evolution.c` 追加 78 突变 + 9 条共振，
+  `src/codex.c` 追加 78 + 78 条中文名与短句；`tools/validate_content.py` 11 项全 PASS
+  （物种 264 / 突变 282 / 共振 29 / 字形 1,423）。
+- **定价**：突变票 `10 s × 1.12^已购`（地板 3 s 产率，只对 `min_phase ≥ 8` 收取）；
+  DNA 换一批 `min(0.40×余额, max(10, 0.30×最便宜)) × 1.7^n`、每批 ≤3（新增 `ACTION_REFRESH_MUTATIONS` 与界面「换一批」）；
+  储备 `110 → 45 s`、效率 `0.94 → 0.90`；era2 门票 ×1.18；支线门票 ×1.25。
+- **分化**：`evolution_speciation_offers` 给 3 张方向卡 + 1 张主链保底；支线 keystone/synergy 乘算减半（E10）；
+  `find_key_mutation` 为非主线槽位补「关键突变保底」（此前支线候选没有保底位，整局凑不齐前置）；
+  新增 `evolution_dismiss_mutation_offer`，供自动策略释放三个槽位共用的候选位。
+- **星图**（`src/screens.c`）：264 节点 / 14 环 / 半径 `((i+1)/n)^1.25` / 同屏边上限 120 / 只画已发现与相邻 /
+  缩放 <0.6 隐藏标签 / 未发现节点不泄露名称。
+- **演示策略**（`demo/demo_b.c`）：只买能推进分化的突变（扫纯属性卡会把门票链推到 150+ 张）；
+  三个槽位轮转拿候选，候选无用则花 DNA 刷新或释放并冷却；`EraSummary` 新增 `atp_mutations`，BATCH3 末列输出门票张数口径。
+- **文档与工具**：README 改到 264 / 282 / 22+24 页 / 存档 v10 / 星图新规则；`tools/reports` 覆盖分母改 263 / 282、
+  存档标签改 v10、`design.lock` 重锁；`tools/oneshot_check.sh|ps1` 改成 9 步并打印硬门槛实测；
+  25 张截图按 `--shot --ss 3` 重导到 `deliverables/screens/`。
+
+**验证**
+
+- 严格编译 0 警告；`make test`：27 组 130,892 项 0 失败 + 接线 36 项 + 回归 + gameplay（含新档往返与 v9 旧档拒绝）+
+  codex（264 / 282 全名与短句）+ `test-layout`（全部路线页、264 节点、图鉴 390 条详情）全通过。
+- 1000 种子（`make report`）：EP 45 / 59 / 65（纪元 3 σ 3.07）；阶段 p50 7 / 10 / 11；阶段 12 抵达 35.6%、13 0.0%；
+  首分化 179.6 s、首突变 60.1 s；单局物种中位 15（16–20 区间占 46.7%）；突变中位 17 张（ATP 门票中位 4 张）；
+  覆盖率 55/263 物种、96/282 突变；存档 v10 3,936 B。
+
+**三条硬门槛（方案第 6 节）**
+
+1. 编译 0 警告 + 全部单测 PASS —— **达标**。
+2. era3 突变购买 10–16 张 —— **不达标**：中位 17 张（11–20），其中 ATP 门票中位 4 张。
+   原因：物种门槛要求 ≥15 次分化，每次分化至少 1 张前置 ⇒ 总张数下限本就落在 15–16，
+   两条区间只在「16 物种 / 16 张」这一点重叠。按方案「不达标不许自行调参」的要求，只记录实测。
+3. 单局物种 16–20 —— **中位不达标**：中位 15（13–21），46.7% 的局落在 16–20。主链 p50 只到阶段 11（12 物种），
+   两个额外槽位各推进 1–3 个物种；支线每次分化同样要买前置，与门槛 2 直接对冲。
+
+**未完成 / 遗留**
+
+- 上述两条门槛的结构性冲突需要在方案层重新定值（例如「张数」改门票纯口径，或物种区间下移），本轮未继续微调。
+- `docs/README.md` 与 `docs/02-数据与计算规则.md` 仍是第十五轮口径（前者带只读属性，本轮未改）。
+- `git push` 未执行（需明确授权）。
+
+**清理**：删除临时探针 `build/probe_children.c`、`build/probe_branch.*`、`build/probe_req.*`、`build/demo_trace.exe`；
+`build/report_run.log`、`build/oneshot_check.log`、`build/batch3_oneshot.csv` 属构建产物，留在 `build/`（git 忽略）。

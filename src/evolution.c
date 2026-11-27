@@ -85,7 +85,7 @@ static const MutationDef k_mutations[MUTATION_COUNT] = {
       90.0, 0.0, 0.0, 0.0, 0.0, 0.05, { 2, 2, 0, 0, 0 },
       0, 3, -1, MUTATION_HEAT_RESISTANCE, -1, -1 },
     /* 16 Quorum Sensing */
-    { "群体感应", "种群越过阈值后细胞协同行动。",
+    { "密度感应", "种群越过阈值后细胞协同行动。",
       105.0, 0.0, 0.0, 0.0, 0.25, 0.08, { 0, 0, 0, 1, 0 },
       0, 3, -1, MUTATION_MULTICELLULARITY, -1, -1 },
     /* 17 Ecosystem Engineering */
@@ -275,7 +275,7 @@ static const MutationDef k_mutations[MUTATION_COUNT] = {
       15.0, 0.05, 0.06, 0.05, 0.07, 0.02, { 1, 0, 1, 0, 0 },
       1, 0, -1, -1, -1, -1 },
     /* 第十五轮：阶段 0 · 第 7 支 */
-    { "Osmotic Control", "A stage-0 adaptation that improves colony coordination.",
+    { "渗透调节", "A stage-0 adaptation that improves colony coordination.",
       15.3, 0.06, 0.07, 0.03, 0.05, 0.01, { 0, 1, 0, 1, 0 },
       1, 0, -1, -1, -1, -1 },
     /* 第十五轮：阶段 0 · 第 8 支 */
@@ -351,7 +351,7 @@ static const MutationDef k_mutations[MUTATION_COUNT] = {
       39.2, 0.07, 0.08, 0.06, 0.09, 0.02, { 1, 1, 0, 0, 1 },
       0, 2, -1, -1, -1, -1 },
     /* 第十五轮：阶段 2 · 第 6 支 */
-    { "Calcium Shell", "A stage-2 adaptation that improves symbiosis.",
+    { "钙质外壳", "A stage-2 adaptation that improves symbiosis.",
       40.0, 0.08, 0.09, 0.07, 0.10, 0.02, { 1, 0, 1, 0, 0 },
       1, 2, -1, -1, -1, -1 },
     /* 第十五轮：阶段 2 · 第 7 支 */
@@ -471,7 +471,7 @@ static const MutationDef k_mutations[MUTATION_COUNT] = {
       196.0, 0.11, 0.12, 0.09, 0.14, 0.02, { 1, 1, 0, 0, 1 },
       0, 5, -1, -1, -1, -1 },
     /* 第十五轮：阶段 5 · 第 6 支 */
-    { "Coral Symbiosis", "A stage-5 adaptation that improves symbiosis.",
+    { "珊瑚共生", "A stage-5 adaptation that improves symbiosis.",
       200.0, 0.12, 0.12, 0.10, 0.14, 0.03, { 1, 0, 1, 0, 0 },
       1, 5, -1, -1, -1, -1 },
     /* 第十五轮：阶段 5 · 第 7 支 */
@@ -810,6 +810,318 @@ static const MutationDef k_mutations[MUTATION_COUNT] = {
     { "Final Integration", "A stage-13 adaptation that improves reproduction.",
       10800.0, 0.24, 0.22, 0.18, 0.24, 0.04, { 0, 0, 0, 0, 2 },
       2, 13, -1, -1, -1, -1 },
+    /* v14：阶段 1 · 菌绿素质子泵 */
+    { "菌绿素质子泵", "用菌绿素把光泵成质子梯度。",
+      170.0, 0.155, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 1, 3, -1, -1, -1 },
+    /* v14：阶段 1 · 固氮酶 */
+    { "固氮酶", "把大气中的氮固定成可用养分。",
+      200.0, 0.000, 0.150, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 1, 3, -1, -1, -1 },
+    /* v14：阶段 1 · 快速复制 */
+    { "快速复制", "缩短复制周期，DNA 来得更快。",
+      230.0, 0.000, 0.000, 0.120, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 1, 3, -1, -1, -1 },
+    /* v14：阶段 1 · 细胞骨架 */
+    { "细胞骨架", "撑起细胞形状，容纳更多个体。",
+      170.0, 0.000, 0.000, 0.000, 0.057, 0.000, { 0, 0, 0, 0, 0 },
+      0, 1, 3, -1, -1, -1 },
+    /* v14：阶段 1 · 趋化运动 */
+    { "趋化运动", "朝营养梯度主动移动。",
+      200.0, 0.000, 0.000, 0.000, 0.000, 0.030, { 0, 0, 0, 0, 0 },
+      0, 1, 3, -1, -1, -1 },
+    /* v14：阶段 1 · 生物膜黏附 */
+    { "生物膜黏附", "黏在表面上，形成稳定菌落。",
+      230.0, 0.000, 0.000, 0.000, 0.000, 0.030, { 0, 0, 0, 0, 0 },
+      0, 1, 3, -1, -1, -1 },
+    /* v14：阶段 1 · 耐盐调节 */
+    { "耐盐调节", "泵出多余盐分，维持渗透平衡。",
+      170.0, 0.000, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 1 },
+      0, 1, 3, -1, -1, -1 },
+    /* v14：阶段 1 · 耐压膜脂 */
+    { "耐压膜脂", "调整膜脂比例，抗住高压低温。",
+      200.0, 0.000, 0.000, 0.000, 0.000, 0.000, { 0, 1, 0, 0, 0 },
+      0, 1, 3, -1, -1, -1 },
+    /* v14：阶段 1 · 硫代谢耦合 */
+    { "硫代谢耦合", "把硫氧化与碳固定接成一条链。",
+      230.0, 0.052, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 1, 3, -1, -1, -1 },
+    /* v14：阶段 1 · 硫粒储存 */
+    { "硫粒储存", "把硫化物存成颗粒，缺食时再用。",
+      170.0, 0.000, 0.050, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 1, 3, -1, -1, -1 },
+    /* v14：阶段 2 · 叶绿体捕光 */
+    { "叶绿体捕光", "叠层类囊体提高捕光面积。",
+      170.0, 0.155, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 2, 4, -1, -1, -1 },
+    /* v14：阶段 2 · 胞外酶分泌 */
+    { "胞外酶分泌", "把酶排到体外，先消化再吸收。",
+      200.0, 0.000, 0.150, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 2, 4, -1, -1, -1 },
+    /* v14：阶段 2 · 减数分裂 */
+    { "减数分裂", "重组基因，提高变异速率。",
+      230.0, 0.000, 0.000, 0.120, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 2, 4, -1, -1, -1 },
+    /* v14：阶段 2 · 钙质外壳 */
+    { "壳质沉积", "分泌碳酸钙，撑大个体。",
+      170.0, 0.000, 0.000, 0.000, 0.057, 0.000, { 0, 0, 0, 0, 0 },
+      0, 2, 4, -1, -1, -1 },
+    /* v14：阶段 2 · 鞭毛加速 */
+    { "鞭毛加速", "加长鞭毛，提高游动速度。",
+      200.0, 0.000, 0.000, 0.000, 0.000, 0.030, { 0, 0, 0, 0, 0 },
+      0, 2, 4, -1, -1, -1 },
+    /* v14：阶段 2 · 群体感应 */
+    { "阈值传感", "按同伴密度调整生长节奏。",
+      230.0, 0.000, 0.000, 0.000, 0.000, 0.030, { 0, 0, 0, 0, 0 },
+      0, 2, 4, -1, -1, -1 },
+    /* v14：阶段 2 · 耐酸泵 */
+    { "耐酸泵", "把进入细胞的质子排出去。",
+      170.0, 0.000, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 1 },
+      0, 2, 4, -1, -1, -1 },
+    /* v14：阶段 2 · 耐氧修复 */
+    { "耐氧修复", "修复活性氧造成的损伤。",
+      200.0, 0.000, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 1, 0 },
+      0, 2, 4, -1, -1, -1 },
+    /* v14：阶段 2 · 初级内共生 */
+    { "初级内共生", "把吞进来的藻留在体内共生。",
+      230.0, 0.052, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 2, 4, -1, -1, -1 },
+    /* v14：阶段 2 · 藻类碳源 */
+    { "藻类碳源", "直接取用共生藻固定的碳。",
+      170.0, 0.000, 0.050, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 2, 4, -1, -1, -1 },
+    /* v14：阶段 3 · 肌肉收缩 */
+    { "肌肉收缩", "肌纤维让取食与移动更省力。",
+      170.0, 0.155, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 3, 5, -1, -1, -1 },
+    /* v14：阶段 3 · 滤食网 */
+    { "滤食网", "纤毛环流把颗粒送进口。",
+      200.0, 0.000, 0.150, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 3, 5, -1, -1, -1 },
+    /* v14：阶段 3 · 再生芽 */
+    { "再生芽", "断片也能长回完整个体。",
+      230.0, 0.000, 0.000, 0.120, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 3, 5, -1, -1, -1 },
+    /* v14：阶段 3 · 几丁质骨架 */
+    { "几丁质骨架", "轻而硬的外骨骼撑起体型。",
+      170.0, 0.000, 0.000, 0.000, 0.057, 0.000, { 0, 0, 0, 0, 0 },
+      0, 3, 5, -1, -1, -1 },
+    /* v14：阶段 3 · 变态发育 */
+    { "变态发育", "幼虫与成体各占一个生态位。",
+      200.0, 0.000, 0.000, 0.000, 0.000, 0.030, { 0, 0, 0, 0, 0 },
+      0, 3, 5, -1, -1, -1 },
+    /* v14：阶段 3 · 群体分工 */
+    { "群体分工", "同群个体分担不同职能。",
+      230.0, 0.000, 0.000, 0.000, 0.000, 0.030, { 0, 0, 0, 0, 0 },
+      0, 3, 5, -1, -1, -1 },
+    /* v14：阶段 3 · 耐热蛋白 */
+    { "耐热蛋白", "热激蛋白防止蛋白聚集。",
+      170.0, 0.000, 0.000, 0.000, 0.000, 0.000, { 1, 0, 0, 0, 0 },
+      0, 3, 5, -1, -1, -1 },
+    /* v14：阶段 3 · 毒腺 */
+    { "毒腺", "把毒素存起来，反过来用。",
+      200.0, 0.000, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 1 },
+      0, 3, 5, -1, -1, -1 },
+    /* v14：阶段 3 · 神经网 */
+    { "神经网", "弥散神经网加快整体反应。",
+      230.0, 0.052, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 3, 5, -1, -1, -1 },
+    /* v14：阶段 3 · 循环系统 */
+    { "循环系统", "体液循环把养分送到深处。",
+      170.0, 0.000, 0.050, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 3, 5, -1, -1, -1 },
+    /* v14：阶段 4 · 封闭循环 */
+    { "封闭循环", "封闭血管提高输送效率。",
+      170.0, 0.155, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 4, 6, -1, -1, -1 },
+    /* v14：阶段 4 · 腐殖消化 */
+    { "腐殖消化", "分解难消化的有机碎屑。",
+      200.0, 0.000, 0.150, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 4, 6, -1, -1, -1 },
+    /* v14：阶段 4 · 免疫记忆 */
+    { "免疫记忆", "记住旧病原，反应更快。",
+      230.0, 0.000, 0.000, 0.120, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 4, 6, -1, -1, -1 },
+    /* v14：阶段 4 · 矿化骨骼 */
+    { "矿化骨骼", "沉积矿物，支撑更大身体。",
+      170.0, 0.000, 0.000, 0.000, 0.057, 0.000, { 0, 0, 0, 0, 0 },
+      0, 4, 6, -1, -1, -1 },
+    /* v14：阶段 4 · 幼虫扩散 */
+    { "幼虫扩散", "幼体随水流寻找新栖地。",
+      200.0, 0.000, 0.000, 0.000, 0.000, 0.030, { 0, 0, 0, 0, 0 },
+      0, 4, 6, -1, -1, -1 },
+    /* v14：阶段 4 · 休眠卵 */
+    { "休眠卵", "恶劣季节里暂停发育。",
+      230.0, 0.000, 0.000, 0.000, 0.000, 0.030, { 0, 0, 0, 0, 0 },
+      0, 4, 6, -1, -1, -1 },
+    /* v14：阶段 4 · 耐寒脂 */
+    { "耐寒脂", "不饱和脂保持膜流动性。",
+      170.0, 0.000, 0.000, 0.000, 0.000, 0.000, { 0, 1, 0, 0, 0 },
+      0, 4, 6, -1, -1, -1 },
+    /* v14：阶段 4 · 排毒肾 */
+    { "排毒肾", "过滤并排出体内毒素。",
+      200.0, 0.000, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 1 },
+      0, 4, 6, -1, -1, -1 },
+    /* v14：阶段 4 · 共生菌群 */
+    { "共生菌群", "肠道菌群帮助分解食物。",
+      230.0, 0.000, 0.050, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 4, 6, -1, -1, -1 },
+    /* v14：阶段 4 · 内分泌 */
+    { "内分泌", "激素协调生长与繁殖。",
+      170.0, 0.000, 0.000, 0.000, 0.000, 0.010, { 0, 0, 0, 0, 0 },
+      0, 4, 6, -1, -1, -1 },
+    /* v14：阶段 5 · 高效鳃 */
+    { "高效鳃", "逆流交换提高取氧效率。",
+      170.0, 0.155, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 5, 7, -1, -1, -1 },
+    /* v14：阶段 5 · 沉积取食 */
+    { "沉积取食", "从泥沙里筛出有机质。",
+      200.0, 0.000, 0.150, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 5, 7, -1, -1, -1 },
+    /* v14：阶段 5 · 繁殖策略 */
+    { "繁殖策略", "按环境调整产卵数量。",
+      230.0, 0.000, 0.000, 0.120, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 5, 7, -1, -1, -1 },
+    /* v14：阶段 5 · 甲壳增厚 */
+    { "甲壳增厚", "加厚外壳，减少被捕食。",
+      170.0, 0.000, 0.000, 0.000, 0.057, 0.000, { 0, 0, 0, 0, 0 },
+      0, 5, 7, -1, -1, -1 },
+    /* v14：阶段 5 · 群游协同 */
+    { "群游协同", "成群移动降低能耗。",
+      200.0, 0.000, 0.000, 0.000, 0.000, 0.030, { 0, 0, 0, 0, 0 },
+      0, 5, 7, -1, -1, -1 },
+    /* v14：阶段 5 · 洄游本能 */
+    { "洄游本能", "按季节回到繁殖地。",
+      230.0, 0.000, 0.000, 0.000, 0.000, 0.030, { 0, 0, 0, 0, 0 },
+      0, 5, 7, -1, -1, -1 },
+    /* v14：阶段 5 · 渗透调节 */
+    { "克盐腺", "在盐度变化中维持体液平衡。",
+      170.0, 0.000, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 1 },
+      0, 5, 7, -1, -1, -1 },
+    /* v14：阶段 5 · 耐低氧 */
+    { "耐低氧", "低氧时降低代谢消耗。",
+      200.0, 0.000, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 1, 0 },
+      0, 5, 7, -1, -1, -1 },
+    /* v14：阶段 5 · 珊瑚共生 */
+    { "礁居合伙", "与光合伙伴交换能量。",
+      230.0, 0.052, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 5, 7, -1, -1, -1 },
+    /* v14：阶段 5 · 甲壳共生 */
+    { "甲壳共生", "共生体共同加固外壳。",
+      170.0, 0.000, 0.000, 0.000, 0.057, 0.000, { 0, 0, 0, 0, 0 },
+      0, 5, 7, -1, -1, -1 },
+    /* v14：阶段 6 · 四腔心 */
+    { "四腔心", "双循环提高供氧能力。",
+      170.0, 0.155, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 6, 8, -1, -1, -1 },
+    /* v14：阶段 6 · 木质素酶 */
+    { "木质素酶", "分解木质素，吃上树干。",
+      200.0, 0.000, 0.150, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 6, 8, -1, -1, -1 },
+    /* v14：阶段 6 · 亲子投资 */
+    { "亲子投资", "少量后代，更高存活率。",
+      230.0, 0.000, 0.000, 0.120, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 6, 8, -1, -1, -1 },
+    /* v14：阶段 6 · 内骨骼 */
+    { "内骨骼", "内部骨架支撑更大的体型。",
+      170.0, 0.000, 0.000, 0.000, 0.057, 0.000, { 0, 0, 0, 0, 0 },
+      0, 6, 8, -1, -1, -1 },
+    /* v14：阶段 6 · 变态激素 */
+    { "变态激素", "激素精确控制发育节点。",
+      200.0, 0.000, 0.000, 0.000, 0.000, 0.030, { 0, 0, 0, 0, 0 },
+      0, 6, 8, -1, -1, -1 },
+    /* v14：阶段 6 · 社会分工 */
+    { "社会分工", "育幼、觅食、防御各司其职。",
+      230.0, 0.000, 0.000, 0.000, 0.000, 0.030, { 0, 0, 0, 0, 0 },
+      0, 6, 8, -1, -1, -1 },
+    /* v14：阶段 6 · 耐旱角质 */
+    { "耐旱角质", "角质层减少水分散失。",
+      170.0, 0.000, 0.000, 0.000, 0.000, 0.000, { 1, 0, 0, 0, 0 },
+      0, 6, 8, -1, -1, -1 },
+    /* v14：阶段 6 · 耐硫呼吸 */
+    { "耐硫呼吸", "用硫代替氧完成呼吸。",
+      200.0, 0.000, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 1 },
+      0, 6, 8, -1, -1, -1 },
+    /* v14：阶段 6 · 菌根联盟 */
+    { "菌根联盟", "根系与真菌交换养分。",
+      230.0, 0.000, 0.050, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 6, 8, -1, -1, -1 },
+    /* v14：阶段 6 · 昆虫授粉 */
+    { "昆虫授粉", "花与传粉者互相成全。",
+      170.0, 0.000, 0.000, 0.000, 0.000, 0.010, { 0, 0, 0, 0, 0 },
+      0, 6, 8, -1, -1, -1 },
+    /* v14：阶段 7 · 恒温代谢 */
+    { "恒温代谢", "稳定体温，扩大活动范围。",
+      170.0, 0.155, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 7, 9, -1, -1, -1 },
+    /* v14：阶段 7 · 种子储备 */
+    { "种子储备", "种子储存养分，等待萌发。",
+      200.0, 0.000, 0.150, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 7, 9, -1, -1, -1 },
+    /* v14：阶段 7 · 性选择 */
+    { "性选择", "择偶偏好加速特征分化。",
+      230.0, 0.000, 0.000, 0.120, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 7, 9, -1, -1, -1 },
+    /* v14：阶段 7 · 大型化 */
+    { "大型化", "更大的体型减少天敌。",
+      170.0, 0.000, 0.000, 0.000, 0.057, 0.000, { 0, 0, 0, 0, 0 },
+      0, 7, 9, -1, -1, -1 },
+    /* v14：阶段 7 · 育幼行为 */
+    { "育幼行为", "亲代照顾提高幼体成活。",
+      200.0, 0.000, 0.000, 0.000, 0.000, 0.030, { 0, 0, 0, 0, 0 },
+      0, 7, 9, -1, -1, -1 },
+    /* v14：阶段 7 · 迁徙路线 */
+    { "迁徙路线", "记住路线，按季迁移。",
+      230.0, 0.000, 0.000, 0.000, 0.000, 0.030, { 0, 0, 0, 0, 0 },
+      0, 7, 9, -1, -1, -1 },
+    /* v14：阶段 7 · 耐寒被毛 */
+    { "耐寒被毛", "绒毛与脂肪层抵御严寒。",
+      170.0, 0.000, 0.000, 0.000, 0.000, 0.000, { 0, 1, 0, 0, 0 },
+      0, 7, 9, -1, -1, -1 },
+    /* v14：阶段 7 · 耐热散热 */
+    { "耐热散热", "散热结构应对高温。",
+      200.0, 0.000, 0.000, 0.000, 0.000, 0.000, { 1, 0, 0, 0, 0 },
+      0, 7, 9, -1, -1, -1 },
+    /* v14：阶段 7 · 花蜜契约 */
+    { "花蜜契约", "用花蜜换取传粉服务。",
+      230.0, 0.052, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 7, 9, -1, -1, -1 },
+    /* v14：阶段 7 · 群体防御 */
+    { "群体防御", "群体协同驱赶捕食者。",
+      170.0, 0.000, 0.000, 0.000, 0.057, 0.000, { 0, 0, 0, 0, 0 },
+      0, 7, 9, -1, -1, -1 },
+    /* v14：阶段 12 · 星光收割 */
+    { "星光收割", "直接收割恒星风的能量。",
+      170.0, 0.155, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 12, 13, -1, -1, -1 },
+    /* v14：阶段 12 · 概念穹顶 */
+    { "概念穹顶", "用概念结构撑起更大的城。",
+      200.0, 0.000, 0.000, 0.000, 0.057, 0.000, { 0, 0, 0, 0, 0 },
+      0, 12, 13, -1, -1, -1 },
+    /* v14：阶段 12 · 记忆繁殖 */
+    { "记忆繁殖", "用记忆复制替代肉体繁殖。",
+      230.0, 0.000, 0.000, 0.000, 0.000, 0.030, { 0, 0, 0, 0, 0 },
+      0, 12, 13, -1, -1, -1 },
+    /* v14：阶段 12 · 概念锚定 */
+    { "概念锚定", "把抽象结构锚定成物质。",
+      170.0, 0.000, 0.050, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 12, 13, -1, -1, -1 },
+    /* v14：阶段 13 · 熵差引擎 */
+    { "熵差引擎", "以熵差为动力来源。",
+      170.0, 0.155, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 13, 13, -1, -1, -1 },
+    /* v14：阶段 13 · 虚空沉积 */
+    { "虚空沉积", "从真空涨落中沉积物质。",
+      200.0, 0.000, 0.150, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 13, 13, -1, -1, -1 },
+    /* v14：阶段 13 · 法则免疫 */
+    { "法则免疫", "改写局部法则以抵抗伤害。",
+      230.0, 0.000, 0.000, 0.000, 0.000, 0.000, { 1, 0, 0, 0, 0 },
+      0, 13, 13, -1, -1, -1 },
+    /* v14：阶段 13 · 终局共鸣 */
+    { "终局共鸣", "与所有分支共鸣，共享产出。",
+      170.0, 0.052, 0.000, 0.000, 0.000, 0.000, { 0, 0, 0, 0, 0 },
+      0, 13, 13, -1, -1, -1 },
 };
 
 /* 突变共振：同一谱系同时拥有两个突变时解锁的构筑加成 */
@@ -877,6 +1189,33 @@ static const MutationSynergyDef k_synergies[] = {
     { "Cosmic Mind", "Omega Point + Cosmic Awareness: the process sees itself.",
       MUTATION_OMEGA_POINT, MUTATION_COSMIC_AWARENESS,
       SYNERGY_COSMIC_MIND_ATP, 0.0, 0.0, SYNERGY_COSMIC_MIND_CAP, 0.0, { 1, 1, 1, 1, 1 } },
+    { "硫循环闭环", "硫氧化与硫储存互相补给。",
+      MUTATION_V14_P1_8, MUTATION_V14_P1_9,
+      0.060, 0.060, 0.0, 0.0, 0.000, { 1, 0, 0, 0, 0 } },
+    { "光合内共生", "共生藻供糖，宿主供保护。",
+      MUTATION_V14_P2_8, MUTATION_V14_P2_9,
+      0.060, 0.060, 0.0, 0.0, 0.000, { 1, 0, 0, 0, 0 } },
+    { "神经循环", "反应与输送彼此加速。",
+      MUTATION_V14_P3_8, MUTATION_V14_P3_9,
+      0.050, 0.050, 0.0, 0.0, 0.020, { 1, 0, 0, 0, 0 } },
+    { "菌群调控", "肠道菌群与激素协同。",
+      MUTATION_V14_P4_8, MUTATION_V14_P4_9,
+      0.000, 0.060, 0.0, 0.0, 0.030, { 0, 0, 0, 0, 1 } },
+    { "礁体互利", "共生伙伴共同加固群体。",
+      MUTATION_V14_P5_8, MUTATION_V14_P5_9,
+      0.050, 0.050, 0.0, 0.0, 0.000, { 0, 1, 0, 0, 0 } },
+    { "陆地联盟", "地下与空中的双重合作。",
+      MUTATION_V14_P6_8, MUTATION_V14_P6_9,
+      0.000, 0.060, 0.0, 0.0, 0.040, { 1, 0, 0, 0, 0 } },
+    { "群体契约", "用资源换协同防御。",
+      MUTATION_V14_P7_8, MUTATION_V14_P7_9,
+      0.040, 0.000, 0.0, 0.0, 0.050, { 0, 0, 0, 0, 1 } },
+    { "概念闭环", "记忆落地，概念自我复制。",
+      MUTATION_V14_P12_3, MUTATION_V14_P12_2,
+      0.050, 0.050, 0.0, 0.0, 0.000, { 1, 0, 0, 0, 0 } },
+    { "终局引擎", "共鸣驱动熵差，熵差反哺共鸣。",
+      MUTATION_V14_P13_3, MUTATION_V14_P13_0,
+      0.070, 0.000, 0.0, 0.0, 0.000, { 1, 0, 0, 0, 0 } },
 };
 
 #define SYNERGY_COUNT ((int)(sizeof(k_synergies) / sizeof(k_synergies[0])))
@@ -919,6 +1258,21 @@ static double mutation_phase_band(int phase)
     return MUTATION_COST_BAND_EARLY;
 }
 
+/* v14 E2：本纪元已购突变总数（三个槽位合计，同一突变在不同物种上各算一张）。
+ * 用“已购张数”而不是“池子规模”做指数，内容从 204 涨到 282 也不会改变定价。
+ * 指数按方案原文取“全部已购张数”；自动策略只买分化前置后，纪元 3 的张数落在
+ * 十几张，1.12^k 收敛在 5–6 倍，不会像扫货时代那样失控。 */
+static int run_mutations_owned(const GameState *game)
+{
+    int owned = 0;
+    for (int slot = 0; slot < game->run.active_species_count; ++slot) {
+        for (int id = 0; id < MUTATION_COUNT; ++id) {
+            if (game->run.active_species[slot].mutations[id]) ++owned;
+        }
+    }
+    return owned;
+}
+
 double evolution_mutation_atp_cost(const GameState *game, int mutation_id)
 {
     const MutationDef *def = mutation_get(mutation_id);
@@ -930,7 +1284,10 @@ double evolution_mutation_atp_cost(const GameState *game, int mutation_id)
      * 只保留 1e7 的绝对地板；价格随产率同步上涨。 */
     double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
     evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
-    double cost = atp_rate * MUTATION_ATP_SECONDS;
+    /* v14 E1/E2：第 k+1 张 = 10 s × 1.12^k，k 为本纪元已购张数。
+     * 等比数列自己收敛到 12–16 张（见 data/balance.h 注释），不需要实测调参。 */
+    double cost = atp_rate * MUTATION_ATP_SECONDS *
+                  pow(MUTATION_TICKET_GROWTH, (double)run_mutations_owned(game));
     /* v10：地板必须是“随收入缩放”的相对值。固定的 1e7 在收入压缩后等于
      * 永远买不起的门票（实测纪元 2 所有 run 卡在阶段 8）。这里改成至少 3 秒产率。 */
     double floor_cost = atp_rate * 3.0;
@@ -1047,6 +1404,19 @@ void evolution_synergy_bonuses(const GameState *game, int species_slot, double *
         }
     }
 
+    /* v14 E10：支线物种的共振乘算减半（乘数开方），防止 156 条支线靠共振点火。 */
+    const SpeciesState *owner =
+        game && species_slot >= 0 && species_slot < game->run.active_species_count
+            ? &game->run.active_species[species_slot] : 0;
+    if (owner && owner->species_id >= SPECIES_V14_P1_0
+        && !species_is_mainline(owner->species_id)) {
+        atp = sqrt(atp);
+        biomass = sqrt(biomass);
+        dna = sqrt(dna);
+        cap = sqrt(cap);
+        growth = sqrt(growth);
+    }
+
     if (atp_multiplier) {
         *atp_multiplier = atp;
     }
@@ -1126,8 +1496,17 @@ double evolution_speciation_cost(const GameState *game, int target_species_id)
     if (phase == 12) {
         seconds *= SPECIATION_PHASE12_MULT;
     }
+    /* v14 E7：纪元 2 唯一的阻力——纪元 1 要留给首分化，纪元 3 已有 hard wall。 */
+    if (game->run.era == 2) {
+        seconds *= SPECIATION_ERA2_MULT;
+    }
     double ticket = seconds * biomass_rate;
     double cost = ticket > base ? ticket : base;
+    /* v14 E9：支线（非主线节点）门票 ×1.25。支线是额外收益，必须付溢价，
+     * 否则玩家只会选支线、不选主链。 */
+    if (target_species_id >= SPECIES_V14_P1_0 && !species_is_mainline(target_species_id)) {
+        cost *= SPECIATION_BRANCH_MULT;
+    }
     double discount = legacy_speciation_discount(&game->legacy);
     return floor(cost * (1.0 - discount));
 }
@@ -1286,6 +1665,17 @@ static int find_key_mutation(const GameState *game, const SpeciesState *species,
      * 并把保底深度封在 MAINLINE_GUARANTEE_MAX_PHASE，避免最深一层变成必得。 */
     (void)game;
     int main_child = species_main_child(species->species_id);
+    /* v14：额外分支物种不在主链表里，main_child 恒为 -1，于是支线候选永远没有
+     * 保底位——候选 4 张全靠随机，实测阶段 1 的分支整局凑不齐前置，
+     * 单局物种数卡在 13（硬门槛 3 要求 16–20）。这里给“非主线”也补一条保底：
+     * 取该物种在分化规则表里的子节点，与主线同一套判定。 */
+    if (main_child < 0) {
+        int children[8];
+        int child_count = species_children(species->species_id, children, 8);
+        if (child_count > 0) {
+            main_child = children[0];
+        }
+    }
     if (main_child < 0 || species_phase(main_child) > MAINLINE_GUARANTEE_MAX_PHASE) {
         return -1;
     }
@@ -1496,6 +1886,73 @@ ActionCode evolution_open_mutation_offer(GameState *game, int species_slot)
     }
     game->run.rng_state = rng;
     game->run.mutation_offer = offer;
+    game->run.mutation_refresh_count = 0;
+    return ACTION_OK;
+}
+
+/* v14 E3 补充：放弃当前候选（不计购买、不退 DNA）。
+ * 三个槽位共用一个候选位，若某个槽位的候选里没有任何能推进分化的卡，
+ * 又不允许跨槽释放，额外分支就永远拿不到自己的前置（实测单局物种卡在 13）。
+ * 放弃后由调用方负责冷却，避免靠“反复放弃 + 重开”白嫖候选。 */
+void evolution_dismiss_mutation_offer(GameState *game)
+{
+    if (!game || !game->run.mutation_offer.active) {
+        return;
+    }
+    memset(&game->run.mutation_offer, 0, sizeof(game->run.mutation_offer));
+}
+
+double evolution_mutation_refresh_cost(const GameState *game)
+{
+    const MutationOfferState *offer = &game->run.mutation_offer;
+    if (!offer->active || offer->choice_count <= 0) {
+        return 0.0;
+    }
+    double cheapest = offer->dna_costs[0];
+    for (int i = 1; i < offer->choice_count; ++i) {
+        if (offer->dna_costs[i] < cheapest) cheapest = offer->dna_costs[i];
+    }
+    double anchor = cheapest * MUTATION_REFRESH_CHEAP_SHARE;
+    if (anchor < MUTATION_REFRESH_MIN) anchor = MUTATION_REFRESH_MIN;
+    double share = game->run.dna * MUTATION_REFRESH_DNA_SHARE;
+    double cost = share < anchor ? share : anchor;
+    cost *= pow(MUTATION_REFRESH_GROWTH, (double)game->run.mutation_refresh_count);
+    /* 余额为 0 时 min() 会让刷新免费，留 1 DNA 的硬地板。 */
+    if (cost < 1.0) cost = 1.0;
+    return ceil(cost);
+}
+
+ActionCode evolution_refresh_mutation_offer(GameState *game, int species_slot)
+{
+    if (game->phase != PHASE_RUNNING) {
+        return ACTION_INVALID_PHASE;
+    }
+    if (!valid_slot(game, species_slot)) {
+        return ACTION_INVALID_TARGET;
+    }
+    MutationOfferState *offer = &game->run.mutation_offer;
+    if (!offer->active || offer->species_slot != species_slot) {
+        return ACTION_INVALID_TARGET;
+    }
+    if (game->run.mutation_refresh_count >= MUTATION_REFRESH_LIMIT) {
+        return ACTION_LEVEL_MAXED;
+    }
+    double cost = evolution_mutation_refresh_cost(game);
+    if (!isfinite(cost) || cost < 0.0) {
+        return ACTION_INVALID_TARGET;
+    }
+    if (game->run.dna < cost) {
+        return ACTION_NOT_ENOUGH_DNA;
+    }
+    unsigned int rng = game->run.rng_state;
+    MutationOfferState fresh = evolution_generate_mutation_offer_rng(game, species_slot, &rng);
+    if (!fresh.active) {
+        return ACTION_REQUIREMENT_NOT_MET;
+    }
+    game->run.dna -= cost;
+    game->run.rng_state = rng;
+    game->run.mutation_offer = fresh;
+    ++game->run.mutation_refresh_count;
     return ACTION_OK;
 }
 
@@ -1680,6 +2137,7 @@ ActionCode evolution_apply_speciation(GameState *game, int species_slot, int tar
     run->discovered_species[target_species_id] = true;
     game->legacy.codex_species[target_species_id] = true;
     memset(&run->mutation_offer, 0, sizeof(run->mutation_offer));
+    run->mutation_refresh_count = 0;
     return ACTION_OK;
 }
 
@@ -2057,11 +2515,14 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
                               &syn_growth, 0);
 
     const SpeciesKeystone *keystone = species_keystone(species->species_id);
-    double key_atp = keystone ? 1.0 + keystone->atp_bonus : 1.0;
-    double key_biomass = keystone ? 1.0 + keystone->biomass_bonus : 1.0;
-    double key_dna = keystone ? 1.0 + keystone->dna_bonus : 1.0;
-    double key_cap = keystone ? 1.0 + keystone->cap_bonus : 1.0;
-    double key_growth = keystone ? 1.0 + keystone->growth_bonus : 1.0;
+    /* v14 E10：支线基石加成减半，避免新加的方向卡物种比主线更划算。 */
+    double key_scale = (species->species_id >= SPECIES_V14_P1_0
+                        && !species_is_mainline(species->species_id)) ? 0.5 : 1.0;
+    double key_atp = keystone ? 1.0 + keystone->atp_bonus * key_scale : 1.0;
+    double key_biomass = keystone ? 1.0 + keystone->biomass_bonus * key_scale : 1.0;
+    double key_dna = keystone ? 1.0 + keystone->dna_bonus * key_scale : 1.0;
+    double key_cap = keystone ? 1.0 + keystone->cap_bonus * key_scale : 1.0;
+    double key_growth = keystone ? 1.0 + keystone->growth_bonus * key_scale : 1.0;
     double key_event = 1.0;
     if (keystone && run->current_environment_id == ENV_LOW_LIGHT_PERIOD) {
         key_event *= 1.0 + keystone->low_light_bonus;

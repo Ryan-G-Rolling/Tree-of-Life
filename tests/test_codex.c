@@ -31,8 +31,8 @@ int main(void)
     assert(!codex_entry((CodexKind)2, 0));
     assert(strcmp(codex_entry(CODEX_SPECIES, SPECIES_PROTOCELL)->name, "原始细胞") == 0);
     assert(strcmp(codex_entry(CODEX_MUTATION, MUTATION_NUCLEUS)->tagline, "说明书请妥善保管。") == 0);
-    assert(strcmp(codex_entry(CODEX_SPECIES, SPECIES_COUNT - 1)->name, "绝对心智") == 0);
-    assert(strcmp(codex_entry(CODEX_MUTATION, MUTATION_COUNT - 1)->name, "最终整合") == 0);
-    puts("Codex: all 186 species and 204 mutation names/quotes, IDs and bounds passed");
+    assert(strcmp(codex_entry(CODEX_SPECIES, SPECIES_COUNT - 1)->name, "虚空孢子") == 0);
+    assert(strcmp(codex_entry(CODEX_MUTATION, MUTATION_COUNT - 1)->name, "终局共鸣") == 0);
+    puts("Codex: all 264 species and 282 mutation names/quotes, IDs and bounds passed");
     return 0;
 }

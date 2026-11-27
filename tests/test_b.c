@@ -119,8 +119,8 @@ static void test_rng(void)
 
 static void test_species_data(void)
 {
-    CHECK(SPECIES_COUNT == 186);
-    CHECK(MUTATION_COUNT == 204);
+    CHECK(SPECIES_COUNT == 264);
+    CHECK(MUTATION_COUNT == 282);
     CHECK(species_phase(SPECIES_PROTOCELL) == 0);
     CHECK(species_phase(SPECIES_MULTICELLULAR_COLONY) == 3);
     CHECK(species_phase(SPECIES_DIFFERENTIATED_TISSUE) == 4);
@@ -131,10 +131,10 @@ static void test_species_data(void)
     CHECK_NEAR(species_base_speciation_cost(SPECIES_ALGAL_EUKARYOTE), 350.0, 0.001);
 
     int children[SPECIES_COUNT];
-    CHECK(species_children(SPECIES_PROTOCELL, children, SPECIES_COUNT) == 22);
-    CHECK(species_children(SPECIES_PROTOZOAN, children, SPECIES_COUNT) == 5);
-    CHECK(species_children(SPECIES_MULTICELLULAR_COLONY, children, SPECIES_COUNT) == 16);
-    CHECK(species_children(SPECIES_DIFFERENTIATED_TISSUE, children, SPECIES_COUNT) == 11);
+    CHECK(species_children(SPECIES_PROTOCELL, children, SPECIES_COUNT) == 27);
+    CHECK(species_children(SPECIES_PROTOZOAN, children, SPECIES_COUNT) == 6);
+    CHECK(species_children(SPECIES_MULTICELLULAR_COLONY, children, SPECIES_COUNT) == 19);
+    CHECK(species_children(SPECIES_DIFFERENTIATED_TISSUE, children, SPECIES_COUNT) == 15);
     CHECK(species_has_parent(SPECIES_EXTREMOPHILE_COLONY, SPECIES_PROTOZOAN));
     CHECK(species_has_parent(SPECIES_COGNITIVE_BIOSPHERE, SPECIES_SYMBIOTIC_SUPERORGANISM));
     CHECK(!species_has_parent(SPECIES_EXTREMOPHILE_COLONY, SPECIES_PROTOCELL));
@@ -623,7 +623,7 @@ static void test_environment_steps(void)
     CHECK(step.event_ended);
     CHECK(step.crisis_survived);
 
-    /* 应急储备 Lv.5：乘算 0.94^5 = 0.7339，损失 45% × 0.7339 */
+    /* 应急储备 Lv.5：v14 E5 起乘算 0.90^5 = 0.59049，损失 45% × 0.59049 */
     GameState meteor_reserve;
     reset_game(&meteor_reserve, SPECIES_MULTICELLULAR_COLONY);
     meteor_reserve.run.active_species[0].population = 100.0;
@@ -632,12 +632,12 @@ static void test_environment_steps(void)
     meteor_reserve.run.event_interval_left = 0.05;
     meteor_reserve.run.next_environment_id = ENV_METEOR_IMPACT;
     step = environment_calculate_step(&meteor_reserve, FIXED_STEP_SECONDS);
-    CHECK_NEAR(step.instant_population_loss_ratio, INSTANT_LOSS_MAX * pow(0.94, 5.0), 0.0001);
+    CHECK_NEAR(step.instant_population_loss_ratio, INSTANT_LOSS_MAX * pow(RESERVE_REDUCTION_STEP, 5.0), 0.0001);
 
-    /* v8 P0-15：储备减伤乘算，约 27 级触底 0.20 */
+    /* v8 P0-15：储备减伤乘算；v14 E5 步进 0.90，第 18 级触底 0.20 */
     CHECK_NEAR(reserve_damage_scale(0), 1.0, 1e-9);
-    CHECK_NEAR(reserve_damage_scale(5), pow(0.94, 5.0), 1e-9);
-    CHECK_NEAR(reserve_damage_scale(27), 0.20, 1e-9);
+    CHECK_NEAR(reserve_damage_scale(5), pow(RESERVE_REDUCTION_STEP, 5.0), 1e-9);
+    CHECK_NEAR(reserve_damage_scale(18), 0.20, 1e-9);
     CHECK_NEAR(reserve_damage_scale(80), 0.20, 1e-9);
 
     /* Adaptation Lv.3 事件预览 */
@@ -1139,7 +1139,7 @@ static void test_synergy(void)
 
     GameState game;
     reset_game(&game, SPECIES_PROTOCELL);
-    CHECK(evolution_synergy_count() == 20);
+    CHECK(evolution_synergy_count() == 29);
     CHECK(evolution_active_synergy_count(&game, 0) == 0);
 
     game.run.active_species[0].mutations[MUTATION_PHOTOSYNTHESIS] = true;
@@ -1788,7 +1788,7 @@ static void test_round13_content_and_fuzz(void)
     CHECK(species_required_mutations(SPECIES_HIVE_POLITY, required, 4) == 2);
     CHECK(required[0] == MUTATION_QUORUM_SENSING);
     CHECK(required[1] == MUTATION_LANGUAGE);
-    CHECK(evolution_synergy_count() == 20);
+    CHECK(evolution_synergy_count() == 29);
 
     /* 理念加成突变（侧表实现，不扩 MutationDef） */
     CHECK_NEAR(evolution_mutation_knowledge_bonus(MUTATION_COLLECTIVE_MEMORY), 0.30, 1e-9);
@@ -1930,8 +1930,8 @@ static void test_main_lineage(void)
 /* 第十四轮：20 物种 / 20 突变 / 两个新阶段的结构与可达性 */
 static void test_round14_content(void)
 {
-    CHECK(SPECIES_COUNT == 186);
-    CHECK(MUTATION_COUNT == 204);
+    CHECK(SPECIES_COUNT == 264);
+    CHECK(MUTATION_COUNT == 282);
     CHECK(species_phase(SPECIES_THERMOPHILIC_ARCHAEA) == 2);
     CHECK(species_phase(SPECIES_DYSON_SWARM) == 8);
     CHECK(species_phase(SPECIES_NOETIC_FIELD) == 12);
@@ -1948,7 +1948,7 @@ static void test_round14_content(void)
     CHECK(species_required_mutations(SPECIES_COSMIC_WEAVE, required, 4) == 2);
     CHECK(required[0] == MUTATION_COSMIC_AWARENESS);
     CHECK(required[1] == MUTATION_ENTROPY_REVERSAL);
-    CHECK(evolution_synergy_count() == 20);
+    CHECK(evolution_synergy_count() == 29);
     CHECK(evolution_sub_upgrade_count() == 30);
     CHECK_NEAR(evolution_mutation_knowledge_bonus(MUTATION_COSMIC_AWARENESS), 0.30, 1e-9);
 
@@ -1985,8 +1985,8 @@ static void test_round14_content(void)
 /* 第十五轮：14 个阶段各 10 物种 + 10 突变，并检查 ATP 出口 */
 static void test_round15_content(void)
 {
-    CHECK(SPECIES_COUNT == 186);
-    CHECK(MUTATION_COUNT == 204);
+    CHECK(SPECIES_COUNT == 264);
+    CHECK(MUTATION_COUNT == 282);
 
     int species_per_stage[14] = { 0 };
     for (int id = 46; id < SPECIES_COUNT; ++id) {
