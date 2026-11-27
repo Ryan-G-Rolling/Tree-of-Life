@@ -550,3 +550,14 @@ G3 末/中 = 0.872/0.837 = **1.042** PASS；G4 物种中位 **17**（P10 17 / P9
   已按截图逐项调亮/改形。
 - 性能：展台生境层每帧约 60–90 个图元（城市最多），仍远低于星图 264 节点的绘制量。
 
+**同步状态（2026-11-28 01:27）**
+
+- 本地提交：`e081c9e`（生境演替）→ `4d8989a`（合并远端 `24715d7` 的 v14/v16/v19 规则与报表修正）。
+  合并后重新编译 0 warning，`make test` / `test-layout` / `test-ui` 全通过，`--shot --ss 3` 重拍 27 张。
+- **推送未完成**：本机走 `http://127.0.0.1:63241` 代理，`git push` 反复返回
+  `CONNECT tunnel failed, response 502` / `schannel: server closed abruptly`；直连 github.com:443 超时。
+  连续 12 次 `git fetch` 同样失败，无法确认远端最新引用（一次 `ls-remote` 曾看到 `b8c9d5e`，
+  若确有新提交，推送前需先 `git fetch && git merge`）。
+- 待网络恢复后执行：`git fetch origin && git merge origin/main && git push origin main`。
+  本地 `deliverables/TreeOfLife.exe`（71 MB）已按合并后源码重建，`deliverables/screens/` 27 张已更新。
+
