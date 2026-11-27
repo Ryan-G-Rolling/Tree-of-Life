@@ -17,9 +17,9 @@
 #define MAX_ACTIVE_SPECIES 3
 /* 第十四轮：内容按每批 20 个扩展，预留到下一批仍不越界
  * 第十五轮：一次扩到 186 物种 / 204 突变，结构上限抬到 256 */
-#define MAX_SPECIES 256
-#define MAX_MUTATIONS 256
-#define MAX_ENVIRONMENTS 16
+#define MAX_SPECIES 320
+#define MAX_MUTATIONS 320
+#define MAX_ENVIRONMENTS 24
 #define MAX_MUTATION_CHOICES 4
 
 /* ---- 02 §5.1 物种编号（Member B 数据表 / Member C 显示） ---- */
@@ -218,6 +218,84 @@ typedef enum {
     SPECIES_LAW_FORGE,
     SPECIES_VOID_BLOOM,
     SPECIES_ABSOLUTE_MIND,
+    SPECIES_V14_P1_0,
+    SPECIES_V14_P1_1,
+    SPECIES_V14_P1_2,
+    SPECIES_V14_P1_3,
+    SPECIES_V14_P1_4,
+    SPECIES_V14_P1_5,
+    SPECIES_V14_P1_6,
+    SPECIES_V14_P1_7,
+    SPECIES_V14_P1_8,
+    SPECIES_V14_P1_9,
+    SPECIES_V14_P2_0,
+    SPECIES_V14_P2_1,
+    SPECIES_V14_P2_2,
+    SPECIES_V14_P2_3,
+    SPECIES_V14_P2_4,
+    SPECIES_V14_P2_5,
+    SPECIES_V14_P2_6,
+    SPECIES_V14_P2_7,
+    SPECIES_V14_P2_8,
+    SPECIES_V14_P2_9,
+    SPECIES_V14_P3_0,
+    SPECIES_V14_P3_1,
+    SPECIES_V14_P3_2,
+    SPECIES_V14_P3_3,
+    SPECIES_V14_P3_4,
+    SPECIES_V14_P3_5,
+    SPECIES_V14_P3_6,
+    SPECIES_V14_P3_7,
+    SPECIES_V14_P3_8,
+    SPECIES_V14_P3_9,
+    SPECIES_V14_P4_0,
+    SPECIES_V14_P4_1,
+    SPECIES_V14_P4_2,
+    SPECIES_V14_P4_3,
+    SPECIES_V14_P4_4,
+    SPECIES_V14_P4_5,
+    SPECIES_V14_P4_6,
+    SPECIES_V14_P4_7,
+    SPECIES_V14_P4_8,
+    SPECIES_V14_P4_9,
+    SPECIES_V14_P5_0,
+    SPECIES_V14_P5_1,
+    SPECIES_V14_P5_2,
+    SPECIES_V14_P5_3,
+    SPECIES_V14_P5_4,
+    SPECIES_V14_P5_5,
+    SPECIES_V14_P5_6,
+    SPECIES_V14_P5_7,
+    SPECIES_V14_P5_8,
+    SPECIES_V14_P5_9,
+    SPECIES_V14_P6_0,
+    SPECIES_V14_P6_1,
+    SPECIES_V14_P6_2,
+    SPECIES_V14_P6_3,
+    SPECIES_V14_P6_4,
+    SPECIES_V14_P6_5,
+    SPECIES_V14_P6_6,
+    SPECIES_V14_P6_7,
+    SPECIES_V14_P6_8,
+    SPECIES_V14_P6_9,
+    SPECIES_V14_P7_0,
+    SPECIES_V14_P7_1,
+    SPECIES_V14_P7_2,
+    SPECIES_V14_P7_3,
+    SPECIES_V14_P7_4,
+    SPECIES_V14_P7_5,
+    SPECIES_V14_P7_6,
+    SPECIES_V14_P7_7,
+    SPECIES_V14_P7_8,
+    SPECIES_V14_P7_9,
+    SPECIES_V14_P12_0,
+    SPECIES_V14_P12_1,
+    SPECIES_V14_P12_2,
+    SPECIES_V14_P12_3,
+    SPECIES_V14_P13_0,
+    SPECIES_V14_P13_1,
+    SPECIES_V14_P13_2,
+    SPECIES_V14_P13_3,
     SPECIES_COUNT
 } SpeciesId;
 
@@ -445,6 +523,84 @@ typedef enum {
     MUTATION_VOID_GARDENING,
     MUTATION_ABSOLUTE_LOGIC,
     MUTATION_FINAL_INTEGRATION,
+    MUTATION_V14_P1_0,
+    MUTATION_V14_P1_1,
+    MUTATION_V14_P1_2,
+    MUTATION_V14_P1_3,
+    MUTATION_V14_P1_4,
+    MUTATION_V14_P1_5,
+    MUTATION_V14_P1_6,
+    MUTATION_V14_P1_7,
+    MUTATION_V14_P1_8,
+    MUTATION_V14_P1_9,
+    MUTATION_V14_P2_0,
+    MUTATION_V14_P2_1,
+    MUTATION_V14_P2_2,
+    MUTATION_V14_P2_3,
+    MUTATION_V14_P2_4,
+    MUTATION_V14_P2_5,
+    MUTATION_V14_P2_6,
+    MUTATION_V14_P2_7,
+    MUTATION_V14_P2_8,
+    MUTATION_V14_P2_9,
+    MUTATION_V14_P3_0,
+    MUTATION_V14_P3_1,
+    MUTATION_V14_P3_2,
+    MUTATION_V14_P3_3,
+    MUTATION_V14_P3_4,
+    MUTATION_V14_P3_5,
+    MUTATION_V14_P3_6,
+    MUTATION_V14_P3_7,
+    MUTATION_V14_P3_8,
+    MUTATION_V14_P3_9,
+    MUTATION_V14_P4_0,
+    MUTATION_V14_P4_1,
+    MUTATION_V14_P4_2,
+    MUTATION_V14_P4_3,
+    MUTATION_V14_P4_4,
+    MUTATION_V14_P4_5,
+    MUTATION_V14_P4_6,
+    MUTATION_V14_P4_7,
+    MUTATION_V14_P4_8,
+    MUTATION_V14_P4_9,
+    MUTATION_V14_P5_0,
+    MUTATION_V14_P5_1,
+    MUTATION_V14_P5_2,
+    MUTATION_V14_P5_3,
+    MUTATION_V14_P5_4,
+    MUTATION_V14_P5_5,
+    MUTATION_V14_P5_6,
+    MUTATION_V14_P5_7,
+    MUTATION_V14_P5_8,
+    MUTATION_V14_P5_9,
+    MUTATION_V14_P6_0,
+    MUTATION_V14_P6_1,
+    MUTATION_V14_P6_2,
+    MUTATION_V14_P6_3,
+    MUTATION_V14_P6_4,
+    MUTATION_V14_P6_5,
+    MUTATION_V14_P6_6,
+    MUTATION_V14_P6_7,
+    MUTATION_V14_P6_8,
+    MUTATION_V14_P6_9,
+    MUTATION_V14_P7_0,
+    MUTATION_V14_P7_1,
+    MUTATION_V14_P7_2,
+    MUTATION_V14_P7_3,
+    MUTATION_V14_P7_4,
+    MUTATION_V14_P7_5,
+    MUTATION_V14_P7_6,
+    MUTATION_V14_P7_7,
+    MUTATION_V14_P7_8,
+    MUTATION_V14_P7_9,
+    MUTATION_V14_P12_0,
+    MUTATION_V14_P12_1,
+    MUTATION_V14_P12_2,
+    MUTATION_V14_P12_3,
+    MUTATION_V14_P13_0,
+    MUTATION_V14_P13_1,
+    MUTATION_V14_P13_2,
+    MUTATION_V14_P13_3,
     MUTATION_COUNT
 } MutationId;
 
@@ -477,6 +633,12 @@ typedef enum {
     ENV_LONG_SUMMER,
     /* 第七轮：阶段 5 之后的工业污染危机 */
     ENV_INDUSTRIAL_SMOG,
+    /* v10 P0-26：纪元 3 的新危机类型（此前从未在任何纪元出现） */
+    ENV_ACID_RAIN,
+    ENV_RADIATION_FALLOUT,
+    /* v10 收口：把危机类型扩到 11 类，单局才可能见到 ≥10 类 */
+    ENV_OCEAN_ACIDIFICATION,
+    ENV_VOLCANIC_WINTER,
     ENV_COUNT
 } EnvironmentId;
 
@@ -514,7 +676,8 @@ typedef enum {
     ACTION_BUY_CAPACITY,
     ACTION_BUY_RESERVE,
     ACTION_COLLECT_BUFF,
-    ACTION_BUY_INSIGHT
+    ACTION_BUY_INSIGHT,
+    ACTION_REFRESH_MUTATIONS   /* v14 E3：花 DNA 换一批突变候选 */
 } ActionType;
 
 /* ---- 第十六轮：随机增益因子（页面飘浮的可点击细胞 / DNA） ---- */
@@ -562,6 +725,7 @@ typedef struct {
     SpeciesState active_species[MAX_ACTIVE_SPECIES];
 
     MutationOfferState mutation_offer;
+    int mutation_refresh_count;   /* v14 E3：本批候选已刷新次数（每批 ≤3） */
 
     int current_environment_id;
     int next_environment_id;
@@ -597,6 +761,10 @@ typedef struct {
     int buff_collected;            /* 本纪收集次数 */
     int buff_rare_collected;       /* 本纪稀有增益收集次数 */
     int insight_levels;            /* 洞见等级（无上限，每级 +2% 全产率） */
+
+    /* v10 P0-26：危机池 6 选 4 与逐类型台账（存档 v9 新增字段） */
+    unsigned int crisis_selection; /* 本纪元按 run 种子抽中的 4 类危机（环境 id 位掩码） */
+    unsigned int crisis_seen;      /* 本纪元出现过的危机类型（供“逐类型一条记录”口径） */
 } RunState;
 
 typedef struct {

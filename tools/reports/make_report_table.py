@@ -1,4 +1,4 @@
-"""Generate observed.csv + assets/acceptance.js from raw CSVs.
+﻿"""Generate observed.csv + assets/acceptance.js from raw CSVs.
 
 v7 P1-1:
   build/design.csv   手写目标（min,max）；改动会产生新的 design.lock 不匹配
@@ -27,7 +27,10 @@ OBSERVED = os.path.join(HERE, "observed.csv")
 B2 = "batch2_scan_round15.csv"
 B3 = "batch3_scan_round15.csv"
 B3X = "batch3_explore_round15.csv"
-CRISIS_IDS = {1, 2, 3, 4, 5, 6, 13}
+# v10 P0-26：危机扩到 11 类（新增 14 酸雨 / 15 辐射尘暴 / 16 海洋酸化 / 17 火山冬天）。
+# 旧口径只统计 1–6、13，纪元 2 的池 {6,13,14,15} 与纪元 3 的池 {1,5,16,17}
+# 会被漏掉一半样本，逐类型通过率与“全清率”都失真。
+CRISIS_IDS = {1, 2, 3, 4, 5, 6, 13, 14, 15, 16, 17}
 
 
 def rows(name, prefix):
@@ -116,6 +119,48 @@ def fast_spec_era3():
     """纪元 3 首次分化落在第一步（跨轮物资直接兑现）的比例。"""
     flags = [int(r[4]) for r in rows(B3, "RAMPTIME,") if int(r[2]) == 3]
     return pct(sum(flags), len(flags)) if flags else 0.0
+
+
+def sec_per_upgrade():
+    """v10 P0-22：每类单轮升级的单级耗时（600 s / 购买次数），三个升级轨合计。"""
+    values = []
+    for name in (B2, B3):
+        for r in rows(name, "UPGSUM,"):
+            buys = int(r[3])
+            if buys > 0:
+                values.append(600.0 / buys)
+    if not values:
+        return 0.0
+    values.sort()
+    return round(values[len(values) // 2], 1)
+
+
+def era3_spend():
+    """v10 P0-22：纪元 3 的 ATP 支出中位量级。"""
+    values = [float(r[3]) for r in rows(B3, "ATPSUM,") if int(r[2]) == 3]
+    return round(statistics.median(values), 0) if values else 0.0
+
+
+def reserve26_share():
+    """v10 P0-25：储备顶到 26 级（减伤触底）的纪元占比。"""
+    values = [float(r[4]) for r in rows(B3, "SINKSUM,")]
+    if not values:
+        return 0.0
+    return round(100.0 * sum(1 for v in values if v >= 26) / len(values), 1)
+
+
+def crisis_types_run():
+    """v10 P0-26：单局出现过的危机类型数（去重，同一局三个纪元）。
+
+    只取 batch3：它一局连续跑三个纪元；把 batch2 的 run 序号混进来会张冠李戴。
+    """
+    per_run = {}
+    for r in rows(B3, "CRISIS,"):
+        per_run.setdefault(int(r[9]), set()).add(int(r[2]))
+    if not per_run:
+        return 0.0
+    counts = sorted(len(v) for v in per_run.values())
+    return float(counts[len(counts) // 2])
 
 
 def atp_ledger_gap():
@@ -207,7 +252,10 @@ def build_metrics():
     ep2 = [int(r[9]) for r in b2]
     ep3 = [int(r[5]) for r in b3]
     stage1 = [int(r[4]) for r in b2]
+    stage2 = [int(r[10]) for r in b2]
     stage3 = [int(r[6]) for r in b3]
+    cap_times = [float(r[3]) for name in (B2, B3) for r in rows(name, "RAMPTIME,")
+                 if float(r[3]) >= 0.0]
     first_spec = sorted(float(r[18]) for r in b2)
     first_mut = sorted(float(r[27]) for r in b2)
     atp_left = statistics.median(float(r[21]) for r in b2)
@@ -314,13 +362,13 @@ def build_metrics():
         "atp_unspent_era2": (atp_unspent(B2, 2), f"{atp_unspent(B2, 2)}%", "ATPSUM era2"),
         "atp_unspent_era3": (atp_unspent(B3, 3), f"{atp_unspent(B3, 3)}%", "ATPSUM era3"),
         "atp_left_600": (round(atp_left, 0), f"{atp_left/1e4:.0f} 万", f"{B2} 第22列"),
-        "content_playable": (1.0, "185/185 物种、204/204 突变", "test_every_content_playable"),
+        "content_playable": (1.0, "264 物种（含原始细胞）、282 突变", "test_every_content_playable"),
         "save_bytes": (float(self_test.get("game_state_bytes", 0)),
-                       f"v8，{self_test.get('game_state_bytes', 0)} B", "test_b --json"),
+                       f"v10，{self_test.get('game_state_bytes', 0)} B", "test_b --json"),
         "coverage_run": (float(run_species),
                          f"单局中位 {run_species} 个；随机策略覆盖 "
-                         f"{len([i for i in range(1, 186) if i in species_seeds])}/185 物种、"
-                         f"{len([i for i in range(1, 204) if mutation_counts.get(i, 0) > 0])}/204 突变",
+                         f"{len([i for i in range(1, 264) if i in species_seeds])}/263 物种、"
+                         f"{len([i for i in range(1, 282) if mutation_counts.get(i, 0) > 0])}/282 突变",
                          "COVER_S / BSPEC"),
         "buff_collected_era1": (buff_stat(B2, 1, 3),
                                 f"{buff_stat(B2, 1, 3)} 个", "BUFFSUM era1"),
@@ -347,10 +395,29 @@ def build_metrics():
                       "RAMPTIME era1"),
         "ramp_era3": (ramp_stat(B3, 3)[0],
                       f"到达 {ramp_stat(B3, 3)[0]}%（中位 {ramp_stat(B3, 3)[1]} s）；"
-                      f"首分化即时 {fast_spec_era3()}%",
+                      f"v10 起纪元 3 起点仍为原始细胞",
                       "RAMPTIME era3"),
         "atp_ledger_gap": (atp_ledger_gap(), f"最大残差 {atp_ledger_gap():g} ATP",
                            "ATPSUM 第6列"),
+        # ---------------- v10 P0-22..P0-26 / P1-11 新增台账项 ----------------
+        "sec_per_upgrade": (sec_per_upgrade(),
+                            f"p50 {sec_per_upgrade():g} s（UPGSUM 600 s / 购买次数）",
+                            "UPGSUM"),
+        "era3_spend": (era3_spend(), f"{era3_spend():.3g} ATP", "ATPSUM era3 支出中位"),
+        "reserve26_share": (reserve26_share(), f"{reserve26_share():g}%", "SINKSUM 26 级占比"),
+        "crisis_types_run": (crisis_types_run(), f"中位 {crisis_types_run():g} 类/局",
+                             "CRISIS 逐 run 去重"),
+        "ep3_sigma": (round(statistics.stdev(ep3), 2),
+                      f"σ {round(statistics.stdev(ep3), 2)}", f"{B3} 第6列"),
+        "stage8_arrive_era1": (pct(sum(1 for s in stage1 if s >= 8), len(stage1)),
+                               f"{pct(sum(1 for s in stage1 if s >= 8), len(stage1))}%",
+                               f"{B2} 第5列 ≥8"),
+        "stage10_arrive_era2": (pct(sum(1 for s in stage2 if s >= 10), len(stage2)),
+                                f"{pct(sum(1 for s in stage2 if s >= 10), len(stage2))}%",
+                                f"{B2} 第11列 ≥10"),
+        "cap_time_p50": (round(statistics.median(t for t in cap_times if t > 0), 1) if cap_times else 0.0,
+                         f"{round(statistics.median(t for t in cap_times if t > 0), 1)} s"
+                         if cap_times else "0 s", "RAMPTIME 到达封顶时刻"),
     }
 
 

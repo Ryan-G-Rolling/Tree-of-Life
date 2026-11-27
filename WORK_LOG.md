@@ -300,3 +300,128 @@ A/B/C 可运行整合版已在此前完成，Git 基线为 `44e2c0d`；既有结
 - 文明星球海岸线改 24 顶点噪声多边形 + 近岸浅海 + 植被/沙漠碎斑；`morph_civ` 城市灯从 36 颗大点收成 4 簇 × 5 颗微光。
 - 修 bug：3 倍离屏 + scissor 下 `DrawTriangleFan`/`DrawTriangle` 整片不落像素（同链路 `DrawCircle`/`DrawRectangle` 正常），大陆不可见 → 改扫描线求交 + `DrawRectangleV` 填充（`fill_blob`）；`morph_civ` 与 `planet_body` 重复打城市灯叠成金色噪点 → 删后者；帧数日志 20 → 25。
 - 产物：`docs/screens/final/art_sheet_morph_v18.png` 与 25 张 4K 截图归档。
+
+## 2026-11-27 · Agent · v10 定价体系与结构收口（第十九轮）
+
+- **P0-22 四张价格表改时间本位**：`economy_upgrade_cost` / `evolution_capacity_*` / `evolution_reserve_cost` /
+  `evolution_sub_upgrade_cost` / `evolution_speciation_cost` / `evolution_mutation_atp_cost` 全部改为
+  `N × 被动产率`，锚点统一走新函数 `evolution_price_rates()`（剔除环境与限时增益的瞬时倍率，避免价格抖动）。
+  删掉 `MUTATION_ATP_COST_MAX`（5e8 上限把“45 秒”压成“5 秒”）。点击收益改为 3 秒产率（`CLICK_INCOME_SECONDS`），
+  旧 `BASE_CLICK_ATP` 退出计价。相关：`data/balance.h`、`src/evolution.c`、`src/economy.c`、`src/game.c`、`src/ui_adapter.c`。
+- **P0-23 平方根收益 + 容量上限 20**：`economy_run_multiplier` 与 `evolution_calculate_species_rates` 同步改为
+  `1 + 0.2/0.25 × √L`；`CAPACITY_MAX_LEVEL 20`。配套 `POP_GROWTH_SCALE 3.0` 与 `DNA_INCOME_SCALE 2.0`
+  补回平方根削掉的复合速度（否则 60 种子实测塌到阶段 4）。
+- **P0-24/25**：阶段 13 门票 ×1.55 hard wall；储备减伤 26 级触底后 UI 给出“减免已触底（80%）”提示并禁止扣款
+  （`src/ui.c` 的 `ACTION_LEVEL_MAXED` 分支）。
+- **P0-26 危机 6 选 4**：`era_crisis_pool()` + `roll_crisis_selection()`（按 run 种子抽 4 类，存 `run.crisis_selection`）；
+  新增环境 `ENV_ACID_RAIN`(14) / `ENV_RADIATION_FALLOUT`(15)；`run.crisis_seen` 记录本纪元出现过的类型。
+  CRISIS 日志改为“每局每类一条”，纪元结束补 `survived=0` 行。存档 `SAVE_VERSION 9`，`save.c` 校验危机位掩码。
+- **P1-11 支线分化**：`species_branch_candidates()`（规则层）给出同阶段、非主线、有后继的支线候选，
+  `evolution_validate_speciation` 接受支线目标，`ua_speciation_children` 与演示策略并入候选。
+- **P1-12 Windows 布局检查**：`test-layout` 补 `render.c/atmosphere.c/tex.c/embedded.c/input.c` 与 `$(LIBS)`，
+  MinGW 下首次通过；`.github/workflows/core.yml` 新增 `windows-latest` 任务（MinGW + 官方 raylib 5.5）。
+- **P1-14/15 验收收口**：`design.csv` 重写为 v10 目标（EP 40–50/50–62/52–66、阶段抵达率、单级耗时 25–80 s、
+  纪元 3 支出 ≤1e9、储备 26 级占比 ≤40%、危机类型覆盖、EP σ 等），`make_report_table.py` 新增
+  `sec_per_upgrade / era3_spend / reserve26_share / crisis_types_run / ep3_sigma / stage8_arrive_era1 /
+  stage10_arrive_era2 / cap_time_p50` 与反拟合检查；“185/185”统一为“186 物种（含原始细胞）”。
+- **验证**：`make test` 27 组 92,621 项 + 36 项接线 + 集成 + 60 分钟回归（阶段 8、143 突变、8 分化、30 升级、52 EP）
+  + gameplay + codex 全通过；`make test-layout`（Windows）通过；`make report` 1000 种子跑完。
+- **1000 种子实测**：EP 45 / 54 / 62；阶段 8 / 10 / 12（阶段 12 抵达 95.1%、13 19.2%）；封顶 526.5 s；
+  单级耗时 p50 20 s；纪元 3 支出 3.49e10（v9 为 9.19e10）；储备 26 级占比 0%；危机全清 26.6 / — / 31.7%；
+  存档 v9 3,216 B；单局物种 13。
+- **未达标（如实记录）**：首分化 52 s（目标 150–210）、首突变 16 s（35–60）、纪元 3 支出 3.49e10（≤1e9）、
+  危机类型 7 类/局（项目只有 9 类危机，v10 方案按 18 类估算）、EP σ 2.55（≥4）、子升级 1 层（3–8）、
+  容量 5 级（6–14）、ATP 未花 19.8%（≤10%）。原因：时间本位把价格锚到当前收入后，钱包存量≈1/增长率，
+  高阶段大件（子升级/容量）与门票抢同一笔收入；EP 为小整数，σ 难以到 4。
+- **未完成**：P1-13 `src/screens.c`（237 KB）拆 6 个翻译单元未执行——文件内大量跨屏 static 辅助函数，
+  机械拆分需要同步改 3 个调用点并重跑全部布局/截图验证，本轮时间不足，留待下一轮单独做。
+- **清理**：删除本轮探针 `build/probe_v10.c`、`build/probe_chain.c`、`build/probe_mut.c`、`build/probe_*.exe`
+  与 `%TEMP%` 下的 `v10_*.json`；`tools/reports/` 保留本轮生成的实验 CSV。
+
+## 2026-11-27 · Agent · v10 未达标 8 项收口（第二十轮）
+
+- **目标**：把上一轮验收剩余未达标项修到达标——首分化、首突变、EP σ、阶段 12/13 抵达率、危机覆盖、
+  ATP 未花、纪元 3 支出、单级耗时、容量等级、子升级层数。
+- **数值改动（`data/balance.h`）**：
+  - 单轮升级 `85/95 → 84/94 s ATP 产率`，基因组 `45 → 60 s 生物量产率`（把单级耗时从 100 s 拉回 26 s）。
+  - 容量 `24/10 → 80/10 s`（ATP 主导，生物量与门票解耦，纪元 3 容量从 1 级拉到 10 级）。
+  - 储备 `70 → 110 s ATP 产率`（避免储备滚到 26 级把危机全部磨平；26 级占比 0%）。
+  - 子升级 `25 → 42 s 知识产率`（每纪元 4–6 层 → 实际 4 层）。
+  - 突变 ATP 门票 `30 → 8 s`（此前纪元 3 买 150+ 张突变把 ATP 吃光，容量/升级被饿死）。
+  - `PHASE_RATE_COMPRESSION 0.68 → 0.635`（纪元 3 支出 3.49e10 → 7.64e8）。
+  - 分化门票新增阶段 12 溢价 `SPECIATION_PHASE12_MULT 1.25`、阶段 13 hard wall 收窄到 `1.12`，
+    `SPECIATION_EARLY_FLOOR_SCALE 5.6 → 6.3`（首分化 152 s）。
+  - `EARLY_DNA_BONUS 1.5 → 1.40`（首突变 34.5 → 36.3 s）。
+  - EP 重排：`EP_MUTATION_CAP 8 → 3`、`EP_POINTS_PER_CRISIS 3 → 5`（纪元 3 σ 2.2 → 5.46）。
+- **规则改动**：`evolution_speciation_cost` 增加阶段 12 溢价分支；`src/environment.c` 工业雾霾伤害
+  `1.55% → 1.25%/s`（纪元 2 全清率拉回 28.7%）。
+- **演示策略（`demo/demo_b.c`）**：购买余量 `1.15 → 1.02`（ATP 未花 11.3% → 9.5%）；
+  纪元 3 容量只留 30%→55% 门票生物量预留（纪元 1/2 仍冻结整张门票，保住阶段 8 抵达率）；
+  5 路轮转空转时高水位补买代谢（阈值 4 倍价格）。
+- **验收口径修复**：`tools/reports/make_report_table.py` 的 `CRISIS_IDS` 补齐 14–17；
+  此前纪元 2 池 {6,13,14,15}、纪元 3 池 {1,5,16,17} 各漏一半样本，逐类型通过率与全清率失真。
+- **测试更新（`tests/test_b.c`、`tests/test_integration.c`）**：新增 `test_phase_compress / test_dna_ramp /
+  test_sub_upgrade_cost` 三个由常量推导的辅助函数，替换全部写死的产率、门票、子升级、洞见、DNA 期望值；
+  集成测试改为直接补足 ATP 再验证升级接线。
+- **验证**：`make test` 27 组 92,622 项 + 36 项接线 + 集成 + 60 分钟回归（阶段 8、143 突变、8 分化、30 升级、57 EP）
+  + gameplay + codex 全通过；`mingw32-make` 重建 `treeoflife.exe`；`make report` 1000 种子跑完，43 项全部达标
+  （部分因贴近目标边界被标“需复核”）。
+- **1000 种子实测**：EP 46 / 55 / 64（纪元 3 σ 5.46）；阶段 p50 8 / 10 / 12；阶段 12 抵达 74.3%、13 15.3%；
+  首分化 152 s、首突变 36.3 s；封顶 507.4 s；单级耗时 26.1 s；纪元 3 支出 7.64e8、未花 9.5%；
+  容量 10 级、储备 5 级（26 级占比 0%）；危机类型覆盖中位 10 类/局；全清 34.8 / 28.7 / 36.7%；存档 v9 3,224 B。
+- **未完成**：P1-13 `src/screens.c` 拆 6 个翻译单元仍未执行（同上轮原因）；`git push` 未执行（需用户明确授权）。
+- **清理**：删除本轮临时分析脚本 `build/tmp_analyze.py` 与中间扫描 `build/tmp_b2.csv`、`build/tmp_b3.csv`；
+=======
+  `tools/reports/` 保留 `make report` 生成的正式 CSV。
+
+## 2026-11-27 夜 · v14 一次性扩容（264/282 + 星图重绘 + 时间本位定价终版）
+
+执行者：WorkBuddy（Agent）。依据 `C:/Users/ROG/Doubao/chats/2026-11-25/new-chat/TreeOfLife-优化方案-v14.md` 执行 W1–W13。
+
+- **结构**：`MAX_SPECIES / MAX_MUTATIONS` 256 → 320（`include/game_types.h`）；`SAVE_VERSION` 9 → 10（`data/balance.h`），
+  读到 v9 旧档返回 `SAVE_BAD_VERSION`，不覆盖、不删除。
+- **内容**：`src/species.c` 追加 78 物种（keystone / 子升级 / 分化规则），`src/evolution.c` 追加 78 突变 + 9 条共振，
+  `src/codex.c` 追加 78 + 78 条中文名与短句；`tools/validate_content.py` 11 项全 PASS
+  （物种 264 / 突变 282 / 共振 29 / 字形 1,423）。
+- **定价**：突变票 `10 s × 1.12^已购`（地板 3 s 产率，只对 `min_phase ≥ 8` 收取）；
+  DNA 换一批 `min(0.40×余额, max(10, 0.30×最便宜)) × 1.7^n`、每批 ≤3（新增 `ACTION_REFRESH_MUTATIONS` 与界面「换一批」）；
+  储备 `110 → 45 s`、效率 `0.94 → 0.90`；era2 门票 ×1.18；支线门票 ×1.25。
+- **分化**：`evolution_speciation_offers` 给 3 张方向卡 + 1 张主链保底；支线 keystone/synergy 乘算减半（E10）；
+  `find_key_mutation` 为非主线槽位补「关键突变保底」（此前支线候选没有保底位，整局凑不齐前置）；
+  新增 `evolution_dismiss_mutation_offer`，供自动策略释放三个槽位共用的候选位。
+- **星图**（`src/screens.c`）：264 节点 / 14 环 / 半径 `((i+1)/n)^1.25` / 同屏边上限 120 / 只画已发现与相邻 /
+  缩放 <0.6 隐藏标签 / 未发现节点不泄露名称。
+- **演示策略**（`demo/demo_b.c`）：只买能推进分化的突变（扫纯属性卡会把门票链推到 150+ 张）；
+  三个槽位轮转拿候选，候选无用则花 DNA 刷新或释放并冷却；`EraSummary` 新增 `atp_mutations`，BATCH3 末列输出门票张数口径。
+- **文档与工具**：README 改到 264 / 282 / 22+24 页 / 存档 v10 / 星图新规则；`tools/reports` 覆盖分母改 263 / 282、
+  存档标签改 v10、`design.lock` 重锁；`tools/oneshot_check.sh|ps1` 改成 9 步并打印硬门槛实测；
+  25 张截图按 `--shot --ss 3` 重导到 `deliverables/screens/`。
+
+**验证**
+
+- 严格编译 0 警告；`make test`：27 组 130,892 项 0 失败 + 接线 36 项 + 回归 + gameplay（含新档往返与 v9 旧档拒绝）+
+  codex（264 / 282 全名与短句）+ `test-layout`（全部路线页、264 节点、图鉴 390 条详情）全通过。
+- 1000 种子（`make report`）：EP 45 / 59 / 65（纪元 3 σ 3.07）；阶段 p50 7 / 10 / 11；阶段 12 抵达 35.6%、13 0.0%；
+  首分化 179.6 s、首突变 60.1 s；单局物种中位 15（16–20 区间占 46.7%）；突变中位 17 张（ATP 门票中位 4 张）；
+  覆盖率 55/263 物种、96/282 突变；存档 v10 3,936 B。
+
+**三条硬门槛（方案第 6 节）**
+
+1. 编译 0 警告 + 全部单测 PASS —— **达标**。
+2. era3 突变购买 10–16 张 —— **不达标**：中位 17 张（11–20），其中 ATP 门票中位 4 张。
+   原因：物种门槛要求 ≥15 次分化，每次分化至少 1 张前置 ⇒ 总张数下限本就落在 15–16，
+   两条区间只在「16 物种 / 16 张」这一点重叠。按方案「不达标不许自行调参」的要求，只记录实测。
+3. 单局物种 16–20 —— **中位不达标**：中位 15（13–21），46.7% 的局落在 16–20。主链 p50 只到阶段 11（12 物种），
+   两个额外槽位各推进 1–3 个物种；支线每次分化同样要买前置，与门槛 2 直接对冲。
+
+**未完成 / 遗留**
+
+- 上述两条门槛的结构性冲突需要在方案层重新定值（例如「张数」改门票纯口径，或物种区间下移），本轮未继续微调。
+- `docs/README.md` 与 `docs/02-数据与计算规则.md` 仍是第十五轮口径（前者带只读属性，本轮未改）。
+- `git push` 未执行（需明确授权）。
+
+**清理**：删除临时探针 `build/probe_children.c`、`build/probe_branch.*`、`build/probe_req.*`、`build/demo_trace.exe`；
+`build/report_run.log`、`build/oneshot_check.log`、`build/batch3_oneshot.csv` 属构建产物，留在 `build/`（git 忽略）。
+
+**补记（同日）**：上面写的「`git push` 未执行」已作废——`AGENTS.md` 已授权直接同步 main，
+本轮提交 `10e6edc` 已 push 到 `origin/main`（变基到远端 `9441e93` 之上，冲突仅 `WORK_LOG.md`，双方记录均已保留）。

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Member B 控制台演示
  *
  * 用最小化的 A 侧经济桩快进跑完一轮，把 B 的规则完整走一遍：
@@ -63,11 +63,16 @@ static int g_insight_buys = 0;
 static int g_batch_index = 0;
 static double g_first_mutation = -1.0;
 static int g_last_stage = -1;
+/* v10 P0-22/P0-26：单级耗时台账与“逐类型一条记录”的危机台账 */
+static int g_upgrade_buys = 0;
+static unsigned int g_crisis_logged = 0;
 
 static double main_population_value(void);
 static int planned_target(int slot);
 
-/* v7 P0-2/4：为下一步主线门票预留 ATP，避免商店把 ATP 花光后卡在阶段 8 */
+/* v7 P0-2/4：为下一步主线门票预留 ATP，避免商店把 ATP 花光后卡在阶段 8。
+ * v10 P0-22：改为“预留 1.2 × 下一张门票”（最早能凑齐的那张），不再按最大值预留，
+ * 否则商店三格被整笔冻结，ATP 永远在等突变。 */
 static double target_atp_reserve(void)
 {
     int slot = evolution_main_slot(&g);
@@ -85,16 +90,41 @@ static double target_atp_reserve(void)
     int required[4];
     int count = species_required_mutations(target, required, 4);
     double reserve = 0.0;
+    bool first = true;
     for (int i = 0; i < count; ++i) {
         if (g.run.active_species[slot].mutations[required[i]]) {
             continue;
         }
         double cost = evolution_mutation_atp_cost(&g, required[i]);
-        if (cost > reserve) {
+        if (first || cost < reserve) {
             reserve = cost;
+            first = false;
         }
     }
-    return reserve;
+    return reserve * 1.2;
+}
+
+/* v10 P0-22：生物量同样需要“门票预留”。时间本位下分化门票 = 45 s 生物量产率，
+ * 若基因组 / 容量（也吃生物量）每步都把它扫光，主线永远凑不齐门票。
+ * v10 收口：整张门票全冻结时，生物量差额永远攒不出来，容量在阶段 12/13 一局只能买 1 级；
+ * 但把预留降到 0.5 会让容量在纪元 1 就把开局拖慢一倍（实测首分化 150 → 274 s）。
+ * 折中：基因组建保留整张票，容量只保留 30%——容量吃的是 ATP 为主，生物量份额很小。 */
+static double speciation_biomass_reserve_for(double factor)
+{
+    int slot = evolution_main_slot(&g);
+    if (slot < 0) {
+        return 0.0;
+    }
+    int target = planned_target(slot);
+    if (target < 0 || species_phase(target) <= evolution_main_stage(&g)) {
+        return 0.0;
+    }
+    return evolution_speciation_cost(&g, target) * factor;
+}
+
+static double speciation_biomass_reserve(void)
+{
+    return speciation_biomass_reserve_for(1.2);
 }
 
 static void mark_purchase(void)
@@ -180,18 +210,31 @@ static void line(void)
 }
 
 /* 演示用的 A 侧占位定价：与 economy.c 同源于 balance.h 的同一组常量。
- * 正式游戏由 A 层 game.c / economy.c 负责，本 demo 不链接 A 层。 */
+ * 正式游戏由 A 层 game.c / economy.c 负责，本 demo 不链接 A 层。
+ * v10 P0-22：与正式实现一样改时间本位——N × 主谱系产率，常数地板。 */
 static double upgrade_cost(int type, int level)
 {
+    if (level < 0) {
+        return INFINITY;
+    }
+    double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
+    evolution_price_rates(&g, &atp_rate, &biomass_rate, &knowledge_rate);
     switch (type) {
-    case UPGRADE_METABOLISM:
-        return floor(RUN_UPGRADE_METABOLISM_BASE_COST *
-                     pow(RUN_UPGRADE_METABOLISM_COST_GROWTH, level));
-    case UPGRADE_REPRODUCTION:
-        return floor(RUN_UPGRADE_REPRODUCTION_BASE_COST *
-                     pow(RUN_UPGRADE_REPRODUCTION_COST_GROWTH, level));
-    default:
-        return floor(RUN_UPGRADE_GENOME_BASE_COST * pow(RUN_UPGRADE_GENOME_COST_GROWTH, level));
+    case UPGRADE_METABOLISM: {
+        double priced = UPGRADE_ATP_SECONDS_METABOLISM * atp_rate;
+        return floor(priced > RUN_UPGRADE_METABOLISM_BASE_COST
+                         ? priced : RUN_UPGRADE_METABOLISM_BASE_COST);
+    }
+    case UPGRADE_REPRODUCTION: {
+        double priced = UPGRADE_ATP_SECONDS_REPRODUCTION * atp_rate;
+        return floor(priced > RUN_UPGRADE_REPRODUCTION_BASE_COST
+                         ? priced : RUN_UPGRADE_REPRODUCTION_BASE_COST);
+    }
+    default: {
+        double priced = UPGRADE_BIOMASS_SECONDS_GENOME * biomass_rate;
+        return floor(priced > RUN_UPGRADE_GENOME_BASE_COST
+                         ? priced : RUN_UPGRADE_GENOME_BASE_COST);
+    }
     }
 }
 
@@ -210,33 +253,117 @@ static void print_status(double time)
 /* v9 P2：记账只认实际扣款。
  * 以前这里累加的是本地算出来的 cost，与真实扣款差一个 floor/取整通道，
  * 平衡表一改价台账就和钱包对不上；现在统一用 before - after 记账。 */
+/* v10 P0-22：四张价格表都成了“产率秒数”，谁先说谁吃亏——若升级每步先买，
+ * 储备与容量永远分不到 ATP（v8 靠指数涨价造成的“余额堆积”才买到）。
+ * 改成轮转：每步只尝试一个经济出口，5 个出口均分收入。 */
+static int g_buy_turn = 0;
+/* v14：每个槽位的候选冷却。放弃候选后冷却 30 秒，
+ * 防止靠“反复放弃 + 重开”白嫖候选刷新。 */
+static double g_slot_cooldown[MAX_ACTIVE_SPECIES];
+
+static void try_upgrade_type(int type)
+{
+    if (RUN_UPGRADE_MAX_LEVEL >= 0 && g.run.run_upgrade_levels[type] >= RUN_UPGRADE_MAX_LEVEL) {
+        return;
+    }
+    double cost = upgrade_cost(type, g.run.run_upgrade_levels[type]);
+    if (!isfinite(cost)) {
+        return;
+    }
+    if (type == UPGRADE_GENOME) {
+        if (g.run.biomass >= cost * 1.02 &&
+            g.run.biomass - cost * 1.02 >= speciation_biomass_reserve()) {
+            g.run.biomass -= cost;
+            ++g.run.run_upgrade_levels[type];
+            mark_purchase();
+            ++g_upgrade_buys;
+        }
+        return;
+    }
+    /* v10 收口：购买门槛 1.15 → 1.02。原来的 15% 余量会让钱包常驻约 1.15 倍单级价格，
+     * 纪元 3 结算时未花比例被抬到 11%（验收 ≤10%）。按“够钱就买”即可，
+     * 价格本身是时间本位，不会因此变贵。 */
+    if (g.run.atp < cost * 1.02 + target_atp_reserve()) {
+        return;
+    }
+    double atp_before = g.run.atp;
+    g.run.atp -= cost;
+    g_atp_spent += atp_before - g.run.atp;
+    ++g.run.run_upgrade_levels[type];
+    mark_purchase();
+    ++g_upgrade_buys;
+}
+
+static void try_reserve_step(void)
+{
+    if (RESERVE_MAX_LEVEL >= 0 && g.run.reserve_levels >= RESERVE_MAX_LEVEL) {
+        return;
+    }
+    if (reserve_damage_scale(g.run.reserve_levels) <= RESERVE_REDUCTION_FLOOR + 1e-12) {
+        return;
+    }
+    double cost = evolution_reserve_cost(&g);
+    if (g.run.atp < cost * 1.02) {
+        return;
+    }
+    double atp_before = g.run.atp;
+    if (evolution_apply_reserve(&g) != ACTION_OK) {
+        return;
+    }
+    g_atp_spent += atp_before - g.run.atp;
+    mark_purchase();
+}
+
+static void try_capacity_step(void)
+{
+    if (CAPACITY_MAX_LEVEL >= 0 && g.run.capacity_levels >= CAPACITY_MAX_LEVEL) {
+        return;
+    }
+    double biomass_cost = evolution_capacity_biomass_cost(&g);
+    double atp_cost = evolution_capacity_atp_cost(&g);
+    if (atp_cost <= 0.0 && biomass_cost <= 0.0) {
+        return;
+    }
+    if (atp_cost > 0.0 && g.run.atp < atp_cost * 1.02) {
+        return;
+    }
+    /* v10 收口：只有纪元 3 放开容量预留（门票最大、容量最容易饿死）；
+     * 纪元 1/2 仍冻结整张门票，否则容量在阶段 6 之后抢走生物量，阶段 8 抵达率从 98% 掉到 27%。 */
+    double capacity_reserve = g.run.era >= 3 ? 0.55 : 1.20;
+    if (biomass_cost > 0.0 && g.run.biomass < biomass_cost * 1.02 +
+                                                   speciation_biomass_reserve_for(capacity_reserve)) {
+        return;
+    }
+    double atp_before = g.run.atp;
+    if (evolution_apply_capacity_upgrade(&g) != ACTION_OK) {
+        return;
+    }
+    g_atp_spent += atp_before - g.run.atp;
+    mark_purchase();
+}
+
 static void try_buy_upgrades(void)
 {
-    for (int type = 0; type < 3; ++type) {
-        if (RUN_UPGRADE_MAX_LEVEL >= 0 &&
-            g.run.run_upgrade_levels[type] >= RUN_UPGRADE_MAX_LEVEL) {
-            continue;
+    double before = g_last_purchase_time;
+    switch (g_buy_turn % 5) {
+    case 0: try_upgrade_type(UPGRADE_METABOLISM); break;
+    case 1: try_upgrade_type(UPGRADE_REPRODUCTION); break;
+    case 2: try_upgrade_type(UPGRADE_GENOME); break;
+    case 3: try_reserve_step(); break;
+    default: try_capacity_step(); break;
+    }
+    ++g_buy_turn;
+    /* v10 收口：轮转没花出去、而钱包已鼓到 4 倍单级价格时，直接买代谢。
+     * 时间本位下每级价格 = N 秒产率，钱包在两次购买之间自然会堆到 1–2 倍价格；
+     * 若某个出口已满级（容量/储备），那一轮就白转，ATP 一路闲置到纪元结束
+     * （实测纪元 3 未花比例 11.3%，超过 10% 验收线）。这条兜底只在高水位触发，
+     * 不改变前中期节奏。 */
+    if (g_last_purchase_time == before) {
+        double cost = upgrade_cost(UPGRADE_METABOLISM,
+                                   g.run.run_upgrade_levels[UPGRADE_METABOLISM]);
+        if (isfinite(cost) && g.run.atp >= cost * 4.0 + target_atp_reserve()) {
+            try_upgrade_type(UPGRADE_METABOLISM);
         }
-        double cost = upgrade_cost(type, g.run.run_upgrade_levels[type]);
-        if (!isfinite(cost)) {
-            continue;
-        }
-        if (type == UPGRADE_GENOME) {
-            if (g.run.biomass >= cost) {
-                g.run.biomass -= cost;
-                ++g.run.run_upgrade_levels[type];
-                mark_purchase();
-            }
-            continue;
-        }
-        if (g.run.atp - cost < target_atp_reserve()) {
-            continue;
-        }
-        double atp_before = g.run.atp;
-        g.run.atp -= cost;
-        g_atp_spent += atp_before - g.run.atp;
-        ++g.run.run_upgrade_levels[type];
-        mark_purchase();
     }
 }
 
@@ -292,6 +419,14 @@ static int best_child_under_cap(int slot, int cap)
     const SpeciesState *species = &g.run.active_species[slot];
     int children[SPECIES_COUNT];
     int count = species_children(species->species_id, children, SPECIES_COUNT);
+    /* v10 P1-11：主谱系阶段 ≥6 时把同阶段支线物种并入候选（2 选 1 的自动版） */
+    if (species->is_main_lineage) {
+        int branches[SPECIES_COUNT];
+        int branch_count = species_branch_candidates(species->species_id, branches, SPECIES_COUNT);
+        for (int i = 0; i < branch_count && count < SPECIES_COUNT; ++i) {
+            children[count++] = branches[i];
+        }
+    }
     int best = -1;
     int best_rank = -1;
     int best_phase = -1;
@@ -323,6 +458,26 @@ static int planned_target(int slot)
     int chain = species->is_main_lineage ? main_chain_next(species->species_id)
                                          : extra_chain_next(species->species_id);
     if (chain >= 0 && species_phase(chain) <= cap) {
+        if (slot_owns_required(slot, chain)) {
+            return chain;
+        }
+        /* v10 P1-11：主线门票还没齐时，若同阶段的支线物种已经就绪，直接走支线。
+         * 支线与主线节点同 phase，走它一样推进阶段，但能让单局物种从 12 变成 14–18。
+         * 只走“还有后继”的支线——叶子物种会把主线卡死（实测 stage 停在 8）。 */
+        if (species->is_main_lineage) {
+            int branches[SPECIES_COUNT];
+            int bn = species_branch_candidates(species->species_id, branches, SPECIES_COUNT);
+            for (int i = 0; i < bn; ++i) {
+                int onward[8];
+                if (species_phase(branches[i]) > cap || !slot_owns_required(slot, branches[i])) {
+                    continue;
+                }
+                if (species_children(branches[i], onward, 8) <= 0) {
+                    continue;
+                }
+                return branches[i];
+            }
+        }
         return chain;
     }
     return best_child_under_cap(slot, cap);
@@ -392,11 +547,9 @@ static void choose_mutation(int slot)
         }
         pick = choices[tof_rng_next(&g_explore_rng) % (unsigned int)count];
     }
-    bool target_offered = false;
     if (!g_explore) {
         for (int i = 0; i < offer->choice_count; ++i) {
             if (mutation_unlocks_slot(slot, offer->mutation_ids[i])) {
-                target_offered = true;
                 int mid = offer->mutation_ids[i];
                 if (g.run.dna >= offer->dna_costs[i] &&
                     g.run.atp >= evolution_mutation_atp_cost(&g, mid)) {
@@ -406,49 +559,26 @@ static void choose_mutation(int slot)
             }
         }
         if (pick < 0) {
-            if (target_missing) {
+            /* v14 E3：候选里没有能推进分化的卡时，先花 DNA 换一批（每批 ≤3 次）；
+             * 换不起或不划算就放弃候选、冷却 30 秒，把候选位让给别的槽位。
+             * 绝不买纯属性卡——扫货会把门票链推到 150+ 张，
+             * “era3 突变购买 10–16 张”这条硬门槛就失效了。 */
+            if (!target_missing) {
+                /* 该槽的前置已齐、在等生物量：候选留着只会占住三个槽位共用的候选位，
+                 * 让额外分支永远开不了候选（实测支线卡在阶段 1）。 */
+                g_slot_cooldown[slot] = g_time + 5.0;
+                evolution_dismiss_mutation_offer(&g);
                 return;
             }
-            /* 第十五轮：主线前置齐备、只差 Biomass 时，才用富余 DNA 买属性突变。 */
-            (void)target_offered;
-            int fallback = -1;
-            for (int i = 0; i < offer->choice_count; ++i) {
-                int mid = offer->mutation_ids[i];
-                if (evolution_mutation_is_required(mid) ||
-                    g.run.discovered_mutations[mid]) {
-                    continue;
-                }
-                if (g.run.dna < offer->dna_costs[i] ||
-                    g.run.atp < evolution_mutation_atp_cost(&g, mid)) {
-                    continue;
-                }
-                if (fallback < 0 ||
-                    offer->dna_costs[i] < offer->dna_costs[fallback]) {
-                    fallback = i;
-                }
-            }
-            if (fallback < 0) {
-                /* 没有纯属性突变时，退而购买任意未发现且买得起的突变，
-                 * 维持自动策略的生存力；真实玩家可自行取舍。 */
-                for (int i = 0; i < offer->choice_count; ++i) {
-                    int mid = offer->mutation_ids[i];
-                    if (g.run.discovered_mutations[mid]) {
-                        continue;
-                    }
-                    if (g.run.dna < offer->dna_costs[i] ||
-                        g.run.atp < evolution_mutation_atp_cost(&g, mid)) {
-                        continue;
-                    }
-                    if (fallback < 0 ||
-                        offer->dna_costs[i] < offer->dna_costs[fallback]) {
-                        fallback = i;
-                    }
-                }
-            }
-            if (fallback < 0) {
+            double refresh_cost = evolution_mutation_refresh_cost(&g);
+            if (g.run.mutation_refresh_count < MUTATION_REFRESH_LIMIT &&
+                g.run.dna >= refresh_cost * 3.0 &&
+                evolution_refresh_mutation_offer(&g, slot) == ACTION_OK) {
                 return;
             }
-            pick = fallback;
+            g_slot_cooldown[slot] = g_time + 30.0;
+            evolution_dismiss_mutation_offer(&g);
+            return;
         }
     }
     if (pick < 0) {
@@ -479,7 +609,49 @@ static void choose_mutation(int slot)
         snprintf(detail, sizeof(detail), "%s;%.0f", name, cost);
         csv_event("mutation", detail);
         out("  >> Mutation acquired: %-24s (-%.0f DNA)\n", name, cost);
+    } else {
+        /* 买不下（价格在被选中后又被抬高 / 资源被别的出口吃掉）：
+         * 候选留着会永久占住候选位，三个槽位就一起卡死。 */
+        g_slot_cooldown[slot] = g_time + 3.0;
+        evolution_dismiss_mutation_offer(&g);
     }
+}
+
+static bool slot_target_missing(int slot)
+{
+    int target = planned_target(slot);
+    if (target < 0) {
+        return false;
+    }
+    const SpeciesState *species = &g.run.active_species[slot];
+    int required[4];
+    int count = species_required_mutations(target, required, 4);
+    for (int i = 0; i < count; ++i) {
+        if (!species->mutations[required[i]]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* v14 硬门槛 2/3：普通策略只买“能推进某个槽位分化”的突变，
+ * 不再买纯属性卡（那会把门票链推到 150+ 张，硬门槛 2 直接失效）。
+ * 三个槽位按轮转各拿候选——全给主线会让额外分支永远买不到自己的前置，
+ * 单局物种数就只能停在主链的 12–13 个。 */
+static int slot_needing_mutations(void)
+{
+    int count = g.run.active_species_count;
+    for (int i = 0; i < count; ++i) {
+        int slot = (g_offer_slot + i) % count;
+        if (g_time < g_slot_cooldown[slot]) {
+            continue;
+        }
+        if (slot_target_missing(slot)) {
+            g_offer_slot = slot + 1;
+            return slot;
+        }
+    }
+    return -1;
 }
 
 static void try_mutations(void)
@@ -488,27 +660,11 @@ static void try_mutations(void)
         choose_mutation(g.run.mutation_offer.species_slot);
         return;
     }
-    /* 第十五轮：普通策略只为主线开候选，避免额外分支的待选提案
-     * 长期占用唯一候选位，把主线前置卡死。
-     * v8 P1-9：主线到本纪元封顶后，轮转所有槽位，让三条并行支线都能推进。 */
     if (!g_explore) {
-        int main_slot = evolution_main_slot(&g);
-        bool capped = evolution_main_stage(&g) >= evolution_era_stage_cap(&g);
-        if (!capped) {
-            if (main_slot >= 0 && evolution_open_mutation_offer(&g, main_slot) == ACTION_OK) {
-                choose_mutation(main_slot);
-            }
-            return;
+        int slot = slot_needing_mutations();
+        if (slot >= 0 && evolution_open_mutation_offer(&g, slot) == ACTION_OK) {
+            choose_mutation(slot);
         }
-        for (int i = 0; i < g.run.active_species_count; ++i) {
-            int slot = (g_offer_slot + i) % g.run.active_species_count;
-            if (evolution_open_mutation_offer(&g, slot) == ACTION_OK) {
-                g_offer_slot = slot + 1;
-                choose_mutation(slot);
-                return;
-            }
-        }
-        g_offer_slot = 0;
         return;
     }
     /* 轮转候选槽位，让主谱系与额外分支都能拿到自己的前置突变 */
@@ -587,47 +743,9 @@ static void try_speciation(void)
     }
 }
 
-static void try_sinks(void)
-{
-    /* v8 P0-15：先买储备（几何价 + 乘算减伤），到达 0.20 下限后不再买无收益的等级 */
-    while ((RESERVE_MAX_LEVEL < 0 || g.run.reserve_levels < RESERVE_MAX_LEVEL)) {
-        if (reserve_damage_scale(g.run.reserve_levels) <= RESERVE_REDUCTION_FLOOR + 1e-12) {
-            break;
-        }
-        double cost = evolution_reserve_cost(&g);
-        if (g.run.atp < cost * 1.25 + target_atp_reserve()) {
-            break;
-        }
-        double atp_before = g.run.atp;
-        if (evolution_apply_reserve(&g) != ACTION_OK) {
-            break;
-        }
-        g_atp_spent += atp_before - g.run.atp;
-        mark_purchase();
-    }
-    /* v8 P0-14：容量最后买，用来吸收储备留下的余额；
-     * 逐币判断，任一货币可支付即可，两种都为 0 才是真的不可购买 */
-    while (CAPACITY_MAX_LEVEL < 0 || g.run.capacity_levels < CAPACITY_MAX_LEVEL) {
-        double biomass_cost = evolution_capacity_biomass_cost(&g);
-        double atp_cost = evolution_capacity_atp_cost(&g);
-        double reserve = target_atp_reserve();
-        if (atp_cost <= 0.0 && biomass_cost <= 0.0) {
-            break;
-        }
-        if (atp_cost > 0.0 && g.run.atp < atp_cost * 1.25 + reserve) {
-            break;
-        }
-        if (biomass_cost > 0.0 && g.run.biomass < biomass_cost * 1.25) {
-            break;
-        }
-        double atp_before = g.run.atp;
-        if (evolution_apply_capacity_upgrade(&g) != ACTION_OK) {
-            break;
-        }
-        g_atp_spent += atp_before - g.run.atp;
-        mark_purchase();
-    }
-}
+/* v10：储备与容量已并入 try_buy_upgrades 的 5 路轮转，
+ * 不再需要“最后扫余额”的独立阶段。 */
+
 
 /* 第九轮：理念只用于子升级，攒够就买（主谱系优先，再轮到额外分支） */
 static void try_sub_upgrades(void)
@@ -648,7 +766,7 @@ static void try_sub_upgrades(void)
         }
         const SubUpgradeDef *next = evolution_sub_upgrade_next(&g, slot);
         while (next) {
-            double cost = evolution_sub_upgrade_cost(next);
+            double cost = evolution_sub_upgrade_cost(&g, next);
             if (g.run.knowledge < cost) {
                 break;
             }
@@ -679,13 +797,15 @@ static void try_insight(void)
     for (int i = 0; i < g.run.active_species_count; ++i) {
         const SubUpgradeDef *next = evolution_sub_upgrade_next(&g, i);
         if (next) {
-            double cost = evolution_sub_upgrade_cost(next);
+            double cost = evolution_sub_upgrade_cost(&g, next);
             if (cost > reserve) {
                 reserve = cost;
             }
         }
     }
-    while (g.run.knowledge >= evolution_insight_cost(&g) + reserve) {
+    /* v10：只预留一半子升级价——全预留会让洞见永远买不到（实测 Lv.0），
+     * 全不预留又会饿死子升级（实测每纪元 1 层）。 */
+    while (g.run.knowledge >= evolution_insight_cost(&g) + reserve * 0.5) {
         double cost = evolution_insight_cost(&g);
         if (evolution_apply_insight(&g) != ACTION_OK) {
             break;
@@ -753,6 +873,7 @@ static EnvironmentStep simulate_step(double dt)
     g.run.biomass += biomass * dt;
     g.run.dna += dna * dt;
     g.run.knowledge += knowledge * dt;
+    g.run.elapsed_time += dt; /* 与 game.c 固定步一致：DNA 起手斜坡依赖这个时钟 */
     if (g.run.biomass > g.run.max_biomass) {
         g.run.max_biomass = g.run.biomass;
     }
@@ -760,28 +881,36 @@ static EnvironmentStep simulate_step(double dt)
     g_click_timer += dt;
     while (g_click_timer >= 1.0) {
         g_click_timer -= 1.0;
-        double click = BASE_CLICK_ATP *
-                       (1.0 + RUN_METABOLISM_BONUS_PER_LEVEL *
-                                  g.run.run_upgrade_levels[UPGRADE_METABOLISM]) *
-                       legacy_atp_multiplier(&g.legacy) * legacy_click_multiplier(&g.legacy) *
+        /* v10：点击 = 3 秒主谱系产率 × 永久点击 × 限时点击（与 economy.c 同一公式） */
+        double click_rate = 0.0, click_biomass = 0.0, click_knowledge = 0.0;
+        evolution_price_rates(&g, &click_rate, &click_biomass, &click_knowledge);
+        double click = CLICK_INCOME_SECONDS * click_rate *
+                       legacy_click_multiplier(&g.legacy) *
                        buffs_click_multiplier(&g);
         g.run.atp += click;
         g_atp_income += click;
     }
 
-    try_buy_upgrades();
+    /* 门票优先，其余出口按轮转均分（见 try_buy_upgrades） */
     try_mutations();
     try_speciation();
-    try_sinks();
-    try_sub_upgrades();
+    try_buy_upgrades();
+    /* v10：洞见先于子升级——子升级会一次吃掉全部理念，洞见就永远轮不上
+     * （实测洞见长期 Lv.0，而目标是每纪元 6–14 级）。 */
     try_insight();
+    try_sub_upgrades();
 
     EnvironmentStep step = environment_calculate_step(&g, dt);
     environment_apply_step(&g, &step);
 
-    /* 机器模式：危机结束时输出逐次记录，供覆盖率与通过率统计 */
-    if ((g_csv || g_quiet) && step.event_ended) {
-        /* v7 P2：打印真实通过线（纪元 1 是 0.625，纪元 2+ 是 0.70） */
+    /* 机器模式：危机结束时输出逐次记录，供覆盖率与通过率统计。
+     * v10 P0-26 口径修复：每种危机每局只记一条——第一次通过时记录 survived=1；
+     * 到纪元结束仍未通过的，由 simulate_era 统一补一条 survived=0。
+     * 旧口径重复事件会把逐类型样本数放大到 1100–1700，通过率被重复抽中稀释。 */
+    if ((g_csv || g_quiet) && step.event_ended && environment_is_crisis(step.ended_environment_id)
+        && step.crisis_survived
+        && !(g_crisis_logged & (1u << step.ended_environment_id))) {
+        g_crisis_logged |= 1u << step.ended_environment_id;
         double pass_ratio = g_era <= 1
                                 ? CRISIS_PASS_RATIO_ERA1
                                 : (g_era == 2 ? CRISIS_PASS_POPULATION_RATIO
@@ -793,7 +922,7 @@ static EnvironmentStep simulate_step(double dt)
                                                             : g.run.crisis_start_population;
         printf("CRISIS,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d\n", g_era,
                step.ended_environment_id, g.run.crisis_start_population, lowest, end_population,
-               threshold, threshold > 0.0 ? lowest / threshold : 0.0, step.crisis_survived ? 1 : 0,
+               threshold, threshold > 0.0 ? lowest / threshold : 0.0, 1,
                g_batch_index);
     }
 
@@ -939,7 +1068,7 @@ static void csv_mutation_impact(void)
 static void init_game(unsigned int seed)
 {
     memset(&g, 0, sizeof(g));
-    g.save_version = 7;
+    g.save_version = SAVE_VERSION;
     g.phase = PHASE_RUNNING;
     g.run.era = 1;
     g.run.rng_state = seed;
@@ -962,6 +1091,8 @@ static void init_game(unsigned int seed)
     g_cap_reached_time = -1.0;
     g_first_species = -1;
     g_last_stage = -1;
+    g_crisis_logged = 0;
+    g_upgrade_buys = 0;
     for (int id = 0; id < MUTATION_COUNT; ++id) {
         g_mutation_time[id] = -1.0;
     }
@@ -1018,6 +1149,7 @@ typedef struct {
     int ep;
     int stages;
     int mutations;
+    int atp_mutations; /* v14 硬门槛 2：收 ATP 门票的突变张数（阶段 >= MUTATION_ATP_MIN_PHASE） */
     int species;
     int crises;
     double max_biomass;
@@ -1040,6 +1172,7 @@ typedef struct {
     int insight_levels;
     int capacity_levels;
     int reserve_levels;
+    int upgrade_buys;
 } EraSummary;
 
 /* 跑完一整轮并汇总 EP 明细；调用方负责 g_time / g_era 与阶段切换 */
@@ -1052,12 +1185,15 @@ static EraSummary simulate_era(int steps)
     g_cap_reached_time = -1.0;
     g_first_species = -1;
     g_first_mutation = -1.0;
+    memset(g_slot_cooldown, 0, sizeof(g_slot_cooldown));
     g_last_purchase_time = -1.0;
     g_sub_upgrade_buys = 0;
     g_insight_buys = 0;
     g_atp_spent = 0.0;
     g_atp_income = 0.0;
     g_last_stage = -1;
+    g_upgrade_buys = 0;
+    g_crisis_logged = 0;
     double atp_start = g.run.atp;
     for (int step = 1; step <= steps; ++step) {
         g_era = g.run.era;
@@ -1067,10 +1203,40 @@ static EraSummary simulate_era(int steps)
             g_cap_reached_time = g_time;
         }
     }
+    /* v10 P0-26：纪元结束仍未通过的危机类型补一条 survived=0，
+     * 保证“逐类型一条记录”口径下样本数 = 出现过该类型的局数。 */
+    for (int id = 1; id < ENV_COUNT && id < 32; ++id) {
+        if ((g.run.crisis_seen & (1u << id)) && !g.run.survived_crises[id] &&
+            !(g_crisis_logged & (1u << id))) {
+            g_crisis_logged |= 1u << id;
+            printf("CRISIS,%d,%d,0,0,0,0,0,0,%d\n", g.run.era, id, g_batch_index);
+        }
+    }
     EraReward reward = prestige_preview_reward(&g);
     summary.ep = reward.total_points;
     prestige_run_stats(&g, &summary.stages, &summary.mutations, &summary.species,
                        &summary.crises);
+    /* v14：把“收 ATP 门票的购买张数”单独记一份。规则 B 的等比数列
+     * （10 s × 1.12^k）只对这批卡生效，硬门槛 2 必须按这个口径验收，
+     * 否则低阶免费突变会把张数灌到三位数。 */
+    summary.atp_mutations = 0;
+    for (int slot = 0; slot < g.run.active_species_count; ++slot) {
+        for (int id = 0; id < MUTATION_COUNT; ++id) {
+            if (!g.run.active_species[slot].mutations[id]) continue;
+            const MutationDef *def = mutation_get(id);
+            if (def && def->min_phase >= MUTATION_ATP_MIN_PHASE) ++summary.atp_mutations;
+        }
+    }
+    if (g_quiet) {
+        int slot = evolution_main_slot(&g);
+        if (slot >= 0) {
+            SpeciesRates r = evolution_calculate_species_rates(&g, slot);
+            printf("INC,%d,%d,%.4g,%.4g,%.4g,%.0f,%.0f,%.0f\n", g_batch_index, g.run.era,
+                   r.atp_per_second, r.biomass_per_second, r.dna_per_second,
+                   g.run.active_species[slot].population, r.final_population_cap,
+                   r.atp_per_second * 600.0);
+        }
+    }
     summary.max_biomass = g.run.max_biomass;
     summary.first_speciation = g_first_speciation;
     summary.first_speciation_instant = g_first_speciation_instant;
@@ -1091,6 +1257,7 @@ static EraSummary simulate_era(int steps)
     summary.insight_levels = g.run.insight_levels;
     summary.capacity_levels = g.run.capacity_levels;
     summary.reserve_levels = g.run.reserve_levels;
+    summary.upgrade_buys = g_upgrade_buys;
     return summary;
 }
 
@@ -1159,6 +1326,8 @@ static void run_batch2(int count, int steps)
                era2.buff_uptime, era2.insight_buys, era2.insight_levels);
         printf("SINKSUM,%d,1,%d,%d\n", index, era1.capacity_levels, era1.reserve_levels);
         printf("SINKSUM,%d,2,%d,%d\n", index, era2.capacity_levels, era2.reserve_levels);
+        printf("UPGSUM,%d,1,%d\n", index, era1.upgrade_buys);
+        printf("UPGSUM,%d,2,%d\n", index, era2.upgrade_buys);
         print_coverage(index, 2);
     }
     g_quiet = false;
@@ -1195,13 +1364,14 @@ static void run_batch3(int count, int steps)
         }
         buffs_init_run(&g);
         EraSummary era3 = simulate_era(steps);
-        printf("BATCH3,%d,%u,%d,%d,%d,%d,%d,%d,%d,%.0f,%.1f,%d,%d,%.1f,%.1f,%d,%d,%d,%.1f,%.1f,%.1f\n",
+        printf("BATCH3,%d,%u,%d,%d,%d,%d,%d,%d,%d,%.0f,%.1f,%d,%d,%.1f,%.1f,%d,%d,%d,%.1f,%.1f,%.1f,%d\n",
                index, seed,
                era1.ep, era2.ep, era3.ep, era3.stages, era3.mutations, era3.species,
                era3.crises, era3.max_biomass, era3.last_purchase, mutation_level,
                diversification_level, era3.first_speciation, era3.knowledge,
                era1.sub_upgrades, era2.sub_upgrades, era3.sub_upgrades,
-               era1.first_mutation, era2.first_mutation, era3.first_mutation);
+               era1.first_mutation, era2.first_mutation, era3.first_mutation,
+               era3.atp_mutations);
         printf("RAMPTIME,%d,1,%.1f,%d\n", index, era1.cap_reached_time,
                era1.first_speciation_instant);
         printf("RAMPTIME,%d,2,%.1f,%d\n", index, era2.cap_reached_time,
@@ -1228,6 +1398,9 @@ static void run_batch3(int count, int steps)
         printf("SINKSUM,%d,1,%d,%d\n", index, era1.capacity_levels, era1.reserve_levels);
         printf("SINKSUM,%d,2,%d,%d\n", index, era2.capacity_levels, era2.reserve_levels);
         printf("SINKSUM,%d,3,%d,%d\n", index, era3.capacity_levels, era3.reserve_levels);
+        printf("UPGSUM,%d,1,%d\n", index, era1.upgrade_buys);
+        printf("UPGSUM,%d,2,%d\n", index, era2.upgrade_buys);
+        printf("UPGSUM,%d,3,%d\n", index, era3.upgrade_buys);
         print_coverage(index, 3);
     }
     g_quiet = false;

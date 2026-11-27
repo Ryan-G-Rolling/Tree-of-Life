@@ -220,10 +220,10 @@ test-ui: build/test_click_feedback.exe
 
 # Only reachable production layout sections are linked; no drawing backend needed.
 .PHONY: test-layout
-build/test_ui_layout.exe: tests/test_ui_layout.c $(CORE_SRC) src/ui.c src/ui_adapter.c src/screens.c src/codex.c $(HEADERS)
+build/test_ui_layout.exe: tests/test_ui_layout.c $(CORE_SRC) src/ui.c src/ui_adapter.c src/screens.c src/codex.c src/render.c src/atmosphere.c src/tex.c src/embedded.c src/input.c $(HEADERS)
 	@$(call MKDIR_P,build)
 	$(CC) $(CFLAGS) -ffunction-sections -fdata-sections $(filter %.c,$^) \
-	      -Wl,--gc-sections -lm -o $@
+	      -Wl,--gc-sections -o $@ $(LIBS)
 test-layout: build/test_ui_layout.exe
 	build/test_ui_layout.exe
 

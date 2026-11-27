@@ -1,4 +1,4 @@
-#ifndef BALANCE_H
+﻿#ifndef BALANCE_H
 #define BALANCE_H
 
 /*
@@ -37,24 +37,52 @@
 #define DIVERSITY_SPECIATION_DISCOUNT 0.15
 
 /* ---------------- 02 §4 单轮升级（Member A 使用） ---------------- */
+/* v10 P0-22：四张价格表整体换成“时间本位”——价格 = N × 主谱系产率。
+ * 产率涨多少价格涨多少，节奏恒定；BASE 保留为常数地板（开局产率≈0 时兜底）。
+ * 旧指数价格（20 × 1.25^L）与产率脱钩：早期 5 s 一级、点火后被甩开两个量级。 */
 #define RUN_UPGRADE_METABOLISM_BASE_COST 20.0
-#ifndef RUN_UPGRADE_METABOLISM_COST_GROWTH
-#define RUN_UPGRADE_METABOLISM_COST_GROWTH 1.25
-#endif
 #define RUN_UPGRADE_REPRODUCTION_BASE_COST 35.0
-#ifndef RUN_UPGRADE_REPRODUCTION_COST_GROWTH
-#define RUN_UPGRADE_REPRODUCTION_COST_GROWTH 1.30
-#endif
 #define RUN_UPGRADE_GENOME_BASE_COST 25.0
-#ifndef RUN_UPGRADE_GENOME_COST_GROWTH
-#define RUN_UPGRADE_GENOME_COST_GROWTH 1.30
-#endif
-/* v7 P0-4a：商店去硬顶；收益保留线性（乘算在 600 s 内阈值效应过强） */
+/* 每级耗时（秒，按被动产率计）：代谢 60 / 繁殖 70 / 基因组 45。
+ * 验收策略每秒点击 1 次、每次 3 秒产率，ATP 实际收入≈被动产率的 4 倍，
+ * 换算成墙钟约 15–40 s；N 若继续加大，钱包增速（≈1/增长率）追不上价格，
+ * 中后期会彻底停止升级（N=150 时实测每纪元只买 8 级）。
+ * 生物量没有点击收入，基因组直接按 45 s 计。 */
+#define UPGRADE_ATP_SECONDS_METABOLISM 84.0
+#define UPGRADE_ATP_SECONDS_REPRODUCTION 94.0
+#define UPGRADE_BIOMASS_SECONDS_GENOME 60.0
+/* v7 P0-4a：商店去硬顶 */
 #define RUN_UPGRADE_MAX_LEVEL (-1)
 
+/* v10 P0-23：线性加成收一次平方根——87 级 ×22 变成 ×3.3，等级数字回到 18–26。
+ * 保留总倍率显示，砍掉的是“两分钟一个量级”的失控。 */
 #define RUN_METABOLISM_BONUS_PER_LEVEL 0.25
 #define RUN_REPRODUCTION_BONUS_PER_LEVEL 0.20
 #define RUN_GENOME_BONUS_PER_LEVEL 0.25
+/* v10 P0-23 配套：繁殖倍率从线性 ×4.2 降到 sqrt ×2.8（16 级时），
+ * 种群复合速度直接决定 DNA / 生物量收入。用全局生长系数把复合速度补回来，
+ * 否则全阶段节奏塌到 stage 3（60 种子实测）。 */
+#ifndef POP_GROWTH_SCALE
+#define POP_GROWTH_SCALE 3.0
+#endif
+/* v10 P0-23 配套：DNA 收入 ×2。突变 DNA 价（1.45^链长）不动，但 sqrt 后
+ * 基因组倍率从 ×4.2 降到 ×2.3，DNA 收入随之下滑，连锁突变变成全局瓶颈。 */
+#ifndef DNA_INCOME_SCALE
+#define DNA_INCOME_SCALE 2.0
+#endif
+/* v10 P0-22 收口：ATP / 生物量 / 理念的“每阶段收入压缩”。
+ * 时间本位定价下价格随收入同步缩放，因此压缩收入不改变节奏，只把纪元 3 的
+ * 支出量级从 3.5e10 拉回 1e9 以内（验收项）。DNA 不压缩——突变是固定 DNA 价，
+ * 压缩 DNA 会直接把阶段推进卡死。 */
+#ifndef DNA_RAMP_SECONDS
+#define DNA_RAMP_SECONDS 120.0
+#endif
+#ifndef DNA_RAMP_START
+#define DNA_RAMP_START 0.33
+#endif
+#ifndef PHASE_RATE_COMPRESSION
+#define PHASE_RATE_COMPRESSION 0.635
+#endif
 
 /* ---------------- 02 §5 物种与分化 ---------------- */
 #define SPECIATION_CHILD_SHARE_SOLO 0.70      /* 无第二槽：后代获得亲本 70% */
@@ -62,6 +90,56 @@
 #define SPECIATION_PARENT_SHARE_KEEP 0.40     /* 保留亲本：亲本 40% */
 #define SPECIATION_MIN_CHILD_POPULATION 10.0
 #define SPECIATION_METEOR_MIN_STAGE 3
+/* v10 P0-22：分化门票改时间本位——N × 1.08^阶段 秒的主谱系生物量产率。
+ * 校准：13 张票的墙钟成本 Σ14×1.08^p ≈ 266 s，600 s 纪元里装得下 12–13 次分化；
+ * 阶段 13 再 ×1.6 作为真正的 hard wall（P0-24）。base_speciation_cost 保留为地板。 */
+#ifndef SPECIATION_TICKET_SECONDS
+#define SPECIATION_TICKET_SECONDS 20.0
+#endif
+#ifndef SPECIATION_TICKET_PHASE_GROWTH
+#define SPECIATION_TICKET_PHASE_GROWTH 1.06
+#endif
+#ifndef SPECIATION_EARLY_FLOOR_SCALE
+#define SPECIATION_EARLY_FLOOR_SCALE 6.3
+#endif
+#ifndef SPECIATION_TICKET_LATE_GROWTH
+#define SPECIATION_TICKET_LATE_GROWTH 1.20
+#endif
+#ifndef SPECIATION_HARD_WALL_PHASE
+#define SPECIATION_HARD_WALL_PHASE 13
+#endif
+#ifndef SPECIATION_HARD_WALL_MULT
+#define SPECIATION_HARD_WALL_MULT 1.12
+#endif
+/* v10 收口：阶段 12 单独加一道溢价。阶段 13 的门票已经由 hard wall 卡住，
+ * 但 11→12 此前对所有人都是“按时到达”（100% 抵达），验收要求 55–80% 的抵达率，
+ * 需要让阶段 12 本身成为一次真正的取舍：多付 1.35 倍门票，慢下来的局就停在 11。 */
+#ifndef SPECIATION_PHASE12_MULT
+#define SPECIATION_PHASE12_MULT 1.25
+#endif
+/* v14 E7：纪元 2 的分化门票 ×1.18。era2 阶段 10 抵达率实测 100%，
+ * 需要一个唯一的阻力；纪元 1/3 不乘，避免把首分化与最终阶段一起推高。 */
+#ifndef SPECIATION_ERA2_MULT
+#define SPECIATION_ERA2_MULT 1.18
+#endif
+/* v10 P0-22 配套：常数地板整体 ×0.45。地板原按“线性收入的旧曲线”定的
+ * （40/350/1200/1350…），sqrt 之后收入复合慢了一半，中段每张票要等 100–240 s，
+ * 60 种子实测卡在 stage 4。缩地板恢复“每张票 15–60 s”的节奏（0.45 → 0.25）。 */
+#ifndef SPECIATION_FLOOR_SCALE
+#define SPECIATION_FLOOR_SCALE 1.4
+#endif
+/* v10 P1-11：阶段 6 起主谱系分化提供“2 选 1”——主链节点或同阶段支线物种 */
+#ifndef BRANCH_SPECIATION_MIN_PHASE
+#define BRANCH_SPECIATION_MIN_PHASE 6
+#endif
+/* v14 E9：支线门票 = 同阶段主链门票 ×1.25。 */
+#ifndef SPECIATION_BRANCH_MULT
+#define SPECIATION_BRANCH_MULT 1.25
+#endif
+/* v10：点击收益 = 3 秒主谱系产率（BASE_CLICK_ATP 保留为地板的一部分见 economy.c） */
+#ifndef CLICK_INCOME_SECONDS
+#define CLICK_INCOME_SECONDS 3.0
+#endif
 
 /* ---------------- 02 §6 突变 ---------------- */
 #define MUTATION_WEIGHT_COMMON 100
@@ -96,9 +174,10 @@
 #ifndef LATE_MUTATION_COST_MULTIPLIER
 #define LATE_MUTATION_COST_MULTIPLIER 2.0
 #endif
-/* 第十轮：阶段 0–1 的 DNA 产出 ×1.5，抬前段收入 */
+/* 第十轮：阶段 0–1 的 DNA 产出 ×1.5，抬前段收入。
+ * v10 收口：1.5 → 1.40，把首突变从 34.5 s 拉进 35–60 s 验收带（只影响阶段 0–1）。 */
 #ifndef EARLY_DNA_BONUS
-#define EARLY_DNA_BONUS 1.5
+#define EARLY_DNA_BONUS 1.40
 #endif
 #ifndef EARLY_DNA_MAX_PHASE
 #define EARLY_DNA_MAX_PHASE 1
@@ -108,7 +187,7 @@
 
 /* ---------------- 02 §7 环境 ---------------- */
 #ifndef CRISIS_PASS_POPULATION_RATIO
-#define CRISIS_PASS_POPULATION_RATIO 0.70
+#define CRISIS_PASS_POPULATION_RATIO 0.74
 #endif
 /* 第十二轮：纪元 1 用更宽的通过线（0.65），纪元 2+ 用 0.70，
  * 避免“越后期越松”/“开局就把低尾打穿”。
@@ -116,33 +195,33 @@
  * v9 P0-19：4 类危机轮换后定在 0.672。实测 0.672 → 全清 37%，0.675 → 6%：
  * 单局危机损失集中在 33% 附近，这条线对数值极敏感，调整前必须复跑 1000 种子。 */
 #ifndef CRISIS_PASS_RATIO_ERA1
-#define CRISIS_PASS_RATIO_ERA1 0.672
+#define CRISIS_PASS_RATIO_ERA1 0.78
 #endif
 /* v7：纪元 3 收紧到 0.85。v9 P0-19：改为 0.75 —— 0.85 时单局危机次数
  * 被失败重抽拉到 7 次以上，全清率压在 3% 以下；0.75 后回到 30% 带，
  * 同时纪元 3 仍是三纪元里通过线最高的一档。 */
 #ifndef CRISIS_PASS_RATIO_ERA3
-#define CRISIS_PASS_RATIO_ERA3 0.75
+#define CRISIS_PASS_RATIO_ERA3 0.80
 #endif
-/* v9 P0-19：每个纪元只轮换 4 类危机（掩码 = 环境 id 位）。
- * 7 类全开时单类 45–99% 相乘必然落到 2%，“全清”等于抽奖；
- * 4 类把理论全清率抬到 0.6^4 ≈ 13%、0.75^4 ≈ 32%，成为可追求的目标。
- * 七类在三个纪元里轮转，任何一局至少能遇到 4 类不同的压力。 */
-#ifndef ERA_CRISIS_MASK_1
-#define ERA_CRISIS_MASK_1 ((1u << 1) | (1u << 2) | (1u << 3) | (1u << 6))   /* 变暖/变冷/微光/陨石 */
+/* v10 P0-26：危机池从“每纪元固定 4 类”改为“6 选 4”——每个纪元给 6 类候选，
+ * 由 environment_init_run 按 run 种子抽 4 类（同一局固定，跨局不同）。
+ * 11 类危机里，三个纪元池尽量少重叠，单局去重后能达到 8–11 类。 */
+#define ERA_CRISIS_PER_ERA 4
+#ifndef ERA_CRISIS_POOL_1
+#define ERA_CRISIS_POOL_1 ((1u << 1) | (1u << 2) | (1u << 3) | (1u << 4) | (1u << 5))
 #endif
-#ifndef ERA_CRISIS_MASK_2
-#define ERA_CRISIS_MASK_2 ((1u << 2) | (1u << 4) | (1u << 5) | (1u << 13))  /* 变冷/氧气/毒素/雾霾 */
+#ifndef ERA_CRISIS_POOL_2
+#define ERA_CRISIS_POOL_2 ((1u << 6) | (1u << 13) | (1u << 14) | (1u << 15))
 #endif
-#ifndef ERA_CRISIS_MASK_3
-#define ERA_CRISIS_MASK_3 ((1u << 1) | (1u << 5) | (1u << 6) | (1u << 13))  /* 变暖/毒素/陨石/雾霾 */
+#ifndef ERA_CRISIS_POOL_3
+#define ERA_CRISIS_POOL_3 ((1u << 1) | (1u << 5) | (1u << 16) | (1u << 17))
 #endif
-static inline unsigned int era_crisis_mask(int era)
+static inline unsigned int era_crisis_pool(int era)
 {
     if (era <= 1) {
-        return ERA_CRISIS_MASK_1;
+        return ERA_CRISIS_POOL_1;
     }
-    return era == 2 ? ERA_CRISIS_MASK_2 : ERA_CRISIS_MASK_3;
+    return era == 2 ? ERA_CRISIS_POOL_2 : ERA_CRISIS_POOL_3;
 }
 
 /* 第十一轮：危机判定改为“事件期间最低人口”；事件期产率再打折，
@@ -190,8 +269,21 @@ static inline unsigned int era_crisis_mask(int era)
 
 #define EP_PER_STAGE 2
 #define EP_MUTATIONS_PER_POINT 3
-#define EP_SPECIES_PER_POINT 2
+/* v10：突变 EP 收入封顶——时间本位后单局突变从 58 涨到 120+，
+ * 不封顶会让纪元 3 的 EP 冲到 110，遗产层数连锁膨胀（纪元 3 支出随之到 3e9）。
+ * v10 收口：8 → 4，把 EP 的方差挪给“危机存活”这一真正的局间差异来源。 */
+#ifndef EP_MUTATION_CAP
+#define EP_MUTATION_CAP 3
+#endif
+#define EP_SPECIES_PER_POINT 1
 #define EP_CRISIS_CAP 6
+/* v10：危机每通过 1 类记 2 EP——存活数量是局间差异的主要来源，
+ * EP 标准差因此回到 4 以上（验收要求 σ≥4，否则没有局间差异）。
+ * v10 收口：3 → 5。3 点/类的实测 σ 只有 3.2，够不到 4；提到 5 点/类，
+ * 同时把突变 EP 从 8 降到 4 抵消均值上涨。 */
+#ifndef EP_POINTS_PER_CRISIS
+#define EP_POINTS_PER_CRISIS 5
+#endif
 
 /* ---------------- 02 §10 永久强化 ---------------- */
 #define LEGACY_MAX_LEVEL 8
@@ -254,36 +346,37 @@ static inline unsigned int era_crisis_mask(int era)
 #ifndef MUTATION_COST_GROWTH
 #define MUTATION_COST_GROWTH 1.45
 #endif
-/* v8 P0-14：容量价格 = 0.5 × 未含容量加成的上限 × 1.08^级；配合 ×1.25 缓冲，
- * 让 ATP 在 600 s 内真的能换成容量，而不是永远攒不够第一级。 */
-#ifndef CAPACITY_COST_PER_CAP
-#define CAPACITY_COST_PER_CAP 0.5
-#endif
-/* v7 P0-4b：容量价格带“收入的 5 秒”下限，避免收入指数上涨后 ATP 无处可花 */
-/* v9 P0-21：改为可覆盖，用于 5/12/20 的单变量对照 */
+/* v10 P0-22：容量也换时间本位——ATP 部分 40 s 产率 + 生物量部分 2 s 产率。
+ * 生物量份额压到极小，容量就不再和分化门票抢同一种资源（纪元 3 门票可达 90 s 生物量），
+ * 改由 ATP 单独决定档位；预期每纪元 6–14 级。 */
 #ifndef CAPACITY_ATP_SECONDS
-#define CAPACITY_ATP_SECONDS 5.0
+#define CAPACITY_ATP_SECONDS 80.0
+#endif
+#ifndef CAPACITY_BIOMASS_SECONDS
+#define CAPACITY_BIOMASS_SECONDS 10.0
+#endif
+#ifndef CAPACITY_COST_FLOOR
+#define CAPACITY_COST_FLOOR 15.0
+#endif
+#ifndef CAPACITY_BIOMASS_FLOOR
+#define CAPACITY_BIOMASS_FLOOR 10.0
 #endif
 #define CAPACITY_GAIN_PER_LEVEL 0.05
-#define CAPACITY_COST_GROWTH 1.08
-/* 第十轮：容量扩张改为无上限（-1 表示无限），Biomass 永远有出口 */
-#ifndef CAPACITY_MAX_LEVEL
-#define CAPACITY_MAX_LEVEL (-1)
-#endif
-/* 第十一轮：容量支付改为双币（前 3 级仍 100% Biomass），给 ATP 出口 */
-/* v7 P0-4b：容量改为纯 ATP，生物量专心喂分化 */
-#ifndef CAPACITY_ATP_SHARE
-#define CAPACITY_ATP_SHARE 1.0
-#endif
-#ifndef CAPACITY_BIOMASS_SHARE
-#define CAPACITY_BIOMASS_SHARE 0.0
-#endif
-#define CAPACITY_BIOMASS_ONLY_LEVELS 0
+/* v10 P0-23：容量倍率保持线性（1 + 0.15×L），但 L 封顶 20（实测上限曾到 42） */
+#define CAPACITY_MAX_LEVEL 20
+/* v10 P0-22：储备改时间本位——每级 120 s 被动 ATP 产率（≈30 s 墙钟，含点击收入），
+ * 每纪元 5–7 级，到 26 级要跨 3–4 个纪元；RESERVE_COST_ATP 保留为地板。 */
 #define RESERVE_COST_ATP 1000.0
-#define RESERVE_COST_GROWTH 1.6
+/* v14 E4：110 → 45 s。实测储备每局只买到 1.4 级，110 秒太贵，储备这条线等于不存在。
+ * 45 s 配合 E5 的 0.90 步进，目标 8–14 级/局。 */
+#ifndef RESERVE_ATP_SECONDS
+#define RESERVE_ATP_SECONDS 45.0
+#endif
 /* v8 P0-15：储备减伤改为乘算，第 6 级之后仍有边际收益，约 22 级触底 */
+/* v14 E5：0.94 → 0.90，与 E4 降价配对，防止“便宜但无用”。
+ * 地板仍为 0.20（v10 实测值；v14 方案里写的 0.15 是旧基线，E6 本身标注“不变”，故不动）。 */
 #ifndef RESERVE_REDUCTION_STEP
-#define RESERVE_REDUCTION_STEP 0.94
+#define RESERVE_REDUCTION_STEP 0.90
 #endif
 #ifndef RESERVE_REDUCTION_FLOOR
 #define RESERVE_REDUCTION_FLOOR 0.20
@@ -425,16 +518,43 @@ static inline double reserve_damage_scale(int levels)
 #endif
 #define MUTATION_COST_BAND_MID_PHASE 4
 #define MUTATION_COST_BAND_LATE_PHASE 8
-/* v7 P0-2/4d：阶段 8 起的高阶突变按“当前收入的 45 秒”计价，
- * 并有上下限，避免收入抽签与票价追不上收入。 */
+/* v7 P0-2/4d：阶段 8 起的高阶突变按“当前收入的 N 秒”计价。
+ * v10 P0-22：删掉 5e8 上限（它把“45 秒”压成“5 秒”，纪元 3 一局买 58 张）；
+ * 只保留 1e7 地板。定价锚是被动产率，而钱包存量约等于 1/增长率（30–60 s 产率），
+ * N 必须小于它才买得起——N=220/90 时阶段 8 以上的门票永远凑不齐（实测卡在 stage 8）。
+ * v10 收口：30 → 8。纪元 3 一局要买 150+ 张突变，30 秒/张把 ATP 全吃光，
+ * 容量的生物量份额与三条升级轨被饿死（实测单级耗时 100 s、容量 1 级）。
+ * 8 秒仍保留“突变要花 ATP”的机制，但不再是压倒性的出口。 */
+/* v14 E1：8 → 10 s。突变票改等比递增（E2），10 s 是第 1 张的基准秒数。 */
 #ifndef MUTATION_ATP_SECONDS
-#define MUTATION_ATP_SECONDS 45.0
+#define MUTATION_ATP_SECONDS 10.0
+#endif
+/* v14 E2：第 k+1 张突变票 = 10 s × 1.12^k（k = 本纪元已购张数）。
+ * 累计 12/16/20 张的秒数预算是 241.7 / 427.5 / 720.8 s，
+ * era3 约 600 s 产出 → 落点必然在 12–16 张，不随池子从 204 涨到 282 而漂移。 */
+#ifndef MUTATION_TICKET_GROWTH
+#define MUTATION_TICKET_GROWTH 1.12
+#endif
+/* v14 E3：DNA 换一批突变候选。
+ * 价格 = min(0.40×DNA 余额, max(10, 0.30×本批最便宜卡价)) × 1.7^n，n = 本批已刷新次数。
+ * 锚“最便宜卡价”而不是绝对值：DNA 余额/卡价跨 5 个数量级，只有相对锚才稳。每批 ≤3 次。 */
+#ifndef MUTATION_REFRESH_DNA_SHARE
+#define MUTATION_REFRESH_DNA_SHARE 0.40
+#endif
+#ifndef MUTATION_REFRESH_CHEAP_SHARE
+#define MUTATION_REFRESH_CHEAP_SHARE 0.30
+#endif
+#ifndef MUTATION_REFRESH_MIN
+#define MUTATION_REFRESH_MIN 10.0
+#endif
+#ifndef MUTATION_REFRESH_GROWTH
+#define MUTATION_REFRESH_GROWTH 1.7
+#endif
+#ifndef MUTATION_REFRESH_LIMIT
+#define MUTATION_REFRESH_LIMIT 3
 #endif
 #ifndef MUTATION_ATP_COST_MIN
 #define MUTATION_ATP_COST_MIN 10000000.0
-#endif
-#ifndef MUTATION_ATP_COST_MAX
-#define MUTATION_ATP_COST_MAX 500000000.0
 #endif
 #define MUTATION_ATP_MIN_PHASE 8
 /* 第十五轮：新增 140 条突变数量大，单条百分比按 0.35 计入产率，
@@ -449,18 +569,20 @@ static inline double reserve_damage_scale(int levels)
 #ifndef KNOWLEDGE_POPULATION_EXPONENT
 #define KNOWLEDGE_POPULATION_EXPONENT 0.5
 #endif
-/* 子升级理念成本逐层增长（第十六轮：6.0 → 3.2，让中期真的买得起） */
-#ifndef SUB_UPGRADE_COST_GROWTH
-#define SUB_UPGRADE_COST_GROWTH 3.2
+/* 子升级理念成本：v10 P0-22 改时间本位——每层 50 s 主谱系知识产率，
+ * 知识收入随子升级乘算自限（买一层 → 收入 ×1.2 → 下一层贵 20%），
+ * 预期每纪元 4–6 层（旧 3.2^ 曲线一局买了 16 层）。base_knowledge_cost 保留为地板。 */
+#ifndef SUB_UPGRADE_KNOWLEDGE_SECONDS
+#define SUB_UPGRADE_KNOWLEDGE_SECONDS 42.0
 #endif
 #define SUB_UPGRADE_MIN_PHASE 6
 
 /* 第十六轮：洞见——无上限知识升级，每级 +2% 全产率，价格指数增长 */
 #ifndef INSIGHT_BASE_COST
-#define INSIGHT_BASE_COST 2000.0
+#define INSIGHT_BASE_COST 600.0
 #endif
 #ifndef INSIGHT_COST_GROWTH
-#define INSIGHT_COST_GROWTH 1.9
+#define INSIGHT_COST_GROWTH 1.6
 #endif
 #define INSIGHT_BONUS_PER_LEVEL 0.02
 
@@ -539,6 +661,10 @@ static inline unsigned int tof_rng_next(unsigned int *state)
 }
 
 /* Unified A/B/C state; old saves remain at their original paths. */
-#define SAVE_VERSION 8
+/* v10 P0-26：RunState 新增 crisis_selection / crisis_seen（6 选 4 危机池与逐类型台账），
+ * 存档结构变化，版本 8 → 9；更早的存档仍不自动迁移。 */
+/* v14：MAX_SPECIES/MAX_MUTATIONS 256 → 320，GameState 体积与内部偏移全部变化，
+ * 版本 9 → 10。旧 v9 档按“版本不符”拒绝，不读入、不覆盖、不删除文件。 */
+#define SAVE_VERSION 10
 
 #endif

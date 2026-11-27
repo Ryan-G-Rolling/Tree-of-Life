@@ -19,6 +19,7 @@
 #include "ui_internal.h"
 #include "ui_adapter.h"
 #include "tex.h"
+#include "balance.h"
 #include "atmosphere.h"
 #include "buffs.h"
 #include "codex.h"
@@ -1965,10 +1966,11 @@ static void draw_dish(const GameState *game)
     if (click >= 0.0) {
         char cn[24];
         ui_fmt_num(click, cn, (int)sizeof(cn));
+        /* v10：点击收益 = 3 秒产率，把口径写在玩家眼前 */
         if (buffs_click_multiplier(game) > 1.0) {
-            snprintf(rl, sizeof(rl), "采集 +%s ATP  ×2", cn);
+            snprintf(rl, sizeof(rl), "采集 +%s ATP（3 秒产出）×2", cn);
         } else {
-            snprintf(rl, sizeof(rl), "采集 +%s ATP", cn);
+            snprintf(rl, sizeof(rl), "采集 +%s ATP（3 秒产出）", cn);
         }
     } else {
         snprintf(rl, sizeof(rl), "点击采集");
@@ -3946,6 +3948,8 @@ static void draw_legacy(const GameState *game, const UIState *S)
 /* 前向声明：build_overlay 在绘制函数之前定义，但它要用树/突变图谱的几何。 */
 static Rectangle tree_panel_rect(void);
 static Rectangle tree_sky_rect(void);
+static void tree_visibility(const GameState *game, bool found[SPECIES_COUNT],
+                            bool near[SPECIES_COUNT]);
 static Vector2 tree_view(Vector2 p);
 static Rectangle mut_list_panel_rect(void);
 static void tree_layout(Vector2 node[SPECIES_COUNT], int parent_of[SPECIES_COUNT],
@@ -4107,6 +4111,16 @@ static void build_overlay(UiLayout *L, const GameState *game, const UIState *S)
         btn_add(L, UI_BTN_CLOSE_OVERLAY,
                 (Rectangle){ panel.x + (panel.width - 180.0f) * 0.5f,
                              panel.y + panel.height - 52.0f, 180.0f, H_SECONDARY }, 0, 0, true);
+        if (game->run.mutation_offer.active) {
+            /* v14 E3：换一批候选。每批 ≤3 次，价格随刷新次数 ×1.7。 */
+            double refresh = ua_mutation_refresh_cost(game);
+            bool can = game->run.mutation_refresh_count < MUTATION_REFRESH_LIMIT
+                    && game->run.dna >= refresh;
+            btn_add(L, UI_BTN_REFRESH_MUTATION,
+                    (Rectangle){ panel.x + 24.0f, panel.y + panel.height - 52.0f,
+                                 200.0f, H_SECONDARY },
+                    0, 0, can);
+        }
         if (!game->run.mutation_offer.active) {
             btn_add(L, UI_BTN_OPEN_MUTATION,
                     (Rectangle){ panel.x + (panel.width - 220.0f) * 0.5f,
@@ -4193,7 +4207,10 @@ static void build_overlay(UiLayout *L, const GameState *game, const UIState *S)
         tree_layout(node, parent_of, NULL);
         float nr = tree_node_r();
         float hit = nr + 6.0f;
+        bool v_found[SPECIES_COUNT], v_near[SPECIES_COUNT];
+        tree_visibility(game, v_found, v_near);
         for (int i = 0; i < SPECIES_COUNT; ++i) {
+            if (!v_found[i] && !v_near[i]) continue;
             Vector2 p = tree_view(node[i]);
             /* 画框外的节点不给按钮：既点不到，也不会挡住底部图例 */
             if (p.x < sky.x || p.x > sky.x + sky.width) continue;
@@ -4381,6 +4398,20 @@ static void draw_mutation_overlay(const GameState *game, const UIState *S)
         snprintf(cost, sizeof(cost), "%s DNA", num);
         ui_text(cost, r.x + 82.0f, r.y + 83.0f, F_BODY, usable ? COL_DNA : COL_BAD);
         ui_text_right("点击选择", r.x + r.width - 16.0f, r.y + 85.0f, F_CAPTION, COL_FAINT);
+    }
+
+    UiButton *refresh = btn_find(S, UI_BTN_REFRESH_MUTATION, -1);
+    if (refresh) {
+        char price[64], sub[48];
+        if (game->run.mutation_refresh_count >= MUTATION_REFRESH_LIMIT) {
+            snprintf(sub, sizeof(sub), "本批已刷新 3 次");
+        } else {
+            ui_fmt_num(ua_mutation_refresh_cost(game), num, (int)sizeof(num));
+            snprintf(sub, sizeof(sub), "%s DNA · %d/3", num,
+                     game->run.mutation_refresh_count);
+        }
+        (void)price;
+        ui_btn_draw(refresh, "换一批", sub, is_hot(S, refresh));
     }
 
     UiButton *close = btn_find(S, UI_BTN_CLOSE_OVERLAY, -1);
@@ -4728,6 +4759,8 @@ static void draw_codex_detail(const GameState *game, const UIState *S)
  */
 
 #define TREE_MAX_RY 246.0f
+/* v14 W12：同屏亲缘边上限。264 节点下“全连线”会糊成网，超出按离圆心升序保留。 */
+#define TREE_EDGE_CAP 120
 
 static int s_maxst = 0;
 
@@ -4746,9 +4779,9 @@ static float tree_ring_ry(int s)
     float m = (float)tree_max_stage();
     if (s < 0) s = 0;
     if ((float)s > m) s = (int)m;
-    /* 起始半径 48：第 1 圈周长 ≈ 300px，装 11–17 个节点才不会贴在一起；
-     * 旧值 34 时内两圈的节点几乎叠成一坨，标签全靠避让硬挤。 */
-    return 48.0f + (TREE_MAX_RY - 48.0f) * (float)s / m;
+    /* v14：环比不等距——内圈密、外圈疏。264 个物种下同圈 26–27 个，
+     * 线性等距会让最外两圈挤在一起；pow 1.25 把外圈推开、内圈收紧。 */
+    return 48.0f + (TREE_MAX_RY - 48.0f) * powf((float)s / m, 1.25f);
 }
 
 /* 横向 2.2 倍：面板是 16:9，正圆会在左右各空出 200px；拉成椭圆既不挤，
@@ -4907,6 +4940,29 @@ static void tree_edge(Vector2 a, Vector2 b, Vector2 g, Color c, float w)
     }
 }
 
+/* v14 W12：264 节点下只画“已发现 + 与已发现相邻”的两圈。
+ * 全量暗点会在最外 4 圈糊成一片，而且没有信息量。 */
+static void tree_visibility(const GameState *game, bool found[SPECIES_COUNT],
+                            bool near[SPECIES_COUNT])
+{
+    for (int i = 0; i < SPECIES_COUNT; ++i) {
+        found[i] = game->legacy.codex_species[i] || game->run.discovered_species[i];
+        near[i] = false;
+    }
+    for (int child = 1; child < SPECIES_COUNT; ++child) {
+        if (!found[child]) continue;
+        int ps[4];
+        int n = ua_species_parents(child, ps, 4);
+        for (int k = 0; k < n; ++k) {
+            int p = ps[k];
+            if (p >= 0 && p < SPECIES_COUNT && p != child) near[p] = true;
+        }
+    }
+    for (int i = 0; i < SPECIES_COUNT; ++i) {
+        if (found[i]) near[i] = false;
+    }
+}
+
 static void draw_tree_overlay(const GameState *game, const UIState *S)
 {
     Rectangle panel = tree_panel_rect();
@@ -4996,6 +5052,10 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
         v = p;
     }
 
+    /* v14 W12：可见性在连线与节点之前算一次，两处共用。 */
+    bool t_found[SPECIES_COUNT], t_near[SPECIES_COUNT];
+    tree_visibility(game, t_found, t_near);
+
     /* ---------- 亲缘连线 ----------
      * 只画三类：选中路线（亮）、两端都已点亮（生态色）、从已点亮往外一格的前沿（暗）。
      * 186 个物种的"全连线"是一张糊住的网，深层未探索的支线对玩家没有信息量。
@@ -5008,33 +5068,43 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
                      (int)(sky.width * (float)sss), (int)(sky.height * (float)sss));
     {
         Rectangle cull = { sky.x - 80.0f, sky.y - 80.0f, sky.width + 160.0f, sky.height + 160.0f };
-        for (int child = 0; child < SPECIES_COUNT; ++child) {
-            int ps[4];
-            int n = ua_species_parents(child, ps, 4);
-            int own = ua_species_stage(child);
-            bool child_found = game->legacy.codex_species[child] || game->run.discovered_species[child];
-            for (int k = 0; k < n; ++k) {
-                int p = ps[k];
-                if (p < 0 || p >= SPECIES_COUNT || p == child) continue;
-                if (ua_species_stage(p) >= own) continue;    /* 只画"早 → 晚"的方向 */
+        bool drawn_pair[SPECIES_COUNT][SPECIES_COUNT] = { { false } };
+        int edge_budget = TREE_EDGE_CAP;
+        /* v14：按“离圆心近的优先”消耗 120 条边的预算。父节点阶段越小越靠内，
+         * 玩家当前所处的阶段附近先画满，深层未探索的连线让位。 */
+        for (int band = 0; band <= maxst && edge_budget > 0; ++band) {
+            for (int child = 0; child < SPECIES_COUNT && edge_budget > 0; ++child) {
+                int ps[4];
+                int n = ua_species_parents(child, ps, 4);
+                int own = ua_species_stage(child);
+                bool child_found = t_found[child];
+                for (int k = 0; k < n && edge_budget > 0; ++k) {
+                    int p = ps[k];
+                    if (p < 0 || p >= SPECIES_COUNT || p == child) continue;
+                    if (ua_species_stage(p) >= own) continue;    /* 只画"早 → 晚"的方向 */
+                    if (ua_species_stage(p) != band) continue;
+                    if (drawn_pair[p][child]) continue;
+                    drawn_pair[p][child] = true;
 
-                bool parent_found = game->legacy.codex_species[p] || game->run.discovered_species[p];
-                bool lit = parent_found && child_found;
-                bool hi = on_route[child] && on_route[p];
-                bool frontier = parent_found != child_found;
+                    bool parent_found = t_found[p];
+                    if (!parent_found && !child_found) continue;
+                    bool lit = parent_found && child_found;
+                    bool hi = on_route[child] && on_route[p];
+                    bool frontier = parent_found != child_found;
+                    if (!hi && !lit && !frontier) continue;
+                    if (!CheckCollisionPointRec(vp[p], cull) && !CheckCollisionPointRec(vp[child], cull))
+                        continue;
 
-                if (!hi && !lit && !frontier) continue;
-                if (!CheckCollisionPointRec(vp[p], cull) && !CheckCollisionPointRec(vp[child], cull))
-                    continue;
-
-                if (hi) {
-                    float pulse = 0.5f + 0.5f * sinf(g_ui.time * 2.0f + (float)child * 0.4f);
-                    tree_edge(vp[p], vp[child], c2, Fade(COL_ACCENT, 0.10f + 0.08f * pulse), 4.5f);
-                    tree_edge(vp[p], vp[child], c2, Fade(COL_ACCENT, 0.55f + 0.30f * pulse), 2.0f);
-                } else if (lit) {
-                    tree_edge(vp[p], vp[child], c2, Fade(ecology_color(child), 0.26f), 1.1f);
-                } else {
-                    tree_edge(vp[p], vp[child], c2, Fade(COL_LINE_STRONG, 0.10f), 1.0f);
+                    --edge_budget;
+                    if (hi) {
+                        float pulse = 0.5f + 0.5f * sinf(g_ui.time * 2.0f + (float)child * 0.4f);
+                        tree_edge(vp[p], vp[child], c2, Fade(COL_ACCENT, 0.10f + 0.08f * pulse), 4.5f);
+                        tree_edge(vp[p], vp[child], c2, Fade(COL_ACCENT, 0.55f + 0.30f * pulse), 2.0f);
+                    } else if (lit) {
+                        tree_edge(vp[p], vp[child], c2, Fade(ecology_color(child), 0.26f), 1.1f);
+                    } else {
+                        tree_edge(vp[p], vp[child], c2, Fade(COL_LINE_STRONG, 0.10f), 1.0f);
+                    }
                 }
             }
         }
@@ -5045,11 +5115,13 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
 
     /* ---------- 节点 ---------- */
     for (int i = 0; i < SPECIES_COUNT; ++i) {
+        bool found = t_found[i];
+        /* v14：不画“再往外一圈”的深层节点，264 个暗点会糊住已点亮的部分。 */
+        if (!found && !t_near[i]) continue;
         Vector2 p = vp[i];
         if (p.x < sky.x - nr || p.x > sky.x + sky.width + nr) continue;
         if (p.y < sky.y - nr || p.y > sky.y + sky.height + nr) continue;
 
-        bool found = found_flag[i];
         bool cur = (i == main_id);
         bool pick = (i == sel);
         Color col = ecology_color(i);
@@ -5109,11 +5181,13 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
          * 常把玩家正在看的整条路线名字挤掉、却留下一堆无关支线的名字。 */
         for (int pass = 0; pass < 3; ++pass) {
             for (int i = 0; i < SPECIES_COUNT; ++i) {
-                bool found = found_flag[i];
+                bool found = t_found[i];
                 bool cur = (i == main_id);
                 bool pick = (i == sel);
                 bool must = cur || pick;
                 bool onpath = on_route[i];
+                /* v14：缩到 0.6 以下只留点，不让 264 个名字互相压。 */
+                if (!must && zoom < 0.6f) continue;
                 if (!(found || must)) continue;
                 if (pass == 0 && !must) continue;
                 if (pass == 1 && (!onpath || must)) continue;
@@ -5202,14 +5276,36 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
     {
         int sid = sel;
         int st = ua_species_stage(sid);
+        bool sel_found = t_found[sid];
         draw_organism((Vector2){ bar.x + 24.0f, bar.y + 22.0f }, 12.0f, sid, st,
-                      ecology_color(sid), S->time, true, true, 1.0f);
-        ui_text_strong(ua_species_name(sid), bar.x + 44.0f, bar.y + 5.0f, F_LABEL, COL_TEXT);
+                      ecology_color(sid), S->time, sel_found, sel_found, 1.0f);
+        ui_text_strong(sel_found ? ua_species_name(sid) : "未知物种",
+                       bar.x + 44.0f, bar.y + 5.0f, F_LABEL, COL_TEXT);
 
         char line[192];
         int pp[4];
         int pn = ua_species_parents(sid, pp, 4);
-        if (pn > 0) {
+        if (!sel_found) {
+            /* v14 W12：空心节点不泄露名称，和图鉴锁定条目口径一致。 */
+            int anchor = -1;
+            for (int k = 0; k < pn && anchor < 0; ++k) {
+                if (pp[k] >= 0 && t_found[pp[k]]) anchor = pp[k];
+            }
+            for (int c = 1; c < SPECIES_COUNT && anchor < 0; ++c) {
+                if (!t_found[c]) continue;
+                int cp[4];
+                int cn = ua_species_parents(c, cp, 4);
+                for (int k = 0; k < cn; ++k) {
+                    if (cp[k] == sid) { anchor = c; break; }
+                }
+            }
+            if (anchor >= 0) {
+                snprintf(line, sizeof(line), "未知物种 · 阶段 %d · 与 %s 相邻", st,
+                         ua_species_name(anchor));
+            } else {
+                snprintf(line, sizeof(line), "未知物种 · 阶段 %d · 尚未探索", st);
+            }
+        } else if (pn > 0) {
             snprintf(line, sizeof(line), "%s · 阶段 %d · 分化自 %s",
                      ua_ecology_name(sid), st, ua_species_name(pp[0]));
         } else {

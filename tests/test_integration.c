@@ -61,7 +61,9 @@ int main(void)
     CHECK(g.run.atp > 0.0);
 
     /* ---- 买一次代谢升级（A 的价格来自 B 的平衡表） ---- */
-    if (g.run.atp >= 20.0) {
+    /* v10 时间本位后单级价格 = N × 当前产率，两次点击不一定够；直接补足 ATP 只验证接线 */
+    g.run.atp += 1.0e9;
+    {
         int before = g.run.run_upgrade_levels[UPGRADE_METABOLISM];
         r = game_apply_action(&g, act(ACTION_BUY_RUN_UPGRADE, 0, UPGRADE_METABOLISM, 0));
         CHECK(r.code == ACTION_OK);

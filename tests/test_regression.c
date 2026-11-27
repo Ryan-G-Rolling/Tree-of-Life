@@ -38,7 +38,7 @@ static void test_actions_and_save(void) {
     for(int i=0;i<4;i++) assert(act(&g,ACTION_BUY_CAPACITY,0,0).code==ACTION_OK);
     double atp=g.run.atp,bio=g.run.biomass;
     double ca=evolution_capacity_atp_cost(&g), cb=evolution_capacity_biomass_cost(&g);
-    assert(ca>0 && cb==0); /* v8：容量为纯 ATP，Biomass 份额为 0 */
+    assert(ca>0 && cb>0); /* v10：容量回到双币（ATP 45 s + 生物量 15 s，各有地板） */
     assert(act(&g,ACTION_BUY_CAPACITY,0,0).code==ACTION_OK);
     assert(fabs(atp-g.run.atp-ca)<1e-7 && fabs(bio-g.run.biomass-cb)<1e-7);
     assert(act(&g,ACTION_BUY_RESERVE,0,0).code==ACTION_OK);
