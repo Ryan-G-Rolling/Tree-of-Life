@@ -231,7 +231,9 @@ static void fill_demo_late(GameState *g)
     g->run.atp = 84200.0;
     g->run.biomass = 361000000.0;
     g->run.dna = 12800.0;
-    g->run.knowledge = 640.0;
+    /* 理念与洞见等级给足，截图才能同时展示“可购买”和“已有倍率”两种状态 */
+    g->run.knowledge = 26400.0;
+    g->run.insight_levels = 3;
     g->run.elapsed_time = 3725.0;
     g->run.max_biomass = 420000000.0;
     g->run.capacity_levels = 5;
@@ -455,6 +457,19 @@ static void capture_screen(const GameState *base, const char *first_file)
     ui_debug_set_info_tab(0);
     ui_debug_capture(&game, first_file);
 
+    /* 随机增益因子：稀有强增益 + 光链图标，一次看清“类型色 / 图标 / 提示行”三件事 */
+    game.run.buff_visible = true;
+    game.run.buff_visible_type = BUFF_PRODUCTION_STRONG;
+    game.run.buff_visible_icon = BUFF_ICON_DNA;
+    ui_debug_capture(&game, "shot_01g_buff.png");
+
+    /* 增益生效：皿壁进度弧 + ATP 旁的倍率胶囊 */
+    game.run.buff_visible = false;
+    game.run.buff_active_type = BUFF_PRODUCTION;
+    game.run.buff_active_time_left = 19.0;
+    ui_debug_capture(&game, "shot_01h_buff_active.png");
+    game.run.buff_active_time_left = 0.0;
+
     /* 情报面板的另外两页：产出曲线 / 纪录 */
     ui_debug_set_info_tab(1);
     ui_debug_capture(&game, "shot_01e_info_output.png");
@@ -504,6 +519,15 @@ static void capture_screen(const GameState *base, const char *first_file)
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_TREE);
     ui_debug_capture(&game, "shot_05_tree.png");
 
+    /* 星图缩放：滚轮放大约 1.9 倍并向右下平移，验证节点/连线/标签跟着视图走 */
+    g_ui.tree_zoom = 1.9f;
+    g_ui.tree_pan_x = -110.0f;
+    g_ui.tree_pan_y = -30.0f;
+    ui_debug_capture(&game, "shot_05c_tree_zoom.png");
+    g_ui.tree_zoom = 1.0f;
+    g_ui.tree_pan_x = 0.0f;
+    g_ui.tree_pan_y = 0.0f;
+
     /* 突变图谱：本轮已获得的全部突变 + 共振 */
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_MUT_LIST);
     ui_debug_capture(&game, "shot_05b_mutations.png");
@@ -525,10 +549,22 @@ static void capture_screen(const GameState *base, const char *first_file)
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_NONE);
     ui_debug_capture(&game, "shot_08_crisis.png");
 
+    /* 陨石撞击：进入瞬间的爆发（火痕 + 冲击波 + 抖屏 + 标题条） */
+    fill_demo_late(&game);
+    game.phase = PHASE_RUNNING;
+    game.run.current_environment_id = ENV_METEOR_IMPACT;
+    game.run.environment_time_left = 22.0;
+    game.run.event_interval_left = 0.0;
+    ui_debug_force(UI_SCREEN_MAIN, UI_OVL_NONE);
+    ui_debug_poke_crisis(ENV_METEOR_IMPACT, 2.0f);
+    ui_debug_capture(&game, "shot_08b_meteor.png");
+    ui_debug_poke_crisis(-1, 0.0f);
+    g_ui.crisis_flash = 0.0f;
+
     /* 终局形态：奇点（黑洞 + 吸积盘 + 光子环），展示形态引擎的第 10 类 */
     fill_demo_singularity(&game);
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_NONE);
     ui_debug_capture(&game, "shot_09_singularity.png");
 
-    TraceLog(LOG_INFO, "shot capture done: 16 frames");
+    TraceLog(LOG_INFO, "shot capture done: 20 frames");
 }

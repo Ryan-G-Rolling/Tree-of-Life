@@ -116,3 +116,16 @@ A/B/C 可运行整合版已在此前完成，Git 基线为 `44e2c0d`；既有结
 - **验证**：严格核心编译通过；26 组/92,578 项规则检查、36 项接线检查、集成回归、gameplay 测试及全部 390 条数据完整性/长度/ID/非法查询检查通过。真实本地按钮处理与布局测试遍历全部 390 个详情入口、所有分页、锁定条目、返回状态与游戏状态不变，普通及 ASan/UBSan 运行均通过；正式 UI 全部源码以官方 raylib 5.5 头文件通过编译检查。ASan/UBSan 的五组核心程序均通过，本地仍关闭当前容器不支持的 LeakSanitizer，未声称泄漏检查通过。git diff --check 通过。
 - **交付与同步**：本条随图鉴功能提交同步 main，使用 GitHub 连接器在原提交之上更新，并校验预期旧分支头；未创建平行版本。云环境缺少 Windows 工具链和图形链接依赖，本轮未重打包 Windows exe、运行图形窗口或生成新截图；现有 exe 需要从最新源码重新构建，视觉实机验收尚未执行。
 - **收尾**：已清理本轮生成的 build/ 对象、测试程序和测试存档；保留源码、官方头文件依赖与日志，未修改用户存档或删除历史材料。
+
+## 2026-11-27 · C · 随机因子上屏、洞见升格、星图缩放与危机演出
+
+- **基线**：本地从 origin/main 快进到 d5c1334（B 的图鉴详情卡与 390 条文案）。此前一轮未提交的 UI 改动存档在 `backup/local-wip-20261127`，本轮按远端实现重新落地，不覆盖 B 的规则层与分页。
+- **随机因子（buffs）可视化**：`screens_buff_factor_pos()` 给出培养皿内四个固定方位（由 `buff_visible_icon` 决定，0.74R 半径，落在活体 62 与皿内壁 95 之间），`build_main` 的命中框与 `draw_dish` 的绘制共用同一坐标。四种外观按 `BUFF_ICON_CELL/DNA/VESICLE/SPORE` 程序化绘制；呼吸光环 + 外扩涟漪 + 悬停放大表示可点击。因子按钮在 `UI_BTN_CLICK` 之后入表，点击优先抢采集。
+- **增益状态**：生效期间沿皿内壁画进度弧（稀有强增益走 COL_RARE），剩余不足 25% 时叠一层呼吸；产率增益在 ATP 大数字右侧挂倍率胶囊（×1.2 / ×1.5），点击增益把「采集 +N ATP」改写为带 `×2`。皿下提示行三态互斥：因子名称 / 增益剩余秒数 / 「下一个因子约 N 秒」。
+- **洞见条目**：商店底部从 320×28 细条改为 320×80 卡（三张机能卡 140→118 高、148→126 间距腾出空间），显示 Lv、`全产率 ×1.06 → ×1.08`、理念价格、`领悟 [7]` 胶囊；前期理念产量为 0 时价格位写「阶段 6 起才有理念产出」。适配层补 `ua_insight_multiplier` / `ua_insight_next_multiplier` / `ua_knowledge_rate` / `ua_buff_duration`。
+- **顶栏第五格**：新增「理念」chip（COL_VIOLET + ICON_INSIGHT），五格平分 16..782（宽 150、步距 154），此前玩家看不到洞见的花费来源。
+- **星图**：移植 v9 布局（每圈按该阶段物种数均分 + 先序排列），环半径起始 34→48，画框 1240×676；新增滚轮以鼠标为锚点缩放 0.75–2.8、空白处拖拽平移、右上「复位」，新增 `UI_BTN_TREE_SKY` / `UI_BTN_TREE_RESET`、`input_wheel()` / `input_mouse_delta()` / `input_click_down()`。连线与节点标签用 `BeginScissorMode` 裁在 sky 内，放大后不再画到标题。
+- **危机演出**：`crisis_watch()` 只在环境 id 变化且新环境为危机的那一帧触发；抖屏在最终合成里按包络平移整帧并把 dst 外扩遮黑边（陨石 15px / 耀斑 9px / 生态 4–6px）；`draw_crisis_fx()` 分五类特效 + 2 秒标题条，`env_weather()` 提供持续氛围层。`ui_debug_poke_crisis()` 供截图构造。
+- **图鉴筛选**：`codex_visible_list()` 让物种页只列「已发现 + 相邻（父/子）」并已发现优先（17 已发现 + 117 相邻 = 12 页，原 16 页全量），突变页只列已收录（23 / 204 收在 2 页）；计数分别显示 `已发现 17 / 186 · 相邻 117` 与 `已收录 23 / 204`。适配层补 `ua_max_species_stage` / `ua_species_child_list`。
+- **验证**：0 warning / 0 error；`make test` 26 组 92,578 项 + 36 项接线 + 集成 + 60 分钟回归 + gameplay（buff timing / insight / 回滚 / 读档延续）+ codex 全量通过；`make test-ui` 25 次点击（含激活增益）一致；`--shot --ss 3` 导出 21 张 3840×2160，字形 1290 个非 ASCII 字符（补 悟/拖/拽/滚/相）。`make dist` 单文件 23.02 MB，在空目录跑通并导出 21 张，已覆盖 `deliverables/TreeOfLife.exe` 与 `deliverables/screens/`。
+- **已知限制**：`make test-layout` 在 Windows MinGW 下因 PE 的 `--gc-sections` 无法剔除未引用的 `COL_*` / `ui_font_register` 而链接失败，Linux CI 走 ELF 不受影响；该目标未在本轮改动。

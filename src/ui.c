@@ -230,6 +230,14 @@ void ui_handle_local_button(const UiButton *b, const GameState *game)
          * 只改 g_ui，不碰 GameState —— 选中只是“看哪条路线”，不是玩法动作。 */
         g_ui.tree_sel = (g_ui.tree_sel == b->target_id) ? -1 : b->target_id;
         break;
+    case UI_BTN_TREE_SKY:
+        /* 空白区的按下由拖拽逻辑处理（见 ui_render），这里不发动作、不关弹层 */
+        break;
+    case UI_BTN_TREE_RESET:
+        g_ui.tree_pan_x = 0.0f;
+        g_ui.tree_pan_y = 0.0f;
+        g_ui.tree_zoom = 1.0f;
+        break;
     case UI_BTN_CODEX_TAB:
         if (b->option < 0 || b->option > 2) break;
         g_ui.codex_tab = b->option;
@@ -444,6 +452,9 @@ void ui_init(void)
     g_ui.pressed = -1;
     g_ui.last_phase = -1;
     g_ui.tree_sel = -1;
+    g_ui.tree_zoom = 1.0f;      /* memset 是 0，不显式设会让星图塌成一个点 */
+    g_ui.prev_env_id = -1;
+    g_ui.crisis_env = -1;
 
     if (emb_any()) TraceLog(LOG_INFO, "UI: single-file build, assets embedded");
     ui_font_init();
@@ -531,6 +542,49 @@ bool ui_update(const GameState *game, GameAction *pending_action)
 
     screens_build(&g_ui.layout, game, &g_ui);
     g_ui.hot = input_hit_topmost(&g_ui.layout, &g_ui);
+
+    /* ---- 滚轮：星图缩放（以鼠标为锚点，指到哪个节点放大后它还在指针下） ---- */
+    if (g_ui.overlay == UI_OVL_TREE) {
+        float wheel = input_wheel();
+        if (wheel != 0.0f) {
+            Vector2 m = input_mouse_virtual();
+            Vector2 c = screens_tree_center();
+            float old = g_ui.tree_zoom;
+            float nz = old * (1.0f + wheel * 0.12f);
+            if (nz < 0.75f) nz = 0.75f;
+            if (nz > 2.80f) nz = 2.80f;
+            if (nz != old) {
+                float tx = m.x - c.x - g_ui.tree_pan_x;
+                float ty = m.y - c.y - g_ui.tree_pan_y;
+                g_ui.tree_pan_x += tx - tx * (nz / old);
+                g_ui.tree_pan_y += ty - ty * (nz / old);
+                g_ui.tree_zoom = nz;
+            }
+        }
+    }
+
+    /* ---- 星图拖拽平移：只有从空白区按下才算拖，点节点仍是选中 ---- */
+    if (g_ui.overlay == UI_OVL_TREE) {
+        if (input_click_pressed() && g_ui.hot >= 0
+            && g_ui.layout.items[g_ui.hot].id == UI_BTN_TREE_SKY) {
+            g_ui.tree_dragging = true;
+        }
+        if (g_ui.tree_dragging && input_click_down()) {
+            Vector2 d = input_mouse_delta();
+            g_ui.tree_pan_x += d.x;
+            g_ui.tree_pan_y += d.y;
+        }
+        if (!input_click_down()) g_ui.tree_dragging = false;
+
+        /* 夹住平移量：186 个节点的星图很容易一拖就拖到画框外 */
+        float lim = screens_tree_pan_limit(game);
+        if (g_ui.tree_pan_x > lim) g_ui.tree_pan_x = lim;
+        if (g_ui.tree_pan_x < -lim) g_ui.tree_pan_x = -lim;
+        if (g_ui.tree_pan_y > lim) g_ui.tree_pan_y = lim;
+        if (g_ui.tree_pan_y < -lim) g_ui.tree_pan_y = -lim;
+    } else {
+        g_ui.tree_dragging = false;
+    }
 
     /* 鼠标 */
     if (input_click_pressed()) {
@@ -738,6 +792,50 @@ static void draw_toast(void)
             Fade(COL_TEXT, alpha));
 }
 
+/* ================= 危机监听 ================= */
+
+/* 抖屏幅度（逻辑像素）。陨石最狠，其次是太阳耀斑；生态类的只是“轻轻一震”。 */
+static float crisis_shake_amp(int env)
+{
+    switch (env) {
+    case ENV_METEOR_IMPACT:   return 15.0f;
+    case ENV_SOLAR_FLARE:     return 9.0f;
+    case ENV_TOXIC_BLOOM:     return 5.0f;
+    case ENV_GLOBAL_WARMING:
+    case ENV_GLOBAL_COOLING:  return 4.0f;
+    default:                  return 6.0f;
+    }
+}
+
+/* 只在“环境 id 发生变化且新环境是危机”的那一帧触发一次。
+ * 中途读档读到危机里也不补演（prev_env_id 未初始化时只记基线）。 */
+static void crisis_watch(const GameState *game)
+{
+    if (game->phase != PHASE_RUNNING) {
+        g_ui.prev_env_id = -1;
+        return;
+    }
+    int env = game->run.current_environment_id;
+    if (g_ui.prev_env_id < 0) { g_ui.prev_env_id = env; return; }
+    if (env == g_ui.prev_env_id) return;
+    g_ui.prev_env_id = env;
+
+    double rem = 0.0, tot = 1.0;
+    bool in_event = false;
+    ua_environment_timer(game, &rem, &tot, &in_event);
+    if (!in_event || !ua_environment_is_crisis(env)) return;
+
+    g_ui.crisis_env = env;
+    g_ui.crisis_t = 2.2f;
+    g_ui.shake = 1.0f;
+    g_ui.crisis_flash = 1.0f;
+
+    char msg[96];
+    snprintf(msg, sizeof(msg), "危机：%s", ua_environment_name(env));
+    toast(msg, true, 3.0f);
+    play(g_snd_evolve);
+}
+
 void ui_render(const GameState *game, const ActionResult *last_result)
 {
     float dt = GetFrameTime();
@@ -760,6 +858,17 @@ void ui_render(const GameState *game, const ActionResult *last_result)
     if (g_ui.press_anim < 0.0f) g_ui.press_anim = 0.0f;
     if (g_ui.flash > 0.0f) g_ui.flash -= dt * 3.4f;
     if (g_ui.flash < 0.0f) g_ui.flash = 0.0f;
+    /* 危机演出的两条包络：演出本体降得慢（看得见），闪光降得快（一下就过） */
+    if (g_ui.crisis_t > 0.0f) {
+        g_ui.crisis_t -= dt * 1.15f;
+        if (g_ui.crisis_t < 0.0f) g_ui.crisis_t = 0.0f;
+    }
+    if (g_ui.crisis_flash > 0.0f) {
+        g_ui.crisis_flash -= dt * 1.8f;
+        if (g_ui.crisis_flash < 0.0f) g_ui.crisis_flash = 0.0f;
+    }
+
+    crisis_watch(game);
 
     ui_fx_tick(dt);
 
@@ -796,10 +905,26 @@ void ui_render(const GameState *game, const ActionResult *last_result)
     float ox = input_ui_off_x();
     float oy = input_ui_off_y();
 
+    /* 抖屏：整帧平移。dst 同时向外撑开，避免平移时露出黑边。
+     * 这里不重画任何内容 —— 只是把已经合成好的画布整体挪几个像素，
+     * 所以 DOM 式布局不会因为抖而错位。 */
+    float sx = 0.0f, sy = 0.0f;
+    if (g_ui.crisis_t > 0.0f && g_ui.crisis_env >= 0) {
+        float k = g_ui.crisis_t / 2.2f;
+        k = k * k;
+        float amp = crisis_shake_amp(g_ui.crisis_env) * k;
+        float t = g_ui.time;
+        sx = (sinf(t * 57.0f) + 0.45f * sinf(t * 31.0f)) * amp;
+        sy = (cosf(t * 49.0f) + 0.45f * cosf(t * 67.0f)) * amp;
+    }
+    float sxd = sx * scale, syd = sy * scale;
+    float pad = fmaxf(fabsf(sxd), fabsf(syd)) + 1.0f;
+
     BeginDrawing();
-    ClearBackground(BLACK);
+    ClearBackground(COL_BG_DEEP);
     Rectangle src = { 0.0f, 0.0f, (float)(UI_W * g_ss), -(float)(UI_H * g_ss) };
-    Rectangle dst = { ox, oy, (float)UI_W * scale, (float)UI_H * scale };
+    Rectangle dst = { ox + sxd - pad, oy + syd - pad,
+                      (float)UI_W * scale + pad * 2.0f, (float)UI_H * scale + pad * 2.0f };
     DrawTexturePro(g_canvas.texture, src, dst, (Vector2){ 0.0f, 0.0f }, 0.0f, WHITE);
     EndDrawing();
 }
@@ -859,6 +984,15 @@ void ui_debug_poke_click(double gain)
 }
 
 void ui_debug_poke_toast(const char *text, bool bad) { toast(text, bad, 6.0f); }
+
+void ui_debug_poke_crisis(int env_id, float t)
+{
+    g_ui.crisis_env = env_id;
+    g_ui.crisis_t = t;
+    g_ui.crisis_flash = 1.0f;
+    g_ui.shake = 1.0f;
+    g_ui.prev_env_id = env_id;   /* 免得下一帧 crisis_watch 又触发一次 */
+}
 
 void ui_debug_capture(const GameState *game, const char *path)
 {

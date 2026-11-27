@@ -27,6 +27,40 @@ double ua_insight_cost(const GameState *game)
     return evolution_insight_cost(game);
 }
 
+double ua_insight_multiplier(const GameState *game)
+{
+    return evolution_insight_multiplier(game);
+}
+
+double ua_insight_next_multiplier(const GameState *game)
+{
+    if (!game) return 1.0;
+    /* 规则层只暴露"当前倍率"，下一级就是再叠一层 2% 的乘算 */
+    return evolution_insight_multiplier(game) * (1.0 + INSIGHT_BONUS_PER_LEVEL);
+}
+
+double ua_knowledge_rate(const GameState *game)
+{
+    if (!game) return 0.0;
+    double sum = 0.0;
+    for (int i = 0; i < game->run.active_species_count && i < MAX_ACTIVE_SPECIES; ++i) {
+        SpeciesRates r = evolution_calculate_species_rates(game, i);
+        sum += r.knowledge_per_second;
+    }
+    return sum;
+}
+
+double ua_buff_duration(int buff_type)
+{
+    /* 只转发 balance.h 的常量，倍率与刷新规则仍归 B 的 buffs.c */
+    switch (buff_type) {
+    case BUFF_PRODUCTION:        return BUFF_PRODUCTION_DURATION;
+    case BUFF_PRODUCTION_STRONG: return BUFF_STRONG_DURATION;
+    case BUFF_CLICK:             return BUFF_CLICK_DURATION;
+    default:                     return 0.0;
+    }
+}
+
 double ua_run_upgrade_cost(const GameState *game, RunUpgradeType type)
 {
     if (!game) return 0.0;
@@ -177,6 +211,22 @@ int ua_species_parents(int species_id, int *out, int max_out)
         if (species_has_parent(species_id, p)) out[n++] = p;
     }
     return n;
+}
+
+int ua_max_species_stage(void)
+{
+    int mx = 0;
+    for (int i = 0; i < SPECIES_COUNT; ++i) {
+        int st = species_phase(i);
+        if (st > mx) mx = st;
+    }
+    return mx;
+}
+
+int ua_species_child_list(int parent_id, int *out, int max_out)
+{
+    if (!out || max_out <= 0) return 0;
+    return species_children(parent_id, out, max_out);
 }
 
 double ua_speciation_cost(const GameState *game, int target_species_id)

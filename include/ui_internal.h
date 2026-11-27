@@ -67,6 +67,8 @@ typedef enum {
     UI_BTN_OPEN_TREE,           /* 仅打开弹层 */
     UI_BTN_OPEN_MUT_LIST,       /* 仅打开“突变图谱”弹层 */
     UI_BTN_TREE_NODE,           /* 进化树节点：target_id = 物种，选中后高亮它的整条路线 */
+    UI_BTN_TREE_SKY,            /* 星图空白区：按住拖动平移（不关闭弹层） */
+    UI_BTN_TREE_RESET,          /* 星图：复位缩放与平移 */
     UI_BTN_CLOSE_OVERLAY,       /* 仅关闭弹层 */
     UI_BTN_CODEX_TAB,           /* option = 0 物种 / 1 突变 / 2 记录 */
     UI_BTN_STORE_TAB,           /* 主界面商店页签：option = 0 机能 / 1 分化 */
@@ -134,6 +136,10 @@ typedef struct {
     int store_tab;    /* 主界面商店：0 机能升级 / 1 分支分化 */
     int info_tab;     /* 主界面情报面板：0 下一步 / 1 产出 / 2 纪录 */
     int tree_sel;     /* 进化树选中的物种，-1 表示跟随主谱系 */
+    /* 星图视图：以圆心为原点缩放，再叠加平移。默认 1.0/0/0 看全貌 */
+    float tree_zoom;
+    float tree_pan_x, tree_pan_y;
+    bool tree_dragging;
     int speciation_page;
     int codex_page;
     int codex_detail_id;
@@ -157,6 +163,14 @@ typedef struct {
 
     float flash;      /* 点击反馈闪光 */
     float ovl_t;      /* 弹层淡入进度 */
+
+    /* 危机演出：进入危机的那一帧由 crisis_watch() 置位，之后按包络衰减。
+     * 抖屏在最终合成里按同一包络平移整帧，所以三者共享一个时间基准。 */
+    int prev_env_id;          /* 上一帧的环境，用于检测"刚进入危机" */
+    int crisis_env;           /* 正在演出的危机环境编号，-1 表示无 */
+    float crisis_t;           /* 演出剩余秒数（2.2 → 0） */
+    float shake;              /* 抖屏强度包络 0..1 */
+    float crisis_flash;       /* 全屏闪光 0..1 */
     float time;       /* 全局时间，用于呼吸/漂浮动画 */
     int last_phase;
     float pop_pulse[MAX_ACTIVE_SPECIES];
@@ -306,13 +320,24 @@ float input_ui_off_y(void);
 Vector2 input_mouse_virtual(void);
 bool input_click_pressed(void);
 bool input_click_released(void);
+bool input_click_down(void);       /* 左键是否按住（星图拖拽用） */
 bool input_key_pressed(int key);
+float input_wheel(void);           /* 本帧滚轮增量（正=向前） */
+Vector2 input_mouse_delta(void);   /* 本帧鼠标位移（逻辑坐标，已除以缩放） */
 int input_hit_topmost(const UiLayout *layout, const UIState *state);
 
 /* ---------------- 页面（screens.c） ---------------- */
 
 void screens_build(UiLayout *out, const GameState *game, const UIState *state);
 void screens_draw(const GameState *game, const UIState *state, const ActionResult *last_result);
+
+/* 随机增益因子在培养皿内的坐标：build_main（命中框）与 draw_dish（绘制）共用，
+ * 保证"看到哪就点到哪"。没有因子时返回皿心，调用方应先判 buffs_factor_visible。 */
+Vector2 screens_buff_factor_pos(const GameState *game, const UIState *state);
+
+/* 星图：圆心与平移上限，ui.c 的拖拽/缩放按这两个值夹取，避免把星图拖出画框 */
+Vector2 screens_tree_center(void);
+float screens_tree_pan_limit(const GameState *game);
 
 /* 调试/截图用：强制切到某个页面或弹层（只在 --shot 模式下由 main.c 调用） */
 void ui_debug_force(UiScreen screen, UiOverlay overlay);
@@ -324,6 +349,9 @@ void ui_debug_set_info_tab(int tab);
 void ui_debug_poke_click(double gain);
 /* 截图用：直接挂一条提示条 */
 void ui_debug_poke_toast(const char *text, bool bad);
+
+/* 截图用：把危机演出拉到指定强度（t 为剩余秒数，2.2 表示刚触发） */
+void ui_debug_poke_crisis(int env_id, float t);
 /* 直接把当前逻辑画布导出成 png */
 void ui_debug_capture(const GameState *game, const char *path);
 /* 把“按钮 id → GameAction”的映射暴露给自检用 */
