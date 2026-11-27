@@ -406,3 +406,6 @@ A/B/C 可运行整合版已在此前完成，Git 基线为 `44e2c0d`；既有结
 
 **清理**：删除临时探针 `build/probe_children.c`、`build/probe_branch.*`、`build/probe_req.*`、`build/demo_trace.exe`；
 `build/report_run.log`、`build/oneshot_check.log`、`build/batch3_oneshot.csv` 属构建产物，留在 `build/`（git 忽略）。
+
+**补记（同日）**：上面写的「`git push` 未执行」已作废——`AGENTS.md` 已授权直接同步 main，
+本轮提交 `10e6edc` 已 push 到 `origin/main`（变基到远端 `9441e93` 之上，冲突仅 `WORK_LOG.md`，双方记录均已保留）。
