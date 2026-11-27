@@ -19,6 +19,8 @@
 #include "ui_internal.h"
 #include "ui_adapter.h"
 #include "atmosphere.h"
+#include "buffs.h"
+#include "codex.h"
 
 /* ================= 通用小工具 ================= */
 
@@ -143,6 +145,7 @@ enum {
     MORPH_TRANSCEND
 };
 
+/* 形态只由「阶段」决定类别；类内差异由 species_id 的种子决定。 */
 static int morph_class(int stage)
 {
     if (stage <= 0) return MORPH_COCCUS;
@@ -157,6 +160,45 @@ static int morph_class(int stage)
     if (stage == 9) return MORPH_SPACE;
     if (stage == 10) return MORPH_SINGULARITY;
     return MORPH_TRANSCEND;
+}
+
+/* 形态"本体"的外接半径（相对本体半径 r）。
+ * 各形态都会在 r 之外再伸出一圈实体：杆菌的荚膜、群体的出芽细胞、行星的环、
+ * 奇点的吸积盘……只按 r 排布会顶出画框（培养皿/展台/图鉴卡）。
+ * thin=true 时把鞭毛、星尘、喷流这类细线也算进来：培养皿是有玻璃壁的硬边界，
+ * 细线伸出去就等于画到皿外；展台/图鉴是矩形画框，细线到边被裁掉即可。 */
+static float morph_extent(int stage, bool thin)
+{
+    switch (morph_class(stage)) {
+    case MORPH_COCCUS:      return thin ? 1.30f : 1.18f;   /* 荚膜环 1.16 */
+    case MORPH_ROD:         return thin ? 2.28f : 1.48f;   /* 胶囊半长 1.46 + 鞭毛 */
+    case MORPH_EUKARYOTE:   return 1.05f;
+    case MORPH_COLONY:      return thin ? 1.30f : 1.24f;   /* 出芽细胞贴外缘 1.18 */
+    case MORPH_TISSUE:      return 1.00f;
+    case MORPH_SYMBIO:      return 1.00f;
+    case MORPH_NEURAL:      return thin ? 1.34f : 1.22f;   /* 轴突末梢的光点 */
+    case MORPH_TECHNO:      return thin ? 1.34f : 1.28f;
+    case MORPH_CIV:         return thin ? 1.38f : 1.32f;
+    case MORPH_SPACE:       return thin ? 1.62f : 1.55f;   /* 卫星轨道 1.42 + 半径 0.10 */
+    case MORPH_SINGULARITY: return thin ? 1.74f : 1.66f;   /* 吸积盘 1.05 × 1.56 + 喷流 */
+    default:                return thin ? 1.40f : 1.32f;
+    }
+}
+
+/* 把本体半径收缩到"整只生物刚好放进 limit 半径"。
+ * limit 是该容器允许的最大视觉半径（培养皿内圈 / 展台留白 / 图鉴画框）。 */
+static float organism_fit_ex(int stage, float r, float limit, bool thin)
+{
+    if (r <= 0.0f || limit <= 0.0f) return r;
+    float extent = morph_extent(stage, thin);
+    if (extent < 0.01f) extent = 1.0f;
+    float cap = limit / extent;
+    return r < cap ? r : cap;
+}
+
+static float organism_fit(int stage, float r, float limit)
+{
+    return organism_fit_ex(stage, r, limit, false);
 }
 
 /* 球体：三段渐变（受光/本体/暗面）+ 边缘反弹光 + 两层高光。
@@ -1094,6 +1136,28 @@ static void draw_organism(Vector2 c, float r, int species_id, int stage, Color a
     }
 }
 
+/* 画框内可用的最大本体半径：取圆心到四条边里最近的一条，再留 4px 余量。
+ * limit_out 回传该上限，给种群环留一圈"刚好套住生物"的半径用。 */
+static float organism_fit_in(Rectangle box, Vector2 c, int stage, float r, float *limit_out)
+{
+    float hx = fminf(c.x - box.x, box.x + box.width - c.x);
+    float hy = fminf(c.y - box.y, box.y + box.height - c.y);
+    float limit = fminf(hx, hy) - 4.0f;
+    if (limit_out) *limit_out = limit;
+    return organism_fit(stage, r, limit);
+}
+
+static void draw_organism_in(Rectangle box, Vector2 c, float r, int sid, int stage,
+                             Color accent, float t, bool lit, bool detail, float a)
+{
+    /* 先按形态外接半径收缩，再用 scissor 硬裁兜底：展台、图鉴大图、网格图标都走这里，
+     * 杆状的鞭毛、行星环、奇点喷流就不会画到标题或相邻面板上。 */
+    float used = organism_fit_in(box, c, stage, r, NULL);
+    ui_clip_begin(box);
+    draw_organism(c, used, sid, stage, accent, t, lit, detail, a);
+    ui_clip_end();
+}
+
 /* ================= 图标 =================
  * 一套程序化图标：货币 4 种、升级 3 种、动作 4 种、界面 3 种。
  * 线宽 ≥1，全部走跟随 zoom 的填充原语。 */
@@ -1114,7 +1178,8 @@ enum {
     ICON_ENV,
     ICON_POP,
     ICON_STAGE,
-    ICON_ACH
+    ICON_ACH,
+    ICON_INSIGHT   /* 理念 / 洞见：环 + 核，与洞见卡徽章同源 */
 };
 
 static void draw_icon(int kind, Vector2 c, float r, Color col, float t)
@@ -1301,6 +1366,17 @@ static void draw_icon(int kind, Vector2 c, float r, Color col, float t)
         }
         break;
     }
+    case ICON_INSIGHT: {
+        /* 理念：一圈环 + 中心核 + 三颗沿环巡行的小点 */
+        DrawRing(c, r * 0.56f, r * 0.70f, 0.0f, 360.0f, 40, Fade(col, 0.85f));
+        DrawCircleV(c, r * 0.24f, Fade(col, 0.90f));
+        for (int i = 0; i < 3; ++i) {
+            float a = t * 0.9f + (float)i * 2.094f;
+            DrawCircleV((Vector2){ c.x + cosf(a) * r * 0.86f, c.y + sinf(a) * r * 0.86f },
+                        r * 0.10f, Fade(col, 0.70f));
+        }
+        break;
+    }
     default: {
         /* 成就：奖章 */
         DrawRing(c, r * 0.50f, r * 0.62f, 0.0f, 360.0f, 48, Fade(col, 0.55f));
@@ -1389,10 +1465,17 @@ static void draw_top_button(UiButton *b, int icon, const char *label, bool hot)
              ui_color_mix(Fade(COL_ACCENT, 0.24f), COL_ACCENT, hv));
     if (hv > 0.02f) ui_halo(r, R_BTN, COL_ACCENT, 0.10f * hv);
 
-    Vector2 ic = { r.x + 26.0f, r.y + r.height * 0.5f };
-    draw_icon(icon, ic, 14.0f, COL_ACCENT, g_ui.time);
-    ui_text_strong(label, r.x + 44.0f, r.y + (r.height - F_LABEL) * 0.5f - 1.0f,
-                   F_LABEL, COL_TEXT);
+    /* 三个入口要挤进 230px：窄按钮自动降一档字号、图标与文字各自收边，
+     * 宽按钮仍是原来的 26/44 内边距，观感不变。 */
+    bool compact = r.width < 90.0f;
+    float fs = compact ? F_CAPTION : F_LABEL;
+    float icon_r = compact ? 11.0f : 14.0f;
+    float icon_x = r.x + (compact ? 15.0f : 26.0f);
+    float text_x = r.x + (compact ? 30.0f : 44.0f);
+
+    Vector2 ic = { icon_x, r.y + r.height * 0.5f };
+    draw_icon(icon, ic, icon_r, COL_ACCENT, g_ui.time);
+    ui_text_strong(label, text_x, r.y + (r.height - fs) * 0.5f - 1.0f, fs, COL_TEXT);
 }
 
 static void draw_top_bar(const GameState *game)
@@ -1412,15 +1495,19 @@ static void draw_top_bar(const GameState *game)
         Color color;
         int icon;
         bool has_rate;
-    } chips[4] = {
-        { "ATP",    game->run.atp,     rates[0], COL_ATP,     ICON_ATP,     true  },
-        { "生物量", game->run.biomass, rates[1], COL_BIOMASS, ICON_BIOMASS, true  },
-        { "DNA",    game->run.dna,     rates[2], COL_DNA,     ICON_DNA,     true  },
-        { "EP",     (double)game->legacy.evolution_points, 0, COL_EP, ICON_EP, false },
+    } chips[5] = {
+        { "ATP",    game->run.atp,          rates[0], COL_ATP,     ICON_ATP,     true  },
+        { "生物量", game->run.biomass,      rates[1], COL_BIOMASS, ICON_BIOMASS, true  },
+        { "DNA",    game->run.dna,          rates[2], COL_DNA,     ICON_DNA,     true  },
+        /* 理念是洞见唯一的花费项，之前顶栏根本不显示它 —— 玩家看不见余额，
+         * 洞见卡上写“2000 理念”就等于一句空话。 */
+        { "理念",   game->run.knowledge,    ua_knowledge_rate(game), COL_VIOLET, ICON_INSIGHT, true },
+        { "EP",     (double)game->legacy.evolution_points, 0, COL_EP, ICON_EP,  false },
     };
 
-    for (int i = 0; i < 4; ++i) {
-        Rectangle p = { 16.0f + (float)i * 196.0f, 10.0f, 188.0f, 56.0f };
+    /* 五个 chip 平分 16..782：宽 150、步距 154，正好给右边的纪元牌留出 22px */
+    for (int i = 0; i < 5; ++i) {
+        Rectangle p = { 16.0f + (float)i * 154.0f, 10.0f, 150.0f, 56.0f };
         draw_resource_chip(p, chips[i].label, chips[i].value, chips[i].rate,
                            chips[i].color, chips[i].icon, chips[i].has_rate);
     }
@@ -1451,8 +1538,10 @@ static void draw_top_bar(const GameState *game)
     }
 
     UiButton *tree = btn_find(&g_ui, UI_BTN_OPEN_TREE, -1);
+    UiButton *muts = btn_find(&g_ui, UI_BTN_OPEN_MUT_LIST, -1);
     UiButton *codex = btn_find(&g_ui, UI_BTN_OPEN_CODEX, -1);
     if (tree) draw_top_button(tree, ICON_TREE, "进化树", is_hot(&g_ui, tree));
+    if (muts) draw_top_button(muts, ICON_MUT, "突变", is_hot(&g_ui, muts));
     if (codex) draw_top_button(codex, ICON_CODEX, "图鉴", is_hot(&g_ui, codex));
 }
 
@@ -1474,6 +1563,196 @@ static void draw_gain_floats(Vector2 c, float r)
         float w = ui_text_w(txt, sz);
         ui_text_shadow(txt, gx - w * 0.5f, fy, sz, Fade(COL_ATP, a), Fade(BLACK, 0.55f * a));
     }
+}
+
+/* ================= 随机增益因子（buffs） =================
+ *
+ * B 的规则层每 45–90 s 刷一个“页面上可点击的因子”，但规则层不知道页面长什么样，
+ * 所以落点由 UI 决定：固定在培养皿内的四个方位之一（由 icon 决定，稳定不跳动），
+ * 半径 0.78R —— 正好落在活体（62）与皿内壁（95）之间，不压住细胞也不出圈。
+ *
+ * 四种图标不是装饰：B 每次刷新都会随机一个 BUFF_ICON_*，玩家能从外形预判类型
+ * 倾向（光球=常规、光链=点击、气泡=补给、星点=强力）。
+ * build_main（放命中框）与 draw_dish（画）都调 screens_buff_factor_pos，
+ * 保证“看到哪就点到哪”。 */
+
+#define DISH_CX 194.0f
+#define DISH_CY 322.0f
+#define DISH_R  104.0f
+
+Vector2 screens_buff_factor_pos(const GameState *game, const UIState *state)
+{
+    int icon = game ? game->run.buff_visible_icon : 0;
+    float punch = state ? state->punch : 0.0f;
+    /* 四个方位避开正上方（ATP 大字）与正下方（物种名） */
+    static const float k_ang[4] = { -1.15f, -0.25f, 1.95f, 2.90f };
+    float a = k_ang[(icon >= 0 && icon < 4) ? icon : 0];
+    float R = DISH_R * (1.0f + 0.055f * punch);
+    /* 0.74R：内侧离活体（62）还有 15px，外侧离皿内壁（95）留 9px，
+     * 光晕不至于压到刻度环上。 */
+    return (Vector2){ DISH_CX + cosf(a) * R * 0.74f, DISH_CY + sinf(a) * R * 0.74f };
+}
+
+/* 因子类型 → 语义色。稀有强增益用 COL_RARE，其余沿用资源色系，读起来有谱。 */
+static Color buff_color(int type)
+{
+    switch (type) {
+    case BUFF_PRODUCTION_STRONG: return COL_RARE;
+    case BUFF_CLICK:             return COL_ATP;
+    case BUFF_INSTANT:           return COL_BIOMASS;
+    default:                     return COL_TEAL;
+    }
+}
+
+/* 四种外观。半径 r 约 13–15，全部用填充原语，4K 下依然锐利。 */
+static void draw_buff_sigil(int icon, Vector2 p, float r, Color col, float t)
+{
+    switch (icon) {
+    case BUFF_ICON_CELL: {
+        /* 光球：亮核 + 三颗绕行小点，像一颗被捕获的细胞 */
+        DrawCircleV(p, r * 0.30f, Fade(COL_TEXT, 0.95f));
+        DrawCircleV(p, r * 0.56f, Fade(col, 0.30f));
+        for (int i = 0; i < 3; ++i) {
+            float a = t * 1.7f + (float)i * 2.094f;
+            DrawCircleV((Vector2){ p.x + cosf(a) * r * 0.80f, p.y + sinf(a) * r * 0.80f },
+                        r * 0.15f, Fade(col, 0.95f));
+        }
+        break;
+    }
+    case BUFF_ICON_DNA: {
+        /* 光链：两条反相正弦珠链 */
+        for (int strand = 0; strand < 2; ++strand) {
+            float phase = (float)strand * PI;
+            Vector2 prev = { 0.0f, 0.0f };
+            for (int i = 0; i <= 10; ++i) {
+                float k = (float)i / 10.0f;
+                Vector2 cur = {
+                    p.x + sinf(k * PI * 2.2f + phase + t * 1.1f) * r * 0.50f,
+                    p.y - r * 0.80f + k * r * 1.60f
+                };
+                if (i > 0) DrawLineEx(prev, cur, 1.5f, Fade(col, 0.85f));
+                if (i > 0 && i < 10) DrawCircleV(cur, r * 0.11f, Fade(COL_TEXT, 0.7f));
+                prev = cur;
+            }
+        }
+        break;
+    }
+    case BUFF_ICON_VESICLE: {
+        /* 气泡：外环 + 内囊 + 高光点 */
+        DrawRing(p, r * 0.60f, r * 0.78f, 0.0f, 360.0f, 32, Fade(col, 0.90f));
+        DrawCircleV((Vector2){ p.x + r * 0.16f, p.y + r * 0.18f }, r * 0.20f, Fade(col, 0.55f));
+        DrawCircleV((Vector2){ p.x - r * 0.22f, p.y - r * 0.24f }, r * 0.09f, Fade(COL_TEXT, 0.9f));
+        break;
+    }
+    default: {
+        /* 星点：四芒 + 核 */
+        for (int i = 0; i < 4; ++i) {
+            float a = (float)i * PI * 0.5f + t * 0.45f;
+            DrawLineEx(p, (Vector2){ p.x + cosf(a) * r * 0.90f, p.y + sinf(a) * r * 0.90f },
+                       1.8f, Fade(col, 0.85f));
+        }
+        DrawCircleV(p, r * 0.18f, Fade(COL_TEXT, 0.95f));
+        break;
+    }
+    }
+}
+
+static void draw_buff_factor(const GameState *game, const UIState *S)
+{
+    if (!buffs_factor_visible(game)) return;
+
+    int icon = game->run.buff_visible_icon;
+    int type = game->run.buff_visible_type;
+    Color col = buff_color(type);
+    bool rare = (type == BUFF_PRODUCTION_STRONG);
+    Vector2 p = screens_buff_factor_pos(game, S);
+
+    UiButton *b = btn_find(S, UI_BTN_COLLECT_BUFF, -1);
+    float hv = btn_hover_step(b, is_hot(S, b));
+    float pulse = 0.5f + 0.5f * sinf(S->time * (rare ? 4.0f : 2.6f));
+    float r = 14.0f * (1.0f + 0.06f * pulse + 0.12f * hv);
+
+    /* 三层光：底晕 + 呼吸环 + 两圈外扩涟漪，远看就知道“这里有东西可以点” */
+    ui_glow(p, r * 3.6f, col, 0.40f + 0.14f * pulse);
+    float ring = r + 4.0f + 5.0f * pulse;
+    DrawRing(p, ring, ring + 1.5f, 0.0f, 360.0f, 48, Fade(col, 0.55f - 0.25f * pulse));
+    for (int i = 0; i < 2; ++i) {
+        float k = fmodf(S->time * 0.8f + (float)i * 0.5f, 1.0f);
+        float rr = r + 3.0f + 24.0f * k;
+        DrawRing(p, rr, rr + 1.2f, 0.0f, 360.0f, 56, Fade(col, 0.30f * (1.0f - k)));
+    }
+
+    /* 本体：深底 + 亮边，保证图标在任何活体颜色上都读得出来 */
+    DrawCircleV(p, r, Fade(COL_BG_DEEP, 0.90f));
+    DrawRing(p, r - 1.7f, r, 0.0f, 360.0f, 48, col);
+    draw_buff_sigil(icon, p, r * 0.88f, col, S->time);
+
+    if (hv > 0.02f) {
+        char tip[96];
+        snprintf(tip, sizeof(tip), "%s · %s", buffs_icon_name(icon), buffs_type_name(type));
+        float w = ui_text_w(tip, F_CAPTION) + 16.0f;
+        Rectangle tb = { p.x - w * 0.5f, p.y - r - 30.0f, w, 22.0f };
+        if (tb.x < 24.0f) tb.x = 24.0f;
+        if (tb.x + tb.width > 360.0f) tb.x = 360.0f - tb.width;
+        if (tb.y < 88.0f) tb.y = p.y + r + 8.0f;
+        ui_panel(tb, R_CHIP(22.0f), Fade(COL_BG_DEEP, 0.94f), Fade(col, 0.65f));
+        ui_text_center(tip, tb.x + tb.width * 0.5f, tb.y + 5.0f, F_CAPTION, col);
+    }
+}
+
+/* 增益生效时沿皿内壁画一段收短的弧：剩余比例一眼可见，不额外占版面。
+ * 进度弧画在呼吸环之外、皿沿之内，和刻度、活体都不打架。 */
+static void draw_buff_timer(Vector2 c, float R, const GameState *game)
+{
+    if (game->run.buff_active_time_left <= 0.0) return;
+    int type = game->run.buff_active_type;
+    double dur = ua_buff_duration(type);
+    if (dur <= 0.0) return;
+
+    float frac = (float)(game->run.buff_active_time_left / dur);
+    if (frac > 1.0f) frac = 1.0f;
+    if (frac < 0.0f) frac = 0.0f;
+    Color col = buff_color(type);
+
+    float r0 = R - 8.0f, r1 = R - 5.0f;
+    DrawRing(c, r0, r1, -90.0f, -90.0f + 360.0f * frac, 96, Fade(col, 0.72f));
+    /* 快结束时再补一层呼吸，提醒“要没了” */
+    if (frac < 0.25f) {
+        float blink = 0.5f + 0.5f * sinf(g_ui.time * 7.0f);
+        DrawRing(c, r0 - 1.5f, r1 + 1.5f, -90.0f, -90.0f + 360.0f * frac, 96,
+                 Fade(col, 0.45f * blink));
+    }
+    /* 起点刻度：让弧的“满格”位置有个参照 */
+    DrawCircleV((Vector2){ c.x, c.y - r0 - 1.0f }, 1.8f, Fade(col, 0.8f));
+}
+
+/* 皿下那一行文字：因子 > 生效中 > 常规提示。三种状态互斥，永远只占一行。 */
+static void draw_dish_hint(const GameState *game, Vector2 c, float y)
+{
+    if (buffs_factor_visible(game)) {
+        int type = game->run.buff_visible_type;
+        char line[96];
+        snprintf(line, sizeof(line), "因子 · %s · 点它或按 B 领取", buffs_type_name(type));
+        ui_text_center(line, c.x, y, F_CAPTION, buff_color(type));
+        return;
+    }
+    if (game->run.buff_active_time_left > 0.0) {
+        int type = game->run.buff_active_type;
+        char line[96];
+        snprintf(line, sizeof(line), "%s · 剩余 %.0f 秒",
+                 buffs_type_name(type), game->run.buff_active_time_left);
+        ui_text_center(line, c.x, y, F_CAPTION, buff_color(type));
+        return;
+    }
+
+    char line[96];
+    if (game->run.buff_spawn_timer > 0.0) {
+        snprintf(line, sizeof(line), "点击培养皿采集 · 下一个因子约 %.0f 秒",
+                 game->run.buff_spawn_timer);
+    } else {
+        snprintf(line, sizeof(line), "点击培养皿或按空格采集");
+    }
+    ui_text_center(line, c.x, y, F_CAPTION, COL_FAINT);
 }
 
 static void draw_dish(const GameState *game)
@@ -1503,20 +1782,41 @@ static void draw_dish(const GameState *game)
     /* 数字后面一层极淡的金色辉光，让它“发亮”而不是浮在暗底上 */
     ui_glow((Vector2){ r.x + r.width * 0.5f, r.y + 66.0f }, 110.0f, COL_ATP, 0.30f);
 
+    /* 产率增益的倍率：贴在 ATP 数字右侧，别让玩家只能靠“数字变快了”去猜 */
+    {
+        double pm = buffs_production_multiplier(game);
+        if (pm > 1.0) {
+            char mb[24];
+            snprintf(mb, sizeof(mb), "×%.1f", pm);
+            float mwid = ui_text_w(mb, F_LABEL) + 12.0f;
+            float mx = r.x + r.width * 0.5f + nw * 0.5f + 8.0f;
+            if (mx + mwid > r.x + r.width - 10.0f) mx = r.x + r.width - 10.0f - mwid;
+            Rectangle mc = { mx, r.y + 52.0f, mwid, 20.0f };
+            Color mcol = buff_color(game->run.buff_active_type);
+            ui_panel(mc, R_CHIP(20.0f), Fade(mcol, 0.16f), Fade(mcol, 0.55f));
+            ui_text_center(mb, mc.x + mc.width * 0.5f, mc.y + 3.0f, F_LABEL, mcol);
+        }
+    }
+
     double click = ua_click_atp(game);
-    char rl[48];
+    char rl[64];
     if (click >= 0.0) {
         char cn[24];
         ui_fmt_num(click, cn, (int)sizeof(cn));
-        snprintf(rl, sizeof(rl), "采集 +%s ATP", cn);
+        if (buffs_click_multiplier(game) > 1.0) {
+            snprintf(rl, sizeof(rl), "采集 +%s ATP  ×2", cn);
+        } else {
+            snprintf(rl, sizeof(rl), "采集 +%s ATP", cn);
+        }
     } else {
         snprintf(rl, sizeof(rl), "点击采集");
     }
     ui_text_center(rl, r.x + r.width * 0.5f, r.y + 90.0f, F_CAPTION, COL_ATP);
 
-    /* 培养皿：半径受点击膨胀影响 */
-    Vector2 c = { r.x + r.width * 0.5f, r.y + 238.0f };
-    float R = 104.0f * (1.0f + 0.055f * S->punch);
+    /* 培养皿：半径受点击膨胀影响。圆心/半径用与 screens_buff_factor_pos 同一组
+     * 常量，因子落点才不会和皿心算错。 */
+    Vector2 c = { DISH_CX, DISH_CY };
+    float R = DISH_R * (1.0f + 0.055f * S->punch);
     float t = S->time;
 
     /* 背后环境光（在液体之前画，才不会被不透明皿底盖掉） */
@@ -1553,6 +1853,9 @@ static void draw_dish(const GameState *game)
                  Fade(accent, 0.20f - 0.06f * (float)i));
     }
 
+    /* 限时增益的剩余时间：沿皿内壁画弧（在呼吸环之外、皿沿之内） */
+    draw_buff_timer(c, R, game);
+
     /* 内圈微尘 */
     for (int i = 0; i < 10; ++i) {
         float a0 = (float)i * 2.399f + t * 0.05f;
@@ -1562,16 +1865,24 @@ static void draw_dish(const GameState *game)
         DrawCircleV(p, 1.4f + 1.0f * hash01((unsigned int)i * 11u + 5u), Fade(accent, al));
     }
 
-    /* 活体 */
+    /* 活体：先按形态的外接半径收进皿内圈，再裁到皿的方框里兜底，
+     * 杆状/奇点这类"越界"的形态不会再把鞭毛、吸积盘画到皿外的面板上。 */
     if (game->run.active_species_count > 0) {
         float breathe = 1.0f + 0.02f * sinf(t * 1.5f);
         Vector2 oc = { c.x, c.y + 1.0f };
-        draw_organism(oc, 62.0f * breathe * (1.0f + 0.04f * S->punch), sid, stage, accent, t, true, true, 1.0f);
+        float org_r = organism_fit_ex(stage, 62.0f * breathe * (1.0f + 0.04f * S->punch),
+                                      R * 0.92f, true);
+        ui_clip_begin((Rectangle){ c.x - R * 0.96f, c.y - R * 0.96f, R * 1.92f, R * 1.92f });
+        draw_organism(oc, org_r, sid, stage, accent, t, true, true, 1.0f);
+        ui_clip_end();
     }
 
     /* 物种名 / 提示 */
     ui_text_center(ua_species_name(sid), c.x, r.y + 362.0f, F_LABEL, COL_TEXT);
-    ui_text_center("点击培养皿或按空格采集", c.x, r.y + 382.0f, F_CAPTION, COL_FAINT);
+    draw_dish_hint(game, c, r.y + 382.0f);
+
+    /* 随机增益因子：画在活体之上，才不会被细胞盖住 */
+    draw_buff_factor(game, S);
 
     /* 采集浮字 + 粒子 */
     draw_gain_floats(c, R);
@@ -1678,21 +1989,43 @@ static void draw_species_card(const GameState *game, int slot)
         ui_text_center("协同", chip.x + chip.width * 0.5f, chip.y + 4.0f, F_CAPTION, COL_EP);
     }
 
-    /* 突变 chips */
+    /* 突变 chips：右端固定一枚"全部 N >"，整行可点 → 打开突变图谱。
+     * 这一行原本只放得下 3 枚 chip，"第 4 个以后的突变去哪儿了"没有答案；
+     * 现在尾部的计数 chip 就是那个入口。 */
+    int total = 0;
+    for (int m = 0; m < MUTATION_COUNT; ++m) {
+        if (sp->mutations[m]) ++total;
+    }
+
+    char allbuf[32];
+    if (total > 0) snprintf(allbuf, sizeof(allbuf), "全部 %d >", total);
+    else           snprintf(allbuf, sizeof(allbuf), "突变图谱 >");
+    float all_w = ui_text_w(allbuf, F_CAPTION) + 18.0f;
+    float all_x = r.x + r.width - S_SAFE - all_w;
+
+    UiButton *mb = btn_find(&g_ui, UI_BTN_OPEN_MUT_LIST, 1);
+    float mh = btn_hover_step(mb, is_hot(&g_ui, mb));
+    Rectangle all = { all_x, r.y + 110.0f, all_w, H_CHIP };
+    ui_panel(all, R_CHIP(H_CHIP), Fade(COL_DNA, 0.10f + 0.14f * mh),
+             Fade(COL_DNA, 0.26f + 0.45f * mh));
+    ui_text_center(allbuf, all.x + all.width * 0.5f, all.y + 4.0f, F_CAPTION, COL_DNA);
+
     int shown = 0;
     float chip_x = r.x + S_PAD + 36.0f;
-    for (int m = 0; m < MUTATION_COUNT && shown < 3; ++m) {
+    for (int m = 0; m < MUTATION_COUNT; ++m) {
         if (!sp->mutations[m]) continue;
         const char *nm = ua_mutation_name(m);
         float w = ui_text_w(nm, F_CAPTION) + 14.0f;
-        if (chip_x + w > r.x + r.width - S_SAFE) break;
+        if (chip_x + w > all_x - 6.0f) break;
         Rectangle chip = { chip_x, r.y + 110.0f, w, H_CHIP };
         ui_panel(chip, R_CHIP(H_CHIP), Fade(COL_DNA, 0.10f), Fade(COL_DNA, 0.24f));
         ui_text_center(nm, chip.x + chip.width * 0.5f, chip.y + 4.0f, F_CAPTION, COL_DNA);
         chip_x += w + 5.0f;
         shown++;
     }
-    if (shown == 0) ui_text("尚无突变", r.x + S_PAD + 36.0f, r.y + 110.0f, F_CAPTION, COL_FAINT);
+    if (shown == 0 && total == 0) {
+        ui_text("尚无突变", r.x + S_PAD + 36.0f, r.y + 110.0f, F_CAPTION, COL_FAINT);
+    }
 
     char why[192];
     ua_fitness_breakdown(game, slot, why, (int)sizeof(why));
@@ -1794,6 +2127,10 @@ static void draw_stage(const GameState *game)
     if (nsp > 3) nsp = 3;
     float cy = r.y + 116.0f;
 
+    /* 生物画框：上让开"生命体展台"标题、下让开物种名与种群行。
+     * 所有展台里的生物都画在这个框里，形态再张扬也不会盖到标题或压到下方的面板。 */
+    Rectangle art = { r.x + 8.0f, r.y + 32.0f, r.width - 16.0f, 194.0f };
+
     if (nsp <= 1) {
         float cx = r.x + r.width * 0.5f;
         float radius = 96.0f;
@@ -1802,12 +2139,17 @@ static void draw_stage(const GameState *game)
         ua_species_rates(game, 0, &rates);
 
         ui_glow((Vector2){ cx, cy }, radius * 1.5f, ui_color_mix(accent, (Color){ 70, 140, 210, 255 }, 0.72f), 0.11f);
-        draw_organism((Vector2){ cx, cy }, radius, game->run.active_species[0].species_id,
-                      ua_species_stage(game->run.active_species[0].species_id), accent,
-                      S->time, true, true, 1.0f);
+        int st0 = ua_species_stage(game->run.active_species[0].species_id);
+        float limit0 = 0.0f;
+        float used = organism_fit_in(art, (Vector2){ cx, cy }, st0, radius, &limit0);
         float pop = rates.final_population_cap > 0.0
                   ? (float)(game->run.active_species[0].population / rates.final_population_cap) : 0.0f;
-        draw_pop_arc((Vector2){ cx, cy }, radius + 14.0f, pop, accent);
+        /* 环套在生物外面：外接半径 +10，最多到画框留白，避免切线穿过本体 */
+        draw_pop_arc((Vector2){ cx, cy },
+                     fminf(used * morph_extent(st0, false) + 10.0f, limit0 + 4.0f), pop, accent);
+        draw_organism_in(art, (Vector2){ cx, cy }, radius,
+                         game->run.active_species[0].species_id, st0, accent,
+                         S->time, true, true, 1.0f);
 
         ui_text_center_strong(ua_species_name(game->run.active_species[0].species_id), cx,
                               r.y + 228.0f, F_LABEL, COL_TEXT);
@@ -1824,12 +2166,16 @@ static void draw_stage(const GameState *game)
         ua_species_rates(game, 0, &rates);
 
         ui_glow((Vector2){ cx, cy }, radius * 1.5f, ui_color_mix(accent, (Color){ 70, 140, 210, 255 }, 0.72f), 0.10f);
-        draw_organism((Vector2){ cx, cy }, radius, game->run.active_species[0].species_id,
-                      ua_species_stage(game->run.active_species[0].species_id), accent,
-                      S->time, true, true, 1.0f);
+        int st0 = ua_species_stage(game->run.active_species[0].species_id);
+        float limit0 = 0.0f;
+        float used = organism_fit_in(art, (Vector2){ cx, cy }, st0, radius, &limit0);
         float pop = rates.final_population_cap > 0.0
                   ? (float)(game->run.active_species[0].population / rates.final_population_cap) : 0.0f;
-        draw_pop_arc((Vector2){ cx, cy }, radius + 13.0f, pop, accent);
+        draw_pop_arc((Vector2){ cx, cy },
+                     fminf(used * morph_extent(st0, false) + 10.0f, limit0 + 4.0f), pop, accent);
+        draw_organism_in(art, (Vector2){ cx, cy }, radius,
+                         game->run.active_species[0].species_id, st0, accent,
+                         S->time, true, true, 1.0f);
 
         ui_text_center_strong(ua_species_name(game->run.active_species[0].species_id), cx,
                               r.y + 214.0f, F_LABEL, COL_TEXT);
@@ -1844,12 +2190,16 @@ static void draw_stage(const GameState *game)
         SpeciesRates r2;
         ua_species_rates(game, 1, &r2);
         ui_glow((Vector2){ cx2, cy }, 54.0f * 1.5f, ui_color_mix(accent2, (Color){ 70, 140, 210, 255 }, 0.72f), 0.09f);
-        draw_organism((Vector2){ cx2, cy }, 52.0f, game->run.active_species[1].species_id,
-                      ua_species_stage(game->run.active_species[1].species_id), accent2,
-                      S->time + 1.7f, true, true, 1.0f);
+        int st1 = ua_species_stage(game->run.active_species[1].species_id);
+        float limit1 = 0.0f;
+        float used2 = organism_fit_in(art, (Vector2){ cx2, cy }, st1, 52.0f, &limit1);
         float pop2 = r2.final_population_cap > 0.0
                    ? (float)(game->run.active_species[1].population / r2.final_population_cap) : 0.0f;
-        draw_pop_arc((Vector2){ cx2, cy }, 66.0f, pop2, accent2);
+        draw_pop_arc((Vector2){ cx2, cy },
+                     fminf(used2 * morph_extent(st1, false) + 10.0f, limit1 + 4.0f), pop2, accent2);
+        draw_organism_in(art, (Vector2){ cx2, cy }, 52.0f,
+                         game->run.active_species[1].species_id, st1, accent2,
+                         S->time + 1.7f, true, true, 1.0f);
 
         ui_text_center_strong(ua_species_name(game->run.active_species[1].species_id), cx2,
                               r.y + 194.0f, F_LABEL, COL_TEXT);
@@ -1878,12 +2228,16 @@ static void draw_stage(const GameState *game)
             SpeciesRates s0;
             ua_species_rates(game, 0, &s0);
             ui_glow((Vector2){ mx, cy }, R0 * 1.5f, ui_color_mix(a0, (Color){ 70, 140, 210, 255 }, 0.72f), 0.11f);
-            draw_organism((Vector2){ mx, cy }, R0, game->run.active_species[0].species_id,
-                          ua_species_stage(game->run.active_species[0].species_id), a0,
-                          S->time, true, true, 1.0f);
+            int st0 = ua_species_stage(game->run.active_species[0].species_id);
+            float limit0 = 0.0f;
+            float used0 = organism_fit_in(art, (Vector2){ mx, cy }, st0, R0, &limit0);
             float p0 = s0.final_population_cap > 0.0
                      ? (float)(game->run.active_species[0].population / s0.final_population_cap) : 0.0f;
-            draw_pop_arc((Vector2){ mx, cy }, R0 + 12.0f, p0, a0);
+            draw_pop_arc((Vector2){ mx, cy },
+                         fminf(used0 * morph_extent(st0, false) + 10.0f, limit0 + 4.0f), p0, a0);
+            draw_organism_in(art, (Vector2){ mx, cy }, R0,
+                             game->run.active_species[0].species_id, st0, a0,
+                             S->time, true, true, 1.0f);
 
             ui_text_center_strong(ua_species_name(game->run.active_species[0].species_id), mx,
                                   r.y + 226.0f, F_LABEL, COL_TEXT);
@@ -1901,12 +2255,16 @@ static void draw_stage(const GameState *game)
                 SpeciesRates sk;
                 ua_species_rates(game, k, &sk);
                 ui_glow((Vector2){ sx, sy }, R1 * 1.5f, ui_color_mix(ak, (Color){ 70, 140, 210, 255 }, 0.72f), 0.09f);
-                draw_organism((Vector2){ sx, sy }, R1, game->run.active_species[k].species_id,
-                              ua_species_stage(game->run.active_species[k].species_id), ak,
-                              S->time + (float)k * 1.3f, true, true, 1.0f);
+                int stk = ua_species_stage(game->run.active_species[k].species_id);
+                float limitk = 0.0f;
+                float usedk = organism_fit_in(art, (Vector2){ sx, sy }, stk, R1, &limitk);
                 float pk = sk.final_population_cap > 0.0
                          ? (float)(game->run.active_species[k].population / sk.final_population_cap) : 0.0f;
-                draw_pop_arc((Vector2){ sx, sy }, R1 + 10.0f, pk, ak);
+                draw_pop_arc((Vector2){ sx, sy },
+                             fminf(usedk * morph_extent(stk, false) + 10.0f, limitk + 4.0f), pk, ak);
+                draw_organism_in(art, (Vector2){ sx, sy }, R1,
+                                 game->run.active_species[k].species_id, stk, ak,
+                                 S->time + (float)k * 1.3f, true, true, 1.0f);
 
                 char pn[24], cn[24], sub[72];
                 ui_fmt_num(game->run.active_species[k].population, pn, (int)sizeof(pn));
@@ -2059,8 +2417,8 @@ static void info_content_next(const GameState *game, Rectangle r)
     float y = r.y + 38.0f;
     float x = r.x + S_PAD;
 
-    int children[4];
-    int n = ua_speciation_children(game, children, 4);
+    int children[SPECIES_COUNT];
+    int n = ua_speciation_children(game, children, SPECIES_COUNT);
     int ready = -1;
     for (int i = 0; i < n; ++i) {
         if (ua_speciation_check(game, children[i]) == ACTION_OK) { ready = children[i]; break; }
@@ -2287,34 +2645,36 @@ static void draw_shop_upgrade(const GameState *game, int type, Rectangle r)
     DrawRectangleRounded((Rectangle){ r.x + 6.0f, r.y + 10.0f, 3.0f, r.height - 20.0f },
                          1.0f, 4, Fade(icol, 0.85f));
 
-    Rectangle tile = { r.x + 12.0f, r.y + 12.0f, 56.0f, 56.0f };
+    /* 四张卡（三机能 + 洞见）共用一列，卡高从 140 压到 118，
+     * 高度刚好把底部让给洞见条目，不再用 28px 细条硬塞。 */
+    Rectangle tile = { r.x + 12.0f, r.y + 10.0f, 48.0f, 48.0f };
     icon_badge(tile, icon, icol, S->time);
 
-    ui_text_strong(ua_run_upgrade_title((RunUpgradeType)type), r.x + 82.0f, r.y + 12.0f,
+    ui_text_strong(ua_run_upgrade_title((RunUpgradeType)type), r.x + 72.0f, r.y + 8.0f,
                    F_LABEL, COL_TEXT);
 
     char lv[24];
     snprintf(lv, sizeof(lv), "Lv.%d", level);
     float lw = ui_text_w(lv, F_CAPTION) + 14.0f;
-    Rectangle chip = { r.x + r.width - 12.0f - lw, r.y + 12.0f, lw, H_CHIP };
+    Rectangle chip = { r.x + r.width - 12.0f - lw, r.y + 8.0f, lw, H_CHIP };
     ui_panel(chip, R_CHIP(H_CHIP), Fade(icol, 0.12f), BLANK);
     ui_text_center(lv, chip.x + lw * 0.5f, chip.y + 4.0f, F_CAPTION, icol);
 
     char eff[96];
     ua_run_upgrade_effect(game, (RunUpgradeType)type, eff, (int)sizeof(eff));
-    ui_text(eff, r.x + 82.0f, r.y + 36.0f, F_CAPTION, COL_DIM);
+    ui_text(eff, r.x + 72.0f, r.y + 28.0f, F_CAPTION, COL_DIM);
 
     /* 等级刻条：10 格 */
     {
         int seg = level > 10 ? 10 : level;
         for (int i = 0; i < 10; ++i) {
-            Rectangle tick = { r.x + 82.0f + (float)i * 13.0f, r.y + 60.0f, 9.0f, 4.0f };
+            Rectangle tick = { r.x + 72.0f + (float)i * 12.0f, r.y + 48.0f, 8.0f, 4.0f };
             ui_panel(tick, 2.0f, i < seg ? Fade(icol, 0.9f) : COL_BAR_TRACK, BLANK);
         }
         if (level > 10) {
             char more[16];
             snprintf(more, sizeof(more), "+%d", level - 10);
-            ui_text(more, r.x + 82.0f + 10.0f * 13.0f + 4.0f, r.y + 54.0f, F_CAPTION, COL_FAINT);
+            ui_text(more, r.x + 72.0f + 10.0f * 12.0f + 4.0f, r.y + 42.0f, F_CAPTION, COL_FAINT);
         }
     }
 
@@ -2326,21 +2686,21 @@ static void draw_shop_upgrade(const GameState *game, int type, Rectangle r)
     if (inf) snprintf(cost, sizeof(cost), "已满级");
     else snprintf(cost, sizeof(cost), "%s %s", num, type == UPGRADE_GENOME ? "生物量" : "ATP");
 
-    Rectangle pill = { r.x + 12.0f, r.y + 100.0f, r.width - 24.0f, 30.0f };
+    Rectangle pill = { r.x + 12.0f, r.y + 76.0f, r.width - 24.0f, 28.0f };
     ui_panel(pill, R_BTN, usable ? Fade(icol, 0.13f) : COL_SURFACE_OFF,
              usable ? Fade(icol, 0.55f) : Fade(COL_LINE, 0.7f));
-    ui_text(cost, pill.x + 12.0f, pill.y + 6.0f, F_BODY, usable ? icol : COL_FAINT);
+    ui_text(cost, pill.x + 12.0f, pill.y + 5.0f, F_BODY, usable ? icol : COL_FAINT);
     if (!inf) {
-        ui_text_right("购买", pill.x + pill.width - 12.0f, pill.y + 7.0f, F_CAPTION,
+        ui_text_right("购买", pill.x + pill.width - 12.0f, pill.y + 6.0f, F_CAPTION,
                       usable ? COL_TEXT : COL_FAINT);
     }
 
     /* 快捷键角标 */
-    char key[8];
+    char key[16];
     snprintf(key, sizeof(key), "%d", type + 1);
-    Rectangle kb = { tile.x + tile.width - 18.0f, tile.y + tile.height - 18.0f, 18.0f, 18.0f };
+    Rectangle kb = { tile.x + tile.width - 16.0f, tile.y + tile.height - 16.0f, 16.0f, 16.0f };
     ui_panel(kb, 5.0f, Fade(COL_BG_DEEP, 0.85f), Fade(COL_LINE, 1.0f));
-    ui_text_center(key, kb.x + 9.0f, kb.y + 3.0f, F_CAPTION, COL_FAINT);
+    ui_text_center(key, kb.x + 8.0f, kb.y + 2.0f, F_CAPTION, COL_FAINT);
 }
 
 static void draw_shop_branch(const GameState *game, int child, Rectangle r)
@@ -2360,73 +2720,119 @@ static void draw_shop_branch(const GameState *game, int child, Rectangle r)
     DrawRectangleRounded((Rectangle){ r.x + 6.0f, r.y + 10.0f, 3.0f, r.height - 20.0f },
                          1.0f, 4, Fade(col, 0.85f));
 
-    Rectangle tile = { r.x + 12.0f, r.y + 12.0f, 56.0f, 56.0f };
+    Rectangle tile = { r.x + 12.0f, r.y + 10.0f, 48.0f, 48.0f };
     ui_panel(tile, 10.0f, ui_color_mix(COL_PANEL_HI, col, 0.10f), Fade(col, 0.30f));
-    draw_organism((Vector2){ tile.x + 28.0f, tile.y + 30.0f }, 21.0f, child, stage, col,
-                  S->time + (float)child * 0.3f, ok, ok, ok ? 1.0f : 0.65f);
+    draw_organism_in((Rectangle){ tile.x + 4.0f, tile.y + 4.0f, 40.0f, 40.0f },
+                     (Vector2){ tile.x + 24.0f, tile.y + 25.0f }, 18.0f, child, stage, col,
+                     S->time + (float)child * 0.3f, ok, ok, ok ? 1.0f : 0.65f);
 
-    ui_text_strong(ua_species_name(child), r.x + 82.0f, r.y + 12.0f, F_LABEL, COL_TEXT);
+    ui_text_strong(ua_species_name(child), r.x + 72.0f, r.y + 8.0f, F_LABEL, COL_TEXT);
 
     char meta[96];
     snprintf(meta, sizeof(meta), "阶段 %d · %s", stage, ua_ecology_name(child));
-    ui_text(meta, r.x + 82.0f, r.y + 36.0f, F_CAPTION, COL_DIM);
+    ui_text(meta, r.x + 72.0f, r.y + 28.0f, F_CAPTION, COL_DIM);
 
     char req[128];
     ua_speciation_requirement(child, req, (int)sizeof(req));
-    ui_text(req, r.x + 82.0f, r.y + 56.0f, F_CAPTION, ok ? COL_GOOD : COL_FAINT);
+    ui_text(req, r.x + 72.0f, r.y + 48.0f, F_CAPTION, ok ? COL_GOOD : COL_FAINT);
 
     char num[32], cost[56];
     ui_fmt_num(ua_speciation_cost(game, child), num, (int)sizeof(num));
     snprintf(cost, sizeof(cost), "%s 生物量", num);
-    Rectangle pill = { r.x + 12.0f, r.y + 100.0f, r.width - 24.0f, 30.0f };
+    Rectangle pill = { r.x + 12.0f, r.y + 76.0f, r.width - 24.0f, 28.0f };
     ui_panel(pill, R_BTN, afford ? Fade(COL_BIOMASS, 0.13f) : COL_SURFACE_OFF,
              afford ? Fade(COL_BIOMASS, 0.55f) : Fade(COL_LINE, 0.7f));
-    ui_text(cost, pill.x + 12.0f, pill.y + 6.0f, F_BODY, afford ? COL_BIOMASS : COL_FAINT);
+    ui_text(cost, pill.x + 12.0f, pill.y + 5.0f, F_BODY, afford ? COL_BIOMASS : COL_FAINT);
     ui_text_right(ok ? (afford ? "分化" : "资源不足") : "前置不足",
-                  pill.x + pill.width - 12.0f, pill.y + 7.0f, F_CAPTION,
+                  pill.x + pill.width - 12.0f, pill.y + 6.0f, F_CAPTION,
                   ok && afford ? COL_TEXT : COL_FAINT);
 }
 
-static void draw_shop_footer(const GameState *game, Rectangle r)
+/* ---------------- 洞见（Insight）：理念的长线出口 ----------------
+ *
+ * 规则层：每级 +2% 全物种产率，成本 2000 × 1.9^级，无上限。
+ * 它和子升级是**相乘**关系，所以这一条要在数值上说得清楚：
+ * 现在的总倍率、买下一级之后的倍率、以及“理念从哪来”（阶段 6 起才产）。
+ * 之前只有一条 28px 高的按钮，玩家既看不出收益也看不出进度，等于没有。 */
+
+static void draw_insight_card(const GameState *game, const UIState *S)
 {
-    int counts[5];
-    ua_era_breakdown(game, counts);
-    char line[96];
-    snprintf(line, sizeof(line), "阶段 %d · 突变 %d · 物种 %d · 危机 %d",
-             counts[0], counts[1], counts[2], counts[3]);
-    ui_text(line, r.x + 4.0f, r.y + 8.0f, F_CAPTION, COL_FAINT);
+    UiButton *b = btn_find(S, UI_BTN_BUY_INSIGHT, -1);
+    Rectangle r = b ? b->rect : (Rectangle){ 928.0f, 552.0f, 320.0f, 80.0f };
+    float hv = btn_hover_step(b, is_hot(S, b));
+    bool usable = b && b->enabled;
+    int level = game->run.insight_levels;
+    double cost = ua_insight_cost(game);
+    double now = ua_insight_multiplier(game);
+    double next = ua_insight_next_multiplier(game);
+    bool inf = !isfinite(cost);
 
-    EraReward reward;
-    ua_era_reward(game, &reward);
-    char ep[32];
-    snprintf(ep, sizeof(ep), "结算 %d EP", reward.total_points);
-    ui_text_right(ep, r.x + r.width - 4.0f, r.y + 6.0f, F_BODY, COL_EP);
+    if (usable && hv > 0.02f) ui_halo(r, R_CARD, COL_VIOLET, 0.12f * hv);
+    ui_panel(r, R_CARD, ui_color_mix(COL_PANEL_HI, COL_PANEL_HOT, hv * 0.75f),
+             (hv > 0.02f) ? Fade(COL_VIOLET, 0.85f) : Fade(COL_LINE, 0.55f));
+    DrawRectangleRounded((Rectangle){ r.x + 6.0f, r.y + 8.0f, 3.0f, r.height - 16.0f },
+                         1.0f, 4, Fade(COL_VIOLET, 0.85f));
 
-    /* 纪元进度条：五项得分各占多少，一眼看出下一分从哪来 */
+    /* 徽章：用“理念”本体的环状符号，不用货币图标 —— 它花的是知识，不是 ATP */
+    Rectangle badge = { r.x + 12.0f, r.y + 14.0f, 52.0f, 52.0f };
+    ui_glow((Vector2){ badge.x + 26.0f, badge.y + 26.0f }, 38.0f, COL_VIOLET, 0.45f);
+    ui_panel(badge, 10.0f, ui_color_mix(COL_PANEL_HI, COL_VIOLET, 0.26f),
+             Fade(COL_VIOLET, 0.80f));
     {
-        int counts[5];
-        ua_era_breakdown(game, counts);
-        double pts[5] = { 2.0 * counts[0], counts[1] / 3.0, counts[2] / 2.0,
-                          (double)(counts[3] > 3 ? 3 : counts[3]), (double)counts[4] };
-        double total = 0.0;
-        for (int i = 0; i < 5; ++i) total += pts[i];
-
-        Rectangle bar = { r.x + 4.0f, r.y + 26.0f, r.width - 8.0f, 3.0f };
-        ui_panel(bar, 1.5f, COL_BAR_TRACK, BLANK);
-        if (total <= 0.0) {
-            ui_panel(bar, 1.5f, COL_BAR_TRACK, BLANK);
-        } else {
-            float x = bar.x;
-            Color cs[5] = { COL_ACCENT, COL_DNA, COL_TEAL, COL_BAD, COL_EP };
-            for (int i = 0; i < 5; ++i) {
-                if (pts[i] <= 0.0) continue;
-                float w = (float)(bar.width * pts[i] / total);
-                if (w < 1.0f) w = 1.0f;
-                ui_panel((Rectangle){ x, bar.y, w, bar.height }, 1.5f, cs[i], BLANK);
-                x += w;
-            }
+        Vector2 bc = { badge.x + 26.0f, badge.y + 26.0f };
+        /* 环要够厚：12px 直径上 2px 的线在 4K 缩到 1080 时几乎看不见 */
+        DrawRing(bc, 10.0f, 13.5f, 0.0f, 360.0f, 40, Fade(COL_VIOLET, 0.95f));
+        DrawCircleV(bc, 5.0f, Fade(COL_TEXT, 0.92f));
+        for (int i = 0; i < 3; ++i) {
+            float a = S->time * 0.9f + (float)i * 2.094f;
+            DrawCircleV((Vector2){ bc.x + cosf(a) * 19.0f, bc.y + sinf(a) * 19.0f },
+                        2.2f, Fade(COL_VIOLET, 0.90f));
         }
     }
+
+    ui_text_strong("洞见", r.x + 74.0f, r.y + 6.0f, F_LABEL, COL_TEXT);
+
+    char lv[32];
+    snprintf(lv, sizeof(lv), "Lv.%d", level);
+    float lw = ui_text_w(lv, F_CAPTION) + 14.0f;
+    Rectangle chip = { r.x + r.width - 12.0f - lw, r.y + 6.0f, lw, H_CHIP };
+    ui_panel(chip, R_CHIP(H_CHIP), Fade(COL_VIOLET, 0.12f), BLANK);
+    ui_text_center(lv, chip.x + lw * 0.5f, chip.y + 4.0f, F_CAPTION, COL_VIOLET);
+
+    /* 倍率：当前 → 下一级。数字直接写，不用“+2%”让玩家自己算。 */
+    char mult[96];
+    if (inf) {
+        snprintf(mult, sizeof(mult), "全产率 ×%.2f · 已达上限", now);
+    } else {
+        snprintf(mult, sizeof(mult), "全产率 ×%.2f → ×%.2f", now, next);
+    }
+    ui_text(mult, r.x + 74.0f, r.y + 27.0f, F_CAPTION, COL_DIM);
+
+    /* 价格行只写价格：余额顶栏已经有第四个 chip（理念），卡上再写一遍
+     * 会和右下角胶囊挤在同一行，反而读不清。 */
+    char num[32], costline[96];
+    ui_fmt_num(cost, num, (int)sizeof(num));
+    bool has_source = ua_knowledge_rate(game) > 0.0 || game->run.knowledge > 0.0;
+
+    if (inf) {
+        snprintf(costline, sizeof(costline), "已达上限");
+    } else if (!has_source) {
+        /* 前期理念产量为 0：把“还买不到”的原因写在价格位上，比灰按钮诚实。
+         * 文案要短 —— 右缘还有一枚"理念不足"胶囊，长句会顶上去。 */
+        snprintf(costline, sizeof(costline), "阶段 6 起才有理念产出");
+    } else {
+        snprintf(costline, sizeof(costline), "%s 理念", num);
+    }
+    ui_text(costline, r.x + 74.0f, r.y + 47.0f, F_CAPTION,
+            usable ? COL_VIOLET : (has_source ? COL_FAINT : Fade(COL_FAINT, 0.9f)));
+
+    /* 行动胶囊与价格同一行，右缘对齐；整张卡本身就是按钮 */
+    Rectangle act = { r.x + r.width - 78.0f, r.y + 44.0f, 66.0f, 20.0f };
+    ui_panel(act, R_CHIP(20.0f), usable ? Fade(COL_VIOLET, 0.18f) : COL_SURFACE_OFF,
+             usable ? Fade(COL_VIOLET, 0.55f) : Fade(COL_LINE, 0.6f));
+    ui_text_center(usable ? "领悟 [7]" : (inf ? "满级" : "理念不足"),
+                   act.x + act.width * 0.5f, act.y + 3.0f, F_CAPTION,
+                   usable ? COL_VIOLET : COL_FAINT);
 }
 
 static void draw_shop(const GameState *game)
@@ -2449,10 +2855,11 @@ static void draw_shop(const GameState *game)
     draw_shop_tab(S, 1, "分化", (Rectangle){ r.x + S_PAD + 161.0f, r.y + 42.0f, 153.0f, 34.0f },
                   S->store_tab == 1);
 
-    int children[4];
-    int n = ua_speciation_children(game, children, 4);
+    int children[SPECIES_COUNT];
+    int n = ua_speciation_children(game, children, SPECIES_COUNT);
+    /* 三张卡让出底部 96px 给洞见条目：卡高 140→118、间距 148→126 */
     for (int i = 0; i < 3; ++i) {
-        Rectangle row = { r.x + S_PAD, r.y + 88.0f + (float)i * 148.0f, 320.0f, 140.0f };
+        Rectangle row = { r.x + S_PAD, r.y + 88.0f + (float)i * 126.0f, 320.0f, 118.0f };
         if (S->store_tab == 0) {
             draw_shop_upgrade(game, i, row);
         } else if (i < n) {
@@ -2469,13 +2876,14 @@ static void draw_shop(const GameState *game)
             Rectangle tile = { row.x + 12.0f, row.y + 12.0f, 56.0f, 56.0f };
             ui_panel(tile, 10.0f, Fade(COL_SURFACE_OFF, 0.7f), Fade(COL_LINE, 0.30f));
             ui_text_center("?", tile.x + 28.0f, tile.y + 16.0f, F_TITLE, COL_FAINT);
-            ui_text("未解锁的分支", row.x + 82.0f, row.y + 14.0f, F_LABEL, Fade(COL_DIM, 0.75f));
-            ui_text("继续积累生物量、推进阶段后开放", row.x + 82.0f, row.y + 38.0f,
+            ui_text("未解锁的分支", row.x + 72.0f, row.y + 12.0f, F_LABEL, Fade(COL_DIM, 0.75f));
+            ui_text("继续积累生物量、推进阶段后开放", row.x + 72.0f, row.y + 34.0f,
                     F_CAPTION, COL_FAINT);
         }
     }
 
-    draw_shop_footer(game, (Rectangle){ r.x + S_PAD, r.y + 524.0f, 320.0f, 30.0f });
+    /* 洞见：两个页签下都在，因为它是“理念”的出口，与机能/分化并列的第三条长线 */
+    draw_insight_card(game, S);
 }
 
 /* ================= 底部动作条 ================= */
@@ -2623,12 +3031,9 @@ static void draw_bottom_bar(const GameState *game)
 
 static void build_main(UiLayout *L, const GameState *game, const UIState *S)
 {
-    bool can_speciate = false;
-    int children[5];
-    int child_n = ua_speciation_children(game, children, 4);
-    for (int i = 0; i < child_n; ++i) {
-        if (ua_speciation_check(game, children[i]) == ACTION_OK) { can_speciate = true; break; }
-    }
+    int children[SPECIES_COUNT];
+    int child_n = ua_speciation_children(game, children, SPECIES_COUNT);
+    bool can_speciate = child_n > 0;
 
     /* 底栏动作先入表：btn_find(id, -1) 取第一个同 id 按钮 */
     btn_add(L, UI_BTN_OPEN_MUTATION, (Rectangle){ 16.0f, 660.0f, 200.0f, 48.0f }, 0, 0, true);
@@ -2654,11 +3059,11 @@ static void build_main(UiLayout *L, const GameState *game, const UIState *S)
     }
 
     if (S->store_tab == 1) {
-        int ch[4];
-        int n = ua_speciation_children(game, ch, 4);
+        int ch[SPECIES_COUNT];
+        int n = ua_speciation_children(game, ch, SPECIES_COUNT);
         for (int i = 0; i < n && i < 3; ++i) {
             btn_add(L, UI_BTN_OPEN_SPECIATION,
-                    (Rectangle){ 928.0f, 172.0f + (float)i * 148.0f, 320.0f, 140.0f },
+                    (Rectangle){ 928.0f, 172.0f + (float)i * 126.0f, 320.0f, 118.0f },
                     ch[i], 0, true);
         }
     } else {
@@ -2667,14 +3072,359 @@ static void build_main(UiLayout *L, const GameState *game, const UIState *S)
             bool affordable = isfinite(price) &&
                 ((i == UPGRADE_GENOME) ? (game->run.biomass >= price) : (game->run.atp >= price));
             btn_add(L, UI_BTN_UPGRADE,
-                    (Rectangle){ 928.0f, 172.0f + (float)i * 148.0f, 320.0f, 140.0f },
+                    (Rectangle){ 928.0f, 172.0f + (float)i * 126.0f, 320.0f, 118.0f },
                     i, 0, affordable);
         }
     }
 
-    btn_add(L, UI_BTN_OPEN_TREE, (Rectangle){ 1028.0f, 14.0f, 108.0f, 48.0f }, 0, 0, true);
-    btn_add(L, UI_BTN_OPEN_CODEX, (Rectangle){ 1144.0f, 14.0f, 120.0f, 48.0f }, 0, 0, true);
+    /* 洞见：与机能/分化同列，占底部 80px */
+    double insight_cost = ua_insight_cost(game);
+    btn_add(L, UI_BTN_BUY_INSIGHT, (Rectangle){ 928.0f, 552.0f, 320.0f, 80.0f },
+            0, 0, isfinite(insight_cost) && game->run.knowledge >= insight_cost);
+    /* 因子命中框：跟着因子走，而不是固定在皿下一条 —— 点哪就是哪。
+     * 必须在 UI_BTN_CLICK 之后入表，命中判定从后往前扫，因子才抢得过采集。 */
+    if (game->run.buff_visible) {
+        Vector2 fp = screens_buff_factor_pos(game, S);
+        float hit = 22.0f;
+        btn_add(L, UI_BTN_COLLECT_BUFF,
+                (Rectangle){ fp.x - hit, fp.y - hit, hit * 2.0f, hit * 2.0f }, 0, 0, true);
+    }
+
+    /* 顶栏三入口：进化树 / 突变 / 图鉴。总宽 230 = 74×3 + 4×2，右缘对齐 1258。
+     * 74 宽放不下 16px 的三字标签，draw_top_button 会自动降到 F_CAPTION。 */
+    btn_add(L, UI_BTN_OPEN_TREE,     (Rectangle){ 1028.0f, 14.0f, 74.0f, 48.0f }, 0, 0, true);
+    btn_add(L, UI_BTN_OPEN_MUT_LIST, (Rectangle){ 1106.0f, 14.0f, 74.0f, 48.0f }, 0, 0, true);
+    btn_add(L, UI_BTN_OPEN_CODEX,    (Rectangle){ 1184.0f, 14.0f, 74.0f, 48.0f }, 0, 0, true);
+
+    /* 物种卡的突变 chips 整行可点：点开“突变图谱”看本轮全部突变 */
+    btn_add(L, UI_BTN_OPEN_MUT_LIST,
+            (Rectangle){ 16.0f + S_PAD + 30.0f, 496.0f + 106.0f, 356.0f - S_PAD * 2.0f - 30.0f, 22.0f },
+            1, 1, true);
 }
+
+/* ================= 危机演出 =================
+ * 进入危机时由 ui.c 的 crisis_watch() 置位，这里只负责画。
+ * 强度包络 a: 1 → 0（约 1.9 s），抖屏在 ui.c 的最终合成里按同一包络平移整帧。 */
+
+static Color crisis_tint(int env)
+{
+    switch (env) {
+    case ENV_METEOR_IMPACT:   return (Color){ 255, 150, 74, 255 };
+    case ENV_SOLAR_FLARE:     return (Color){ 255, 236, 190, 255 };
+    case ENV_TOXIC_BLOOM:     return (Color){ 138, 214, 96, 255 };
+    case ENV_GLOBAL_WARMING:  return (Color){ 255, 122, 78, 255 };
+    case ENV_GLOBAL_COOLING:  return (Color){ 150, 205, 255, 255 };
+    case ENV_OXYGEN_RISE:     return COL_TEAL;
+    case ENV_LOW_LIGHT_PERIOD:return (Color){ 120, 130, 210, 255 };
+    /* 第 16 版补齐：雾霾是灰褐、长夏是金色、寒流是冰蓝、孢子云是黄绿，
+       否则四种危机共用一条“默认红”，画面读起来全一样 */
+    case ENV_INDUSTRIAL_SMOG: return (Color){ 156, 138, 112, 255 };
+    case ENV_LONG_SUMMER:     return (Color){ 255, 196, 120, 255 };
+    case ENV_COLD_CURRENT:    return (Color){ 150, 205, 255, 255 };
+    case ENV_SPORE_CLOUD:     return (Color){ 176, 202, 118, 255 };
+    case ENV_OXYGEN_PULSE:    return COL_TEAL;
+    default:                  return COL_BAD;
+    }
+}
+
+/* ============ 危机氛围层（第 16 版）============
+ * 上一版只有事件触发后 1.9 s 的爆发演出，之后十几秒画面完全静止，
+ * 危机读起来像“一次性红闪”。这一版给每种危机配一层**持续天气**，各按自己的性格：
+ *   全球变暖 = 热浪横纹 + 上升火星 + 暖色边光
+ *   全球变冷 = 全屏飘雪 + 面板结霜 + 冷蓝边光
+ *   微光期   = 光圈收拢 + 蓝紫尘埃（光合谱系被掐住）
+ *   毒素爆发 = 上升气泡 + 底栖绿雾
+ *   陨石撞击 = 尘幕 + 偶发火痕 + 坑口余温
+ *   工业雾霾 = 横向灰褐霾带 + 煤烟颗粒
+ * 爆发演出仍由 draw_crisis_fx 负责，两层叠加。 */
+
+static void weather_edge_light(Color tint, float a)
+{
+    DrawRectangleGradientV(0, 0, UI_W, 92, Fade(tint, 0.10f * a), BLANK);
+    DrawRectangleGradientV(0, UI_H - 92, UI_W, 92, BLANK, Fade(tint, 0.13f * a));
+    DrawRectangleGradientH(0, 0, 84, UI_H, Fade(tint, 0.06f * a), BLANK);
+    DrawRectangleGradientH(UI_W - 84, 0, 84, UI_H, BLANK, Fade(tint, 0.06f * a));
+}
+
+/* 培养皿上的危机光：只在皿内染色，边缘一圈同色环，读作“环境压力正压进皿里” */
+static void weather_dish_tint(Vector2 dish, Color tint, float a)
+{
+    DrawCircleV(dish, 104.0f, Fade(tint, 0.055f * a));
+    DrawRing(dish, 100.0f, 105.5f, 0.0f, 360.0f, 96, Fade(tint, 0.26f * a));
+    DrawRing(dish, 96.0f, 98.0f, 0.0f, 360.0f, 96, Fade(tint, 0.10f * a));
+}
+
+static void env_weather(const GameState *game, const UIState *S)
+{
+    int env = game->run.current_environment_id;
+    double rem = 0.0, tot = 1.0;
+    bool in_event = false;
+    ua_environment_timer(game, &rem, &tot, &in_event);
+    if (!in_event || !ua_environment_is_crisis(env)) return;
+
+    float t = S->time;
+    Color tint = crisis_tint(env);
+    float s = 0.86f + 0.14f * sinf(t * 0.85f);
+    Rectangle st = { 388.0f, 148.0f, 516.0f, 284.0f };
+    Vector2 dish = { 194.0f, 322.0f };
+
+    weather_edge_light(tint, s);
+    weather_dish_tint(dish, tint, s);
+
+    if (env == ENV_GLOBAL_WARMING || env == ENV_LONG_SUMMER) {
+        /* 热浪：一层暖色压底 + 横向光纹自下而上爬 + 上升火星 */
+        DrawRectangle(0, 0, UI_W, UI_H, Fade(tint, 0.05f * s));
+        DrawRectangleGradientV((int)st.x, (int)st.y, (int)st.width, (int)st.height,
+                               BLANK, Fade(tint, 0.16f * s));
+        for (int i = 0; i < 7; ++i) {
+            float u = (float)i / 7.0f;
+            float y = st.y + st.height * (1.0f - u) - fmodf(t * 16.0f, st.height * 0.5f);
+            if (y < st.y - 6.0f || y > st.y + st.height) continue;
+            for (int k = 0; k < 26; ++k) {
+                float x0 = st.x + (float)k * 20.0f;
+                float dy = sinf(t * 1.4f + x0 * 0.02f + (float)i) * 3.0f;
+                DrawLineEx((Vector2){ x0, y + dy }, (Vector2){ x0 + 22.0f, y + dy },
+                           fmaxf(1.0f, 1.6f + 1.2f * sinf(t + (float)i)),
+                           Fade(tint, 0.09f * s));
+            }
+        }
+        for (int i = 0; i < 40; ++i) {
+            unsigned int seed = (unsigned int)i * 29u + 5u;
+            float u = fmodf(hash01(seed) + t * (0.16f + 0.18f * hash01(seed + 3u)), 1.0f);
+            float y = st.y + st.height * (1.0f - u);
+            float x = st.x + hash01(seed + 71u) * st.width + sinf(t * 1.2f + (float)i) * 7.0f;
+            float r = 1.2f + 1.8f * hash01(seed + 17u);
+            DrawCircleV((Vector2){ x, y }, r, Fade((Color){ 255, 214, 150, 255 }, (0.55f - 0.34f * u) * s));
+            DrawCircleV((Vector2){ x, y }, r * 2.6f, Fade(tint, 0.06f * s));
+        }
+    } else if (env == ENV_GLOBAL_COOLING || env == ENV_COLD_CURRENT) {
+        /* 变冷：冷色压底 + 全屏细雪 + 面板边缘结霜 + 皿沿冰棱 */
+        DrawRectangle(0, 0, UI_W, UI_H, Fade(tint, 0.05f * s));
+        for (int i = 0; i < 70; ++i) {
+            unsigned int seed = (unsigned int)i * 37u + 9u;
+            float x = fmodf(hash01(seed) * (float)UI_W + t * 14.0f, (float)UI_W);
+            float y = fmodf(hash01(seed + 43u) * (float)UI_H + t * (26.0f + 18.0f * hash01(seed + 7u)),
+                            (float)UI_H);
+            float r = 0.9f + 1.7f * hash01(seed + 61u);
+            DrawCircleV((Vector2){ x, y }, r, Fade(WHITE, 0.34f * s));
+        }
+        /* 霜：四角斜向的冰晶枝 */
+        Vector2 corners[4] = { { st.x + 10.0f, st.y + 10.0f }, { st.x + st.width - 10.0f, st.y + 8.0f },
+                               { st.x + 8.0f, st.y + st.height - 10.0f },
+                               { st.x + st.width - 12.0f, st.y + st.height - 8.0f } };
+        for (int i = 0; i < 4; ++i) {
+            float grow = 14.0f + 12.0f * hash01((unsigned int)i * 13u + 5u) +
+                         2.5f * sinf(t * 1.1f + (float)i);
+            for (int k = 0; k < 5; ++k) {
+                float ang = (float)k * (PI * 0.5f) + 0.4f + (float)i * 0.8f;
+                Vector2 p1 = { corners[i].x + cosf(ang) * grow, corners[i].y + sinf(ang) * grow };
+                DrawLineEx(corners[i], p1, 1.0f, Fade((Color){ 210, 238, 255, 255 }, 0.30f * s));
+                Vector2 mid = { corners[i].x + cosf(ang) * grow * 0.55f,
+                                corners[i].y + sinf(ang) * grow * 0.55f };
+                DrawLineEx(mid, (Vector2){ mid.x + cosf(ang + 0.9f) * grow * 0.35f,
+                                           mid.y + sinf(ang + 0.9f) * grow * 0.35f },
+                           0.8f, Fade((Color){ 210, 238, 255, 255 }, 0.20f * s));
+            }
+        }
+        /* 皿沿冰棱：外圈叠几段短弧 */
+        for (int i = 0; i < 10; ++i) {
+            float ang = (float)i * 36.0f + t * 2.0f;
+            float r0 = 105.0f;
+            Vector2 p0 = { dish.x + cosf(ang * DEG2RAD) * r0, dish.y + sinf(ang * DEG2RAD) * r0 };
+            Vector2 p1 = { dish.x + cosf((ang + 6.0f) * DEG2RAD) * (r0 + 4.0f),
+                           dish.y + sinf((ang + 6.0f) * DEG2RAD) * (r0 + 4.0f) };
+            DrawLineEx(p0, p1, 1.2f, Fade(WHITE, 0.30f * s));
+        }
+    } else if (env == ENV_LOW_LIGHT_PERIOD) {
+        /* 微光：整屏压暗一圈、培养皿只剩中心一小块可见光，蓝紫尘埃只在光锥里飘 */
+        DrawRectangle(0, 0, UI_W, UI_H, Fade(BLACK, 0.10f * s));
+        DrawRectangleGradientV((int)st.x, (int)st.y, (int)st.width, (int)st.height,
+                               Fade((Color){ 5, 8, 20, 255 }, 0.50f * s),
+                               Fade((Color){ 5, 8, 20, 255 }, 0.28f * s));
+        /* 光锥：从皿心向上散开的一束微光，让“光在衰减”有可见的边界 */
+        for (int i = 0; i < 5; ++i) {
+            float k = (float)i / 4.0f;
+            float w = 40.0f + 60.0f * k;
+            DrawRectangleGradientV((int)(dish.x - w * 0.5f), (int)(st.y + 60.0f), (int)w,
+                                   (int)(st.height - 90.0f),
+                                   Fade((Color){ 150, 170, 255, 255 }, 0.035f * s), BLANK);
+        }
+        DrawCircleGradient((int)dish.x, (int)dish.y, 120.0f,
+                           Fade((Color){ 10, 14, 34, 255 }, 0.30f * s), Fade(BLACK, 0.42f * s));
+        for (int i = 0; i < 40; ++i) {
+            unsigned int seed = (unsigned int)i * 41u + 3u;
+            float ang = hash01(seed) * 2.0f * PI + t * 0.10f;
+            float rad = 20.0f + hash01(seed + 19u) * 74.0f;
+            float y = st.y + 70.0f + hash01(seed + 71u) * (st.height - 110.0f);
+            Vector2 p = { dish.x + cosf(ang) * rad * 1.4f, y };
+            float r = 1.2f + 1.6f * hash01(seed + 31u);
+            DrawCircleV(p, r * 2.6f, Fade((Color){ 130, 150, 255, 255 }, 0.10f * s));
+            DrawCircleV(p, r, Fade((Color){ 190, 205, 255, 255 }, 0.42f * s));
+        }
+    } else if (env == ENV_TOXIC_BLOOM || env == ENV_SPORE_CLOUD) {
+        /* 毒潮：底栖绿雾 + 上浮气泡（气泡带一圈亮边，才不像绿色圆点） */
+        DrawRectangleGradientV((int)st.x, (int)st.y, (int)st.width, (int)st.height,
+                               BLANK, Fade(tint, 0.22f * s));
+        for (int i = 0; i < 26; ++i) {
+            unsigned int seed = (unsigned int)i * 23u + 11u;
+            float u = fmodf(hash01(seed) + t * (0.10f + 0.12f * hash01(seed + 5u)), 1.0f);
+            float x = st.x + 10.0f + hash01(seed + 47u) * (st.width - 20.0f) +
+                      sinf(t * 1.1f + (float)i) * 6.0f;
+            float y = st.y + st.height * (1.0f - u);
+            float r = 2.0f + 4.2f * hash01(seed + 83u);
+            DrawCircleV((Vector2){ x, y }, r, Fade(ui_color_mix(tint, BLACK, 0.30f), 0.20f * s));
+            DrawRing((Vector2){ x, y }, r * 0.86f, r * 1.02f, 0.0f, 360.0f, 22,
+                     Fade(ui_color_mix(tint, WHITE, 0.35f), 0.34f * s));
+            DrawCircleV((Vector2){ x - r * 0.3f, y - r * 0.35f }, r * 0.28f, Fade(WHITE, 0.20f * s));
+        }
+    } else if (env == ENV_METEOR_IMPACT) {
+        /* 陨石：持续尘幕（细颗粒向下压）+ 每 2.5 s 一道远空火痕 */
+        for (int i = 0; i < 70; ++i) {
+            unsigned int seed = (unsigned int)i * 31u + 13u;
+            float x = hash01(seed) * (float)UI_W + sinf(t * 0.6f + (float)i) * 10.0f;
+            float y = fmodf(hash01(seed + 29u) * (float)UI_H + t * 10.0f, (float)UI_H);
+            DrawCircleV((Vector2){ x, y }, 0.9f + 1.2f * hash01(seed + 67u),
+                        Fade((Color){ 210, 190, 170, 255 }, 0.22f * s));
+        }
+        float cyc = fmodf(t, 2.6f);
+        if (cyc < 0.55f) {
+            float k = cyc / 0.55f;
+            Vector2 a0 = { 60.0f + 180.0f * sinf(t * 3.0f), -30.0f };
+            Vector2 a1 = { a0.x + 240.0f, a0.y + 300.0f };
+            Vector2 head = { a0.x + (a1.x - a0.x) * k, a0.y + (a1.y - a0.y) * k };
+            DrawLineEx(a0, head, 2.2f, Fade((Color){ 255, 210, 150, 255 }, 0.45f * s * (1.0f - k)));
+            DrawCircleV(head, 2.4f, Fade((Color){ 255, 240, 205, 255 }, 0.70f * s * (1.0f - k)));
+        }
+        /* 坑口余温：皿底一圈暖光 */
+        DrawCircleGradient((int)dish.x, (int)(dish.y + 60.0f), 110.0f, Fade(tint, 0.12f * s), BLANK);
+    } else if (env == ENV_INDUSTRIAL_SMOG) {
+        /* 雾霾：横向灰褐霾团缓慢右移 + 煤烟颗粒，整体压灰压暗。
+           （旧写法用整宽矩形，会横穿左侧培养皿与右侧商店，面板边界被切出硬边） */
+        DrawRectangle(0, 0, UI_W, UI_H, Fade((Color){ 96, 86, 74, 255 }, 0.14f * s));
+        DrawRectangleGradientV((int)st.x, (int)st.y, (int)st.width, (int)st.height,
+                               Fade((Color){ 120, 106, 88, 255 }, 0.10f * s), BLANK);
+        for (int i = 0; i < 5; ++i) {
+            /* 中心与半径都收在展台内：霾团不越界，左侧培养皿和右侧商店就不会被糊一层椭圆 */
+            float cx = st.x + 104.0f + fmodf(t * 9.0f + (float)i * 118.0f, st.width - 208.0f);
+            float cy = st.y + 58.0f + (float)i * 44.0f + sinf(t * 0.45f + (float)i) * 5.0f;
+            DrawEllipse((int)cx, (int)cy, 88.0f, 26.0f, Fade((Color){ 170, 150, 126, 255 }, 0.13f * s));
+            DrawEllipse((int)cx, (int)(cy + 7.0f), 52.0f, 15.0f,
+                        Fade((Color){ 150, 132, 110, 255 }, 0.12f * s));
+        }
+        for (int i = 0; i < 56; ++i) {
+            unsigned int seed = (unsigned int)i * 19u + 7u;
+            float x = fmodf(hash01(seed) * (float)UI_W + t * 22.0f, (float)UI_W);
+            float y = hash01(seed + 37u) * (float)UI_H + sinf(t * 0.7f + (float)i) * 4.0f;
+            float r = 1.0f + 1.8f * hash01(seed + 59u);
+            DrawCircleV((Vector2){ x, y }, r, Fade((Color){ 120, 108, 96, 255 }, 0.34f * s));
+            DrawCircleV((Vector2){ x, y }, r * 2.2f, Fade((Color){ 120, 108, 96, 255 }, 0.08f * s));
+        }
+    } else {
+        /* 富氧 / 太阳耀斑等：气泡式微光，不做强天气，避免所有事件长得一样 */
+        for (int i = 0; i < 22; ++i) {
+            unsigned int seed = (unsigned int)i * 43u + 17u;
+            float u = fmodf(hash01(seed) + t * 0.12f, 1.0f);
+            Vector2 p = { st.x + hash01(seed + 23u) * st.width,
+                          st.y + st.height * (1.0f - u) };
+            DrawRing(p, 2.0f, 3.0f, 0.0f, 360.0f, 16, Fade(tint, 0.22f * s));
+        }
+    }
+}
+
+static void draw_crisis_fx(const GameState *game, const UIState *S)
+{
+    (void)game;
+    if (S->crisis_t <= 0.0f || S->crisis_env < 0) return;
+
+    int env = S->crisis_env;
+    Color tint = crisis_tint(env);
+    float k = S->crisis_t / 2.2f;      /* 1 → 0 */
+    float a = k * k;                   /* 平方衰减，前 0.3 s 最猛 */
+    float t = S->time;
+
+    /* 全屏色调 + 冲击闪光 */
+    DrawRectangle(0, 0, UI_W, UI_H, Fade(tint, 0.14f * a));
+    if (S->crisis_flash > 0.0f) {
+        DrawRectangle(0, 0, UI_W, UI_H, Fade(tint, 0.26f * S->crisis_flash));
+    }
+
+    if (env == ENV_METEOR_IMPACT) {
+        /* 陨石：从画面上方斜砸向培养皿的火痕 + 一圈冲击波 */
+        Vector2 c = { 194.0f, 322.0f };
+        for (int i = 0; i < 64; ++i) {
+            unsigned int seed = (unsigned int)i * 17u + 3u;
+            float h1 = hash01(seed), h2 = hash01(seed + 91u), h3 = hash01(seed + 173u);
+            Vector2 start = { h1 * (float)UI_W, -60.0f - h2 * 260.0f };
+            Vector2 dir = { c.x - start.x, c.y - start.y };
+            float len = sqrtf(dir.x * dir.x + dir.y * dir.y) + 0.001f;
+            dir.x /= len; dir.y /= len;
+            /* 起始就推进 35%：否则刚触发的那几帧火痕还全在画面外，玩家看不到 */
+            float travel = (0.35f + 0.65f * (1.0f - a)) * len;
+            Vector2 head = { start.x + dir.x * travel, start.y + dir.y * travel };
+            float sl = 60.0f + 110.0f * h3;
+            Vector2 tail = { head.x - dir.x * sl, head.y - dir.y * sl };
+            DrawLineEx(tail, head, 1.0f + 2.4f * h3, Fade((Color){ 255, 196, 120, 255 }, 0.62f * a));
+            DrawCircleV(head, 1.4f + 1.6f * h3, Fade((Color){ 255, 240, 200, 255 }, 0.75f * a));
+        }
+        float rr = 26.0f + (1.0f - a) * 300.0f;
+        DrawRing(c, rr, rr + 3.0f, 0.0f, 360.0f, 72, Fade(tint, 0.55f * a));
+        DrawRing(c, rr * 0.62f, rr * 0.62f + 2.0f, 0.0f, 360.0f, 64, Fade(tint, 0.35f * a));
+        ui_glow(c, 180.0f * (0.6f + 0.4f * a), tint, 0.30f * a);
+    } else if (env == ENV_SOLAR_FLARE) {
+        /* 太阳耀斑：右上角放射光条 */
+        Vector2 c = { UI_W - 120.0f, -40.0f };
+        for (int i = 0; i < 18; ++i) {
+            float ang = PI * 0.5f + (float)i * (PI * 0.5f / 18.0f);
+            float r0 = 90.0f, r1 = 520.0f * (0.5f + 0.5f * a);
+            Vector2 p0 = { c.x + cosf(ang) * r0, c.y + sinf(ang) * r0 };
+            Vector2 p1 = { c.x + cosf(ang) * r1, c.y + sinf(ang) * r1 };
+            DrawLineEx(p0, p1, 2.0f, Fade(tint, 0.13f * a));
+        }
+        ui_glow(c, 300.0f, tint, 0.30f * a);
+    } else if (env == ENV_TOXIC_BLOOM) {
+        /* 毒潮：慢慢爬上来的绿雾，从画面下沿往中间蔓延 */
+        for (int i = 0; i < 5; ++i) {
+            float y = (float)UI_H - 40.0f - (float)i * 46.0f - (1.0f - a) * 60.0f;
+            float wob = sinf(t * 1.6f + (float)i) * 8.0f;
+            DrawRectangle(0, (int)y, UI_W, 54, Fade(tint, 0.05f * a));
+            DrawCircleV((Vector2){ 180.0f + (float)i * 260.0f + wob, y }, 120.0f,
+                        Fade(tint, 0.06f * a));
+        }
+    } else if (env == ENV_GLOBAL_COOLING) {
+        /* 骤冷：斜向飘落的冰晶 */
+        for (int i = 0; i < 60; ++i) {
+            unsigned int seed = (unsigned int)i * 23u + 7u;
+            float x = hash01(seed) * (float)UI_W + t * 26.0f;
+            float y = fmodf(hash01(seed + 41u) * (float)UI_H + (1.0f - a) * 260.0f, (float)UI_H);
+            float r = 1.0f + 1.6f * hash01(seed + 83u);
+            DrawCircleV((Vector2){ fmodf(x, (float)UI_W), y }, r, Fade(tint, 0.5f * a));
+        }
+    } else {
+        /* 其它危机（变暖 / 富氧 / 低光 / 其它）：轻微热浪脉冲 */
+        for (int i = 0; i < 4; ++i) {
+            float rr = 260.0f + (float)i * 90.0f + (1.0f - a) * 160.0f;
+            DrawRing((Vector2){ 194.0f, 322.0f }, rr, rr + 2.0f, 0.0f, 360.0f, 72,
+                     Fade(tint, 0.10f * a));
+        }
+    }
+
+    /* 危机标题：落在环境横幅下方，不遮倒计时环；最后 0.4 s 淡出 */
+    {
+        float fade = k > 0.55f ? 1.0f : k / 0.55f;
+        float off = (1.0f - (k > 0.8f ? 1.0f : k / 0.8f)) * -18.0f;
+        Rectangle plate = { 430.0f, 170.0f + off, 420.0f, 56.0f };
+        /* 横幅固定红（危机=危险），标题板跟着危机自己的色走，
+           这样“热浪/寒潮/毒潮/雾霾”在演出瞬间就能一眼分开 */
+        Color plate_bg = ui_color_mix(COL_BAD_SURFACE, tint, 0.30f);
+        ui_panel(plate, R_CARD, Fade(plate_bg, 0.92f * fade), Fade(tint, 0.80f * fade));
+        ui_text_center("环境危机", plate.x + plate.width * 0.5f, plate.y + 5.0f,
+                       F_CAPTION, Fade(tint, fade));
+        const char *nm = ua_environment_name(env);
+        ui_text_center_strong(nm, plate.x + plate.width * 0.5f, plate.y + 23.0f,
+                              F_TITLE, Fade(COL_TEXT, fade));
+    }
+}
+
 
 static void draw_main(const GameState *game, const UIState *state, const ActionResult *last)
 {
@@ -2690,6 +3440,9 @@ static void draw_main(const GameState *game, const UIState *state, const ActionR
     draw_info_panel(game);
     draw_shop(game);
     draw_bottom_bar(game);
+    /* 危机氛围 + 进入瞬间的爆发演出，压在所有面板之上 */
+    env_weather(game, state);
+    draw_crisis_fx(game, state);
 }
 
 /* ================= End of Era ================= */
@@ -2958,6 +3711,15 @@ static void draw_legacy(const GameState *game, const UIState *S)
 
 /* ================= 弹层 ================= */
 
+/* 前向声明：build_overlay 在绘制函数之前定义，但它要用树/突变图谱的几何。 */
+static Rectangle tree_panel_rect(void);
+static Rectangle tree_sky_rect(void);
+static Vector2 tree_view(Vector2 p);
+static Rectangle mut_list_panel_rect(void);
+static void tree_layout(Vector2 node[SPECIES_COUNT], int parent_of[SPECIES_COUNT],
+                        int sib[SPECIES_COUNT]);
+static float tree_node_r(void);
+
 static Rectangle mutation_panel_rect(const GameState *game)
 {
     int n = game->run.mutation_offer.active ? game->run.mutation_offer.choice_count : 0;
@@ -2967,33 +3729,132 @@ static Rectangle mutation_panel_rect(const GameState *game)
     return (Rectangle){ 320.0f, (UI_H - h) * 0.5f, 640.0f, h };
 }
 
+/* Four rows per page keep every expanded route on the logical canvas. */
 static Rectangle speciation_panel_rect(const GameState *game)
 {
-    int children[4];
-    int n = ua_speciation_children(game, children, 4);
-    if (n < 1) n = 1;
-    float h = 92.0f + n * 102.0f + 64.0f;
-    if (h < 320.0f) h = 320.0f;
-    return (Rectangle){ 300.0f, (UI_H - h) * 0.5f, 680.0f, h };
+    (void)game;
+    return (Rectangle){ 300.0f, 52.0f, 680.0f, 616.0f };
+}
+
+static int speciation_page_start(const UIState *state, int total)
+{
+    int last = total > 0 ? (total - 1) / UI_SPECIATION_PAGE_SIZE : 0;
+    int page = state->speciation_page;
+    if (page < 0) page = 0;
+    if (page > last) page = last;
+    return page * UI_SPECIATION_PAGE_SIZE;
 }
 
 static Rectangle codex_panel_rect(int tab, int achievement_count)
 {
-    float h = 560.0f;
-    if (tab == 0) {
-        int rows = (SPECIES_COUNT + 4) / 5;
-        h = 112.0f + (float)rows * 110.0f + 12.0f;
-    } else if (tab == 1) {
-        int rows = (MUTATION_COUNT + 4) / 5;
-        h = 112.0f + (float)rows * 66.0f + 12.0f;
-    } else {
-        int rows = achievement_count > 0 ? (achievement_count + 2) / 3 : 1;
-        /* 106 头部 + 成就网格 + 生涯统计块：成就改成三列，给下面的统计表腾地方 */
-        h = 116.0f + 104.0f + (float)rows * 70.0f + 126.0f + 16.0f;
-        if (h < 440.0f) h = 440.0f;
+    (void)tab;
+    (void)achievement_count;
+    return (Rectangle){ 60.0f, 58.0f, 1160.0f, 604.0f };
+}
+
+static Rectangle codex_detail_rect(void)
+{
+    return (Rectangle){ 400.0f, 70.0f, 480.0f, 580.0f };
+}
+
+static bool codex_found(const GameState *game, int kind, int id);
+
+/* 图鉴的可见条目列表。
+ *
+ * 物种页只列「已发现 + 相邻」：186 个物种全列要翻 16 页，第 2 页起全是剪影，
+ * 玩家反而找不到自己认识的那几个。相邻 = 已发现物种的父与子，
+ * 让玩家看到"下一步能往哪走"，而不是一片问号。
+ * 顺序：已发现的在前（按阶段→编号），相邻的在后 —— 一打开就是自己认识的。
+ *
+ * 突变页只列已收录：未收录的条目连名字都没有，摆一屏"未发现"同样没信息量。 */
+static int codex_visible_list(const GameState *game, int kind, int *out, int max_out)
+{
+    int count = codex_count((CodexKind)kind);
+    if (!out || max_out <= 0) return 0;
+
+    if (kind != CODEX_SPECIES) {
+        int n = 0;
+        for (int i = 0; i < count && n < max_out; ++i) {
+            if (codex_found(game, kind, i)) out[n++] = i;
+        }
+        return n;
     }
-    if (h > 604.0f) h = 604.0f;
-    return (Rectangle){ 60.0f, (UI_H - h) * 0.5f, 1160.0f, h };
+
+    bool found[SPECIES_COUNT];
+    bool inc[SPECIES_COUNT];
+    for (int i = 0; i < SPECIES_COUNT; ++i) {
+        found[i] = game->legacy.codex_species[i] || game->run.discovered_species[i];
+        inc[i] = found[i];
+    }
+    inc[0] = true;      /* 原始细胞永远是已知的起点 */
+
+    for (int i = 0; i < SPECIES_COUNT; ++i) {
+        if (!found[i]) continue;
+        int ps[8];
+        int pn = ua_species_parents(i, ps, 8);
+        for (int k = 0; k < pn; ++k) {
+            if (ps[k] >= 0 && ps[k] < SPECIES_COUNT) inc[ps[k]] = true;
+        }
+        int cs[SPECIES_COUNT];
+        int cn = ua_species_child_list(i, cs, SPECIES_COUNT);
+        for (int k = 0; k < cn; ++k) {
+            if (cs[k] >= 0 && cs[k] < SPECIES_COUNT) inc[cs[k]] = true;
+        }
+    }
+
+    /* 两趟：先已发现、后相邻；每趟内部按 阶段→编号 插入排序 */
+    int n = 0;
+    for (int pass = 0; pass < 2; ++pass) {
+        int seg = n;
+        for (int i = 0; i < SPECIES_COUNT && n < max_out; ++i) {
+            if (!inc[i]) continue;
+            if ((pass == 0) != found[i]) continue;
+            out[n++] = i;
+        }
+        for (int i = seg + 1; i < n; ++i) {
+            int v = out[i];
+            int sv = ua_species_stage(v);
+            int j = i - 1;
+            while (j >= seg) {
+                int sj = ua_species_stage(out[j]);
+                if (sj < sv || (sj == sv && out[j] < v)) break;
+                out[j + 1] = out[j];
+                --j;
+            }
+            out[j + 1] = v;
+        }
+    }
+    return n;
+}
+
+static int codex_page_count(const GameState *game, int tab)
+{
+    int list[SPECIES_COUNT];
+    int total = codex_visible_list(game, tab, list, SPECIES_COUNT);
+    return total > 0 ? (total + UI_CODEX_PAGE_SIZE - 1) / UI_CODEX_PAGE_SIZE : 1;
+}
+
+static int codex_page_first(const GameState *game, const UIState *state)
+{
+    int pages = codex_page_count(game, state->codex_tab);
+    int page = state->codex_page;
+    if (page < 0) page = 0;
+    if (page >= pages) page = pages - 1;
+    return page * UI_CODEX_PAGE_SIZE;
+}
+
+static bool codex_found(const GameState *game, int kind, int id)
+{
+    if (!codex_entry((CodexKind)kind, id)) return false;
+    return kind == CODEX_SPECIES
+         ? (game->legacy.codex_species[id] || game->run.discovered_species[id])
+         : (game->legacy.codex_mutations[id] || game->run.discovered_mutations[id]);
+}
+
+static Rectangle codex_cell_rect(Rectangle panel, int slot)
+{
+    return (Rectangle){ panel.x + 24.0f + (float)(slot % 4) * 281.0f,
+                        panel.y + 112.0f + (float)(slot / 4) * 140.0f, 269.0f, 128.0f };
 }
 
 static void build_overlay(UiLayout *L, const GameState *game, const UIState *S)
@@ -3022,16 +3883,23 @@ static void build_overlay(UiLayout *L, const GameState *game, const UIState *S)
     }
     case UI_OVL_SPECIATION: {
         Rectangle panel = speciation_panel_rect(game);
-        int children[4];
-        int n = ua_speciation_children(game, children, 4);
-        for (int i = 0; i < n; ++i) {
+        int children[SPECIES_COUNT];
+        int n = ua_speciation_children(game, children, SPECIES_COUNT);
+        int first = speciation_page_start(S, n);
+        for (int i = first; i < n && i < first + UI_SPECIATION_PAGE_SIZE; ++i) {
             bool ok = ua_speciation_check(game, children[i]) == ACTION_OK
                    && game->run.biomass >= ua_speciation_cost(game, children[i]);
             btn_add(L, UI_BTN_SPECIATE,
-                    (Rectangle){ panel.x + 24.0f, panel.y + 84.0f + (float)i * 102.0f,
+                    (Rectangle){ panel.x + 24.0f, panel.y + 84.0f + (float)(i - first) * 102.0f,
                                  panel.width - 48.0f, 94.0f },
                     children[i], S->keep_parent, ok);
         }
+        btn_add(L, UI_BTN_SPECIATION_PAGE,
+                (Rectangle){ panel.x + 24.0f, panel.y + panel.height - 104.0f, 110.0f, 32.0f },
+                0, first / UI_SPECIATION_PAGE_SIZE - 1, first > 0);
+        btn_add(L, UI_BTN_SPECIATION_PAGE,
+                (Rectangle){ panel.x + panel.width - 134.0f, panel.y + panel.height - 104.0f, 110.0f, 32.0f },
+                1, first / UI_SPECIATION_PAGE_SIZE + 1, first + UI_SPECIATION_PAGE_SIZE < n);
         btn_add(L, UI_BTN_TOGGLE_KEEP_PARENT,
                 (Rectangle){ panel.x + 24.0f, panel.y + panel.height - 56.0f, 340.0f, 40.0f },
                 0, 0, true);
@@ -3042,18 +3910,75 @@ static void build_overlay(UiLayout *L, const GameState *game, const UIState *S)
     }
     case UI_OVL_CODEX: {
         Rectangle panel = codex_panel_rect(S->codex_tab, ua_achievement_count());
+        btn_add(L, UI_BTN_NONE, panel, 0, 0, true);
         for (int i = 0; i < 3; ++i) {
             btn_add(L, UI_BTN_CODEX_TAB,
                     (Rectangle){ panel.x + 24.0f + (float)i * 110.0f, panel.y + 62.0f,
                                  102.0f, 32.0f }, i, i, true);
+        }
+        int list[SPECIES_COUNT];
+        int count = codex_visible_list(game, S->codex_tab, list, SPECIES_COUNT);
+        int first = codex_page_first(game, S);
+        for (int k = first; k < count && k < first + UI_CODEX_PAGE_SIZE; ++k) {
+            int id = list[k];
+            btn_add(L, UI_BTN_CODEX_ENTRY, codex_cell_rect(panel, k - first), id, S->codex_tab,
+                    codex_found(game, S->codex_tab, id));
+        }
+        if (count > 0) {
+            btn_add(L, UI_BTN_CODEX_PAGE,
+                    (Rectangle){ panel.x + 24.0f, panel.y + 552.0f, 110.0f, 32.0f },
+                    0, first / UI_CODEX_PAGE_SIZE - 1, first > 0);
+            btn_add(L, UI_BTN_CODEX_PAGE,
+                    (Rectangle){ panel.x + panel.width - 134.0f, panel.y + 552.0f, 110.0f, 32.0f },
+                    1, first / UI_CODEX_PAGE_SIZE + 1, first + UI_CODEX_PAGE_SIZE < count);
         }
         btn_add(L, UI_BTN_CLOSE_OVERLAY,
                 (Rectangle){ panel.x + panel.width - 140.0f, panel.y + 16.0f, 116.0f, 36.0f },
                 0, 0, true);
         break;
     }
+    case UI_OVL_CODEX_DETAIL: {
+        Rectangle panel = codex_detail_rect();
+        btn_add(L, UI_BTN_NONE, panel, 0, 0, true);
+        btn_add(L, UI_BTN_CODEX_BACK,
+                (Rectangle){ panel.x + 140.0f, panel.y + panel.height - 58.0f, 200.0f, 36.0f },
+                0, 0, true);
+        break;
+    }
     case UI_OVL_TREE: {
-        Rectangle panel = { 60.0f, 52.0f, 1160.0f, 612.0f };
+        Rectangle panel = tree_panel_rect();
+        Rectangle sky = tree_sky_rect();
+
+        /* 星图空白区先入表：点空白是"按住拖动"，不是"关闭弹层"。
+         * 节点按钮在它之后入表，命中优先级更高。 */
+        btn_add(L, UI_BTN_TREE_SKY, sky, 0, 0, true);
+
+        /* 每个节点一个按钮：命中框比徽记大 6px（4K 下手指也不用狙击）。
+         * 几何与绘制同源 —— 都从 tree_layout() 取坐标，再套同一个 pan/zoom。 */
+        Vector2 node[SPECIES_COUNT];
+        int parent_of[SPECIES_COUNT];
+        tree_layout(node, parent_of, NULL);
+        float nr = tree_node_r();
+        float hit = nr + 6.0f;
+        for (int i = 0; i < SPECIES_COUNT; ++i) {
+            Vector2 p = tree_view(node[i]);
+            /* 画框外的节点不给按钮：既点不到，也不会挡住底部图例 */
+            if (p.x < sky.x || p.x > sky.x + sky.width) continue;
+            if (p.y < sky.y || p.y > sky.y + sky.height) continue;
+            btn_add(L, UI_BTN_TREE_NODE,
+                    (Rectangle){ p.x - hit, p.y - hit, hit * 2.0f, hit * 2.0f },
+                    i, 0, true);
+        }
+        btn_add(L, UI_BTN_TREE_RESET,
+                (Rectangle){ panel.x + panel.width - 216.0f, panel.y + 16.0f, 76.0f, 36.0f },
+                0, 0, true);
+        btn_add(L, UI_BTN_CLOSE_OVERLAY,
+                (Rectangle){ panel.x + panel.width - 132.0f, panel.y + 16.0f, 108.0f, 36.0f },
+                0, 0, true);
+        break;
+    }
+    case UI_OVL_MUT_LIST: {
+        Rectangle panel = mut_list_panel_rect();
         btn_add(L, UI_BTN_CLOSE_OVERLAY,
                 (Rectangle){ panel.x + panel.width - 140.0f, panel.y + 16.0f, 116.0f, 36.0f },
                 0, 0, true);
@@ -3071,12 +3996,12 @@ static void draw_overlay_backdrop(float alpha)
 
 /* 突变纹章：每个突变一个“基因花”。
    瓣数 / 环数 / 核形 / 色相 / 生长方向都由 mutation_id 派生，保证连排时不重样。 */
-static void draw_mutation_sigil(Vector2 c, int mutation_id, Color col, bool rare, float t)
+static void draw_mutation_sigil_scaled(Vector2 c, int mutation_id, Color col, bool rare, float t, float scale)
 {
     int arms = 3 + (mutation_id % 7);
     int rings = 1 + ((mutation_id / 2) % 3);
     int arch = mutation_id % 4;
-    float rr = rare ? 25.0f : 20.0f;
+    float rr = (rare ? 25.0f : 20.0f) * scale;
     float base = rare ? 1.0f : 0.82f;
     float rot = ((float)((mutation_id * 37) % 360)) * 0.01745f;
 
@@ -3145,6 +4070,11 @@ static void draw_mutation_sigil(Vector2 c, int mutation_id, Color col, bool rare
             DrawCircleV(p, 1.2f, Fade(COL_EP, base * 0.75f));
         }
     }
+}
+
+static void draw_mutation_sigil(Vector2 c, int mutation_id, Color col, bool rare, float t)
+{
+    draw_mutation_sigil_scaled(c, mutation_id, col, rare, t, 1.0f);
 }
 
 static void draw_mutation_overlay(const GameState *game, const UIState *S)
@@ -3229,8 +4159,8 @@ static void draw_speciation_overlay(const GameState *game, const UIState *S)
     snprintf(bio, sizeof(bio), "生物量 %s", num);
     ui_text_right(bio, panel.x + panel.width - 24.0f, panel.y + 24.0f, F_LABEL, COL_BIOMASS);
 
-    int children[4];
-    int n = ua_speciation_children(game, children, 4);
+    int children[SPECIES_COUNT];
+    int n = ua_speciation_children(game, children, SPECIES_COUNT);
 
     if (n <= 0) {
         ui_text_center("当前阶段没有可用的分化方向", panel.x + panel.width * 0.5f,
@@ -3239,8 +4169,9 @@ static void draw_speciation_overlay(const GameState *game, const UIState *S)
                        panel.y + 176.0f, F_CAPTION, COL_FAINT);
     }
 
-    for (int i = 0; i < n; ++i) {
-        Rectangle r = { panel.x + 24.0f, panel.y + 84.0f + (float)i * 102.0f,
+    int first = speciation_page_start(S, n);
+    for (int i = first; i < n && i < first + UI_SPECIATION_PAGE_SIZE; ++i) {
+        Rectangle r = { panel.x + 24.0f, panel.y + 84.0f + (float)(i - first) * 102.0f,
                         panel.width - 48.0f, 94.0f };
         UiButton *b = btn_find(S, UI_BTN_SPECIATE, children[i]);
         bool hot = is_hot(S, b);
@@ -3284,6 +4215,16 @@ static void draw_speciation_overlay(const GameState *game, const UIState *S)
         }
     }
 
+    UiButton *prev = btn_find(S, UI_BTN_SPECIATION_PAGE, 0);
+    UiButton *next = btn_find(S, UI_BTN_SPECIATION_PAGE, 1);
+    if (prev) ui_btn_draw(prev, "上一页", NULL, is_hot(S, prev));
+    if (next) ui_btn_draw(next, "下一页", NULL, is_hot(S, next));
+    char page[64];
+    snprintf(page, sizeof(page), "%d / %d 页 · %d 条路线", first / UI_SPECIATION_PAGE_SIZE + 1,
+             n > 0 ? (n + UI_SPECIATION_PAGE_SIZE - 1) / UI_SPECIATION_PAGE_SIZE : 1, n);
+    ui_text_center(page, panel.x + panel.width * 0.5f, panel.y + panel.height - 96.0f,
+                   F_BODY, COL_DIM);
+
     UiButton *keep = btn_find(S, UI_BTN_TOGGLE_KEEP_PARENT, -1);
     if (keep) {
         char label[96];
@@ -3321,63 +4262,67 @@ static void draw_codex_overlay(const GameState *game, const UIState *S)
     ui_divider(panel.x + 24.0f, panel.x + panel.width - 24.0f, panel.y + 104.0f,
                Fade(COL_LINE, 0.7f));
 
-    if (S->codex_tab == 0) {
+    if (S->codex_tab == 0 || S->codex_tab == 1) {
+        int list[SPECIES_COUNT];
+        int count = codex_visible_list(game, S->codex_tab, list, SPECIES_COUNT);
+        int first = codex_page_first(game, S);
         int discovered = 0;
-        float cell_h = fminf(110.0f, (panel.height - 124.0f) / (float)((SPECIES_COUNT + 4) / 5));
-        for (int i = 0; i < SPECIES_COUNT; ++i) {
-            Rectangle r = { panel.x + 24.0f + (float)(i % 5) * 222.0f,
-                            panel.y + 112.0f + (float)(i / 5) * cell_h, 210.0f, cell_h - 10.0f };
-            bool found = game->legacy.codex_species[i] || game->run.discovered_species[i];
-            if (found) discovered++;
-            ui_panel(r, R_CARD, found ? COL_PANEL_HI : COL_SURFACE_OFF,
-                     found ? Fade(ecology_color(i), 0.35f) : Fade(COL_LINE, 0.5f));
-            if (found) {
-                draw_organism((Vector2){ r.x + 36.0f, r.y + 46.0f }, 19.0f, i,
-                              ua_species_stage(i), ecology_color(i),
-                              g_ui.time + (float)i * 0.7f, true, true, 1.0f);
-                ui_text_strong(ua_species_name(i), r.x + 68.0f, r.y + 22.0f, F_LABEL, COL_TEXT);
-                char meta[64];
-                snprintf(meta, sizeof(meta), "%s · 阶段 %d", ua_ecology_name(i),
-                         ua_species_stage(i));
-                ui_text(meta, r.x + 68.0f, r.y + 46.0f, F_CAPTION, COL_DIM);
-            } else {
-                draw_organism((Vector2){ r.x + 36.0f, r.y + 46.0f }, 18.0f, i,
-                              ua_species_stage(i), COL_GHOST, 0.0f, false, false, 1.0f);
-                ui_text_center("?", r.x + 36.0f, r.y + 36.0f, F_TITLE, COL_FAINT);
-                ui_text("未发现", r.x + 68.0f, r.y + 40.0f, F_BODY, COL_FAINT);
-            }
-        }
-        char cnt[64];
-        snprintf(cnt, sizeof(cnt), "已发现 %d / %d", discovered, SPECIES_COUNT);
-        ui_text_right(cnt, panel.x + panel.width - 24.0f, panel.y + 70.0f, F_BODY, COL_DIM);
-    } else if (S->codex_tab == 1) {
-        int discovered = 0;
-        float cell_h = fminf(66.0f, (panel.height - 124.0f) / (float)((MUTATION_COUNT + 4) / 5));
-        for (int i = 0; i < MUTATION_COUNT; ++i) {
-            Rectangle r = { panel.x + 24.0f + (float)(i % 5) * 222.0f,
-                            panel.y + 112.0f + (float)(i / 5) * cell_h, 210.0f, cell_h - 8.0f };
-            bool found = game->legacy.codex_mutations[i] || game->run.discovered_mutations[i];
-            if (found) discovered++;
-            ui_panel(r, R_CARD, found ? COL_PANEL_HI : COL_SURFACE_OFF,
-                     found ? Fade(COL_DNA, 0.30f) : Fade(COL_LINE, 0.5f));
-            if (found) {
-                draw_mutation_sigil((Vector2){ r.x + 22.0f, r.y + 29.0f }, i,
-                                    COL_DNA, ua_mutation_is_rare(i), g_ui.time);
-                ui_text(ua_mutation_name(i), r.x + 44.0f, r.y + 10.0f, F_BODY, COL_TEXT);
-                if (ua_mutation_is_rare(i)) {
-                    ui_text_right("稀有", r.x + r.width - 10.0f, r.y + 12.0f, F_CAPTION, COL_EP);
+        for (int k = 0; k < count; ++k) discovered += codex_found(game, S->codex_tab, list[k]);
+        for (int k = first; k < count && k < first + UI_CODEX_PAGE_SIZE; ++k) {
+            int i = list[k];
+            Rectangle r = codex_cell_rect(panel, k - first);
+            bool found = codex_found(game, S->codex_tab, i);
+            UiButton *button = btn_find(S, UI_BTN_CODEX_ENTRY, i);
+            float hover = btn_hover_step(button, is_hot(S, button));
+            Color accent = S->codex_tab == CODEX_SPECIES ? ecology_color(i) : COL_DNA;
+            ui_panel(r, R_CARD, found ? ui_color_mix(COL_PANEL_HI, COL_PANEL_HOT, hover) : COL_SURFACE_OFF,
+                     found ? Fade(accent, 0.35f + hover * 0.35f) : Fade(COL_LINE, 0.5f));
+            Vector2 center = { r.x + 42.0f, r.y + 54.0f };
+            if (S->codex_tab == CODEX_SPECIES) {
+                /* 图标区 72×72：卡片左侧留给名字/阶段，杆状与行星形态不能压到文字上 */
+                Rectangle icon = { r.x + 6.0f, r.y + 18.0f, 72.0f, 72.0f };
+                if (found) {
+                    draw_organism_in(icon, center, 25.0f, i, ua_species_stage(i), accent,
+                                     S->time + (float)i * 0.7f, true, true, 1.0f);
+                } else {
+                    draw_organism(center, 25.0f, i, ua_species_stage(i), COL_GHOST,
+                                  S->time + (float)i * 0.7f, false, false, 1.0f);
                 }
-                char meta[64];
-                snprintf(meta, sizeof(meta), "第 %d 号基因", i + 1);
-                ui_text(meta, r.x + 44.0f, r.y + 32.0f, F_CAPTION, COL_FAINT);
+            } else if (found) {
+                draw_mutation_sigil(center, i, accent, ua_mutation_is_rare(i), S->time);
             } else {
-                ui_text("? ? ?", r.x + 44.0f, r.y + 10.0f, F_BODY, COL_FAINT);
-                ui_text("尚未获得", r.x + 44.0f, r.y + 32.0f, F_CAPTION, COL_FAINT);
+                ui_text_center("?", center.x, center.y - 10.0f, F_TITLE, COL_FAINT);
             }
+            const CodexEntry *entry = codex_entry((CodexKind)S->codex_tab, i);
+            ui_text_strong(found ? entry->name : "未发现", r.x + 80.0f, r.y + 24.0f, F_LABEL,
+                           found ? COL_TEXT : COL_FAINT);
+            char meta[80];
+            if (S->codex_tab == CODEX_SPECIES && found)
+                snprintf(meta, sizeof meta, "%s · 阶段 %d", ua_ecology_name(i), ua_species_stage(i));
+            else if (found)
+                snprintf(meta, sizeof meta, "%s · 第 %d 号", ua_mutation_is_rare(i) ? "稀有突变" : "突变", i + 1);
+            else snprintf(meta, sizeof meta, "探索后收录");
+            ui_text(meta, r.x + 80.0f, r.y + 52.0f, F_CAPTION, COL_DIM);
+            ui_text(found ? "点击查看卡片" : "尚未解锁", r.x + 20.0f, r.y + 100.0f,
+                    F_CAPTION, found ? accent : COL_FAINT);
         }
-        char cnt[64];
-        snprintf(cnt, sizeof(cnt), "已发现 %d / %d", discovered, MUTATION_COUNT);
-        ui_text_right(cnt, panel.x + panel.width - 24.0f, panel.y + 70.0f, F_BODY, COL_DIM);
+        char count_text[96], page_text[96];
+        if (S->codex_tab == CODEX_SPECIES) {
+            /* 物种页只列"已发现 + 相邻"，所以分母是全量 186，不是列表长度 */
+            snprintf(count_text, sizeof count_text, "已发现 %d / %d · 相邻 %d",
+                     discovered, SPECIES_COUNT, count - discovered);
+        } else {
+            snprintf(count_text, sizeof count_text, "已收录 %d / %d", discovered,
+                     codex_count(CODEX_MUTATION));
+        }
+        ui_text_right(count_text, panel.x + panel.width - 24.0f, panel.y + 70.0f, F_BODY, COL_DIM);
+        UiButton *prev = btn_find(S, UI_BTN_CODEX_PAGE, 0);
+        UiButton *next = btn_find(S, UI_BTN_CODEX_PAGE, 1);
+        if (prev) ui_btn_draw(prev, "上一页", NULL, is_hot(S, prev));
+        if (next) ui_btn_draw(next, "下一页", NULL, is_hot(S, next));
+        snprintf(page_text, sizeof page_text, "%d / %d 页 · 点击已收录条目查看故事",
+                 first / UI_CODEX_PAGE_SIZE + 1, (count + UI_CODEX_PAGE_SIZE - 1) / UI_CODEX_PAGE_SIZE);
+        ui_text_center(page_text, panel.x + panel.width * 0.5f, panel.y + 560.0f, F_BODY, COL_DIM);
     } else {
         const char *labels[3] = { "最高纪元", "最高 EP", "最高生物量" };
         double values[3] = { (double)game->legacy.best_era,
@@ -3458,62 +4403,236 @@ static void draw_codex_overlay(const GameState *game, const UIState *S)
     }
 }
 
-/* ---------------- 进化树（星图） ---------------- */
+/* Wrap at UTF-8 boundaries and measured width; never truncate an approved quote. */
+static void draw_codex_quote(const char *quote, Rectangle area)
+{
+    char line[192] = { 0 };
+    int used = 0, row = 0;
+    for (const char *p = quote; *p;) {
+        int bytes = 1;
+        while (p[bytes] && ((unsigned char)p[bytes] & 0xC0u) == 0x80u) ++bytes;
+        char trial[192];
+        memcpy(trial, line, (size_t)used);
+        memcpy(trial + used, p, (size_t)bytes);
+        trial[used + bytes] = '\0';
+        if (used > 0 && ui_text_w(trial, F_TITLE) > area.width) {
+            ui_text_center_strong(line, area.x + area.width * 0.5f, area.y + row * 34.0f,
+                                  F_TITLE, COL_TEXT);
+            ++row;
+            used = 0;
+        }
+        memcpy(line + used, p, (size_t)bytes);
+        used += bytes;
+        line[used] = '\0';
+        p += bytes;
+    }
+    if (used) ui_text_center_strong(line, area.x + area.width * 0.5f, area.y + row * 34.0f,
+                                   F_TITLE, COL_TEXT);
+}
 
-#define STAR_STAGES 12
-#define STAR_GRAV_X 640.0f
-#define STAR_GRAV_Y 300.0f
-#define RING_RX(s) (78.0f + 34.0f * (float)(s))
-/* 环不能压得太扁：扁到 0.16 的椭圆会让所有节点挤成一条横带，读不出“越外越晚” */
-#define RING_RY(s) (34.0f + 15.0f * (float)(s))
+static void draw_codex_detail(const GameState *game, const UIState *S)
+{
+    Rectangle panel = codex_detail_rect();
+    const CodexEntry *entry = codex_entry((CodexKind)S->codex_detail_kind, S->codex_detail_id);
+    bool found = entry && codex_found(game, S->codex_detail_kind, S->codex_detail_id);
+    bool is_species = S->codex_detail_kind == CODEX_SPECIES;
+    Color accent = is_species ? COL_TEAL : COL_DNA;
+    ui_halo(panel, R_PANEL, accent, 0.12f);
+    ui_panel(panel, R_PANEL, COL_PANEL, Fade(accent, 0.6f));
+    ui_text_strong(found ? entry->name : "未发现", panel.x + 24.0f, panel.y + 20.0f,
+                   F_TITLE, COL_TEXT);
+    Rectangle art = { panel.x + 20.0f, panel.y + 62.0f, panel.width - 40.0f, 254.0f };
+    ui_panel(art, R_CARD, COL_BG_DEEP, Fade(accent, 0.25f));
+    Vector2 center = { art.x + art.width * 0.5f, art.y + art.height * 0.5f };
+    if (found) {
+        ui_glow(center, 100.0f, accent, 0.25f);
+        if (is_species)
+            draw_organism_in(art, center, 66.0f, S->codex_detail_id,
+                             ua_species_stage(S->codex_detail_id),
+                             ecology_color(S->codex_detail_id), S->time, true, true, 1.0f);
+        else
+            draw_mutation_sigil_scaled(center, S->codex_detail_id, accent,
+                                       ua_mutation_is_rare(S->codex_detail_id), S->time, 3.0f);
+    } else ui_text_center("?", center.x, center.y - 25.0f, F_HERO, COL_FAINT);
+    ui_text_center(is_species ? "物种图鉴" : "突变图鉴", panel.x + panel.width * 0.5f,
+                   panel.y + 340.0f, F_CAPTION, accent);
+    draw_codex_quote(found ? entry->tagline : "继续探索，故事还在前面。",
+                     (Rectangle){ panel.x + 40.0f, panel.y + 376.0f, panel.width - 80.0f, 112.0f });
+    UiButton *back = btn_find(S, UI_BTN_CODEX_BACK, -1);
+    if (back) ui_btn_draw(back, "返回图鉴", NULL, is_hot(S, back));
+    ui_text_center("Esc 返回 · 保留当前页", panel.x + panel.width * 0.5f,
+                   panel.y + panel.height - 14.0f, F_CAPTION, COL_FAINT);
+}
 
-/* 径向谱系布局：s_kid 存主谱系子节点，s_leafw 存子树叶子数（用来分配角度扇区） */
+/* ---------------- 进化树（星图） ----------------
+ *
+ * 极坐标星图：中心是原始细胞，一圈一个阶段，越外越晚；同一阶段的不同分支
+ * 在圈上按角度分开，连线是向中心微微收拢的贝塞尔 —— 读起来像星图上的航线。
+ *
+ * v9 三处改动（内容是 186 物种 / 156 叶子，旧参数已经画不开）：
+ *   1. 环数不再写死 11：按内容最大阶段动态生成。旧版把阶段钳到 11，
+ *      阶段 12/13 的物种全被压到第 11 圈上重叠。
+ *   2. 画框放到接近全屏，横向半径比 2.2：最外圈弧长 ≈ 22px > 节点直径 19px，
+ *      同圈节点不再必然重叠。
+ *   3. 支持拖拽平移 + 滚轮缩放：默认 1.0 看全貌，滚轮放大到 2.8 看细节。
+ * 另外未探索的深层分支不再全画（186 个节点的全连线是一张糊住的网），
+ * 只保留"已点亮"和"从已点亮往外一格"的前沿连线。
+ */
+
+#define TREE_MAX_RY 246.0f
+
+static int s_maxst = 0;
+
+static int tree_max_stage(void)
+{
+    if (s_maxst <= 0) {
+        s_maxst = ua_max_species_stage();
+        if (s_maxst < 1) s_maxst = 1;
+    }
+    return s_maxst;
+}
+
+/* 环半径：最外圈固定 246，内圈按阶段等比铺开，阶段数变化时自动重算 */
+static float tree_ring_ry(int s)
+{
+    float m = (float)tree_max_stage();
+    if (s < 0) s = 0;
+    if ((float)s > m) s = (int)m;
+    /* 起始半径 48：第 1 圈周长 ≈ 300px，装 11–17 个节点才不会贴在一起；
+     * 旧值 34 时内两圈的节点几乎叠成一坨，标签全靠避让硬挤。 */
+    return 48.0f + (TREE_MAX_RY - 48.0f) * (float)s / m;
+}
+
+/* 横向 2.2 倍：面板是 16:9，正圆会在左右各空出 200px；拉成椭圆既不挤，
+ * 又把画框用满（最外圈半宽 541 < 606，上下 246 < 250）。 */
+static float tree_ring_rx(int s) { return tree_ring_ry(s) * 2.2f; }
+
+static Rectangle tree_panel_rect(void)
+{
+    return (Rectangle){ 20.0f, 16.0f, 1240.0f, 676.0f };
+}
+
+static Rectangle tree_sky_rect(void)
+{
+    Rectangle p = tree_panel_rect();
+    return (Rectangle){ p.x + 14.0f, p.y + 66.0f, p.width - 28.0f, p.height - 104.0f };
+}
+
+/* 星图的圆心：竖向要给底部详情条让出 68px，所以圆心略偏上 */
+static Vector2 tree_center(void)
+{
+    Rectangle sky = tree_sky_rect();
+    return (Vector2){ sky.x + sky.width * 0.5f, sky.y + (sky.height - 68.0f) * 0.5f + 6.0f };
+}
+
+Vector2 screens_tree_center(void) { return tree_center(); }
+
+float screens_tree_pan_limit(const GameState *game)
+{
+    (void)game;
+    float z = g_ui.tree_zoom > 0.05f ? g_ui.tree_zoom : 1.0f;
+    return 540.0f * z + 140.0f;
+}
+
+/* 地图坐标 → 屏幕坐标：以圆心为原点缩放，再叠加平移 */
+static Vector2 tree_view(Vector2 p)
+{
+    Vector2 c = tree_center();
+    float z = g_ui.tree_zoom > 0.05f ? g_ui.tree_zoom : 1.0f;
+    return (Vector2){ c.x + (p.x - c.x) * z + g_ui.tree_pan_x,
+                      c.y + (p.y - c.y) * z + g_ui.tree_pan_y };
+}
+
 static int   s_kid[SPECIES_COUNT][SPECIES_COUNT];
 static int   s_kidn[SPECIES_COUNT];
-static float s_leafw[SPECIES_COUNT];
+static int   s_order[SPECIES_COUNT];   /* 先序遍历序号：同圈内按谱系顺序排，兄弟相邻 */
 
-static float star_weight(int id, int guard)
+/* 先序 DFS 给每个节点一个"谱系顺序"。圈内排序靠它，
+ * 这样同一圈的物种彼此靠近的也确实是亲戚，而不是按 id 乱跳。 */
+static void tree_order_dfs(int id, int *next, int guard)
 {
-    if (guard > SPECIES_COUNT) return 1.0f;
-    if (s_kidn[id] <= 0) { s_leafw[id] = 1.0f; return 1.0f; }
-    float w = 0.0f;
-    for (int k = 0; k < s_kidn[id]; ++k) w += star_weight(s_kid[id][k], guard + 1);
-    if (w < 1.0f) w = 1.0f;
-    s_leafw[id] = w;
-    return w;
+    if (guard > SPECIES_COUNT) return;
+    if (s_order[id] >= 0) return;
+    s_order[id] = (*next)++;
+    for (int k = 0; k < s_kidn[id]; ++k) tree_order_dfs(s_kid[id][k], next, guard + 1);
 }
 
-static void star_place(int id, float a_mid, float span, Vector2 *node, float *node_a, int guard)
+/* 星图布局。build_overlay（放节点按钮）与 draw_tree_overlay（画）共用同一份几何，
+   避免“看得到的位置”和“点得到的位置”对不上。
+   parent_of[] 输出主亲本（-1 表示根）；sib[] 仅层状布局用，这里保留参数占位。
+
+   角度分配不再"按叶子数等分"：156 个叶子均分 2π 只有 2.3°/个，内圈半径小的时候
+   弧长不到 5px，必然叠在一起（旧版截图里左边那一串就是）。改成**每一圈按该阶段
+   的物种数均分**——同圈节点间距 = 2πR/k，半径和数量都确定，几何上保证不重叠。 */
+static void tree_layout(Vector2 node[SPECIES_COUNT], int parent_of[SPECIES_COUNT],
+                        int sib[SPECIES_COUNT])
 {
-    int st = ua_species_stage(id);
-    if (st < 0) st = 0;
-    if (st >= STAR_STAGES) st = STAR_STAGES - 1;
-    if (st > 0) {
-        node[id] = (Vector2){ STAR_GRAV_X + cosf(a_mid) * RING_RX(st),
-                              STAR_GRAV_Y + sinf(a_mid) * RING_RY(st) };
-        node_a[id] = a_mid;
+    for (int i = 0; i < SPECIES_COUNT; ++i) {
+        s_kidn[i] = 0;
+        s_order[i] = -1;
+        parent_of[i] = -1;
+        if (sib) sib[i] = 0;
     }
-    if (guard > 20 || s_kidn[id] <= 0) return;
 
-    float total = 0.0f;
-    for (int k = 0; k < s_kidn[id]; ++k) total += s_leafw[s_kid[id][k]];
-    if (total <= 0.0f) total = (float)s_kidn[id];
+    /* 主亲本：优先“阶段更早的祖先”里最晚的那个；没有就取同阶段里 id 更小的
+     *（侧支的规则亲本常常是同阶段的主干物种，例如 蜂群政体 ← 智慧生命）。 */
+    for (int i = 1; i < SPECIES_COUNT; ++i) {
+        int ps[4];
+        int n = ua_species_parents(i, ps, 4);
+        int own = ua_species_stage(i);
+        int best = -1, best_st = -1, same = -1;
 
-    float cur = a_mid - span * 0.5f;
-    if (s_kidn[id] == 1) {
-        /* 独生子：给一点角向“拧劲”，主链就会弯成螺旋，而不是一串叠在同一条半径上的念珠 */
-        star_place(s_kid[id][0], a_mid + 0.30f, 0.42f, node, node_a, guard + 1);
-        return;
+        for (int k = 0; k < n; ++k) {
+            int p = ps[k];
+            if (p < 0 || p >= SPECIES_COUNT || p == i) continue;
+            int st = ua_species_stage(p);
+            if (st < own) {
+                if (st > best_st) { best = p; best_st = st; }
+            } else if (st == own && p < i) {
+                if (same < 0 || p < same) same = p;
+            }
+        }
+        if (best < 0) best = (same >= 0) ? same : 0;
+        parent_of[i] = best;
+        if (best >= 0 && s_kidn[best] < SPECIES_COUNT) s_kid[best][s_kidn[best]++] = i;
     }
-    for (int k = 0; k < s_kidn[id]; ++k) {
-        int cid = s_kid[id][k];
-        float sub = span * (s_leafw[cid] / total);
-        /* 扇区下限：独生子链如果拿不到角宽，所有节点会沿同一条半径叠成一串 */
-        if (sub < 0.38f) sub = 0.38f;
-        star_place(cid, cur + sub * 0.5f, sub, node, node_a, guard + 1);
-        cur += sub;
+
+    int next = 0;
+    tree_order_dfs(0, &next, 0);
+    for (int i = 0; i < SPECIES_COUNT; ++i) {
+        if (s_order[i] < 0) s_order[i] = next++;   /* 走不到的孤儿排到最后 */
     }
+
+    int maxst = tree_max_stage();
+    Vector2 c = tree_center();
+    for (int st = 0; st <= maxst; ++st) {
+        int lst[SPECIES_COUNT];
+        int n = 0;
+        for (int i = 0; i < SPECIES_COUNT; ++i) {
+            if (ua_species_stage(i) == st) lst[n++] = i;
+        }
+        if (n <= 0) continue;
+
+        /* 按先序插入排序（n ≤ 17，比 qsort 更省事） */
+        for (int a = 1; a < n; ++a) {
+            int v = lst[a], b = a - 1;
+            while (b >= 0 && s_order[lst[b]] > s_order[v]) { lst[b + 1] = lst[b]; --b; }
+            lst[b + 1] = v;
+        }
+
+        float rx = tree_ring_rx(st), ry = tree_ring_ry(st);
+        for (int k = 0; k < n; ++k) {
+            /* 从正上方开始，每圈整体拧 0.085 rad：父子不落在同一条半径上，连线成螺旋 */
+            float a = -PI * 0.5f + (float)k * (2.0f * PI / (float)n)
+                    + 0.085f * (float)st;
+            node[lst[k]] = (Vector2){ c.x + cosf(a) * rx, c.y + sinf(a) * ry };
+        }
+    }
+
+    node[0] = c;   /* 中心留给原始细胞自己 */
 }
+
+static float tree_node_r(void) { return 8.0f; }
 
 static void draw_nebula(Vector2 c, float rad, Color col, float a){
     for (int i = 0; i < 30; ++i) {
@@ -3522,15 +4641,16 @@ static void draw_nebula(Vector2 c, float rad, Color col, float a){
     }
 }
 
-static void star_curve(Vector2 a, Vector2 b, Color c, float w)
+/* 亲缘线：控制点向圆心收 14%（“被引力拉弯”），起点/终点都落在节点边缘 */
+static void tree_edge(Vector2 a, Vector2 b, Vector2 g, Color c, float w)
 {
     Vector2 m = { (a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f };
-    m.x += (STAR_GRAV_X - m.x) * 0.12f;
-    m.y += (STAR_GRAV_Y - m.y) * 0.12f;
+    m.x += (g.x - m.x) * 0.14f;
+    m.y += (g.y - m.y) * 0.14f;
 
     Vector2 prev = a;
-    for (int i = 1; i <= 10; ++i) {
-        float t = (float)i / 10.0f;
+    for (int i = 1; i <= 12; ++i) {
+        float t = (float)i / 12.0f;
         float u = 1.0f - t;
         Vector2 p = { u * u * a.x + 2.0f * u * t * m.x + t * t * b.x,
                       u * u * a.y + 2.0f * u * t * m.y + t * t * b.y };
@@ -3541,12 +4661,13 @@ static void star_curve(Vector2 a, Vector2 b, Color c, float w)
 
 static void draw_tree_overlay(const GameState *game, const UIState *S)
 {
-    Rectangle panel = { 60.0f, 52.0f, 1160.0f, 612.0f };
+    Rectangle panel = tree_panel_rect();
+    Rectangle sky = tree_sky_rect();
     ui_halo(panel, R_PANEL, COL_ACCENT, 0.10f);
     ui_panel(panel, R_PANEL, COL_PANEL, Fade(COL_ACCENT, 0.30f));
 
     ui_text_strong("进化树 · 星图", panel.x + 24.0f, panel.y + 14.0f, F_TITLE, COL_TEXT);
-    ui_text("一圈一个阶段，越外越晚；亮线是走过的亲缘，暗线是尚未探索的分支",
+    ui_text("一圈一个阶段，越外越晚 · 拖拽平移 · 滚轮缩放 · 点节点看它从哪来",
             panel.x + 24.0f, panel.y + 44.0f, F_CAPTION, COL_DIM);
 
     int discovered = 0;
@@ -3554,121 +4675,155 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
         if (game->legacy.codex_species[i] || game->run.discovered_species[i]) ++discovered;
     }
 
+    UiButton *reset = btn_find(S, UI_BTN_TREE_RESET, -1);
+    if (reset) ui_btn_draw(reset, "复位", NULL, is_hot(S, reset));
+
     UiButton *close = btn_find(S, UI_BTN_CLOSE_OVERLAY, -1);
     if (close) ui_btn_draw(close, "关闭", NULL, is_hot(S, close));
 
-    Rectangle sky = { panel.x + 14.0f, panel.y + 66.0f, panel.width - 28.0f, panel.height - 104.0f };
     ui_panel(sky, R_CARD, COL_BG_DEEP, Fade(COL_LINE, 0.7f));
     ui_gradient((Rectangle){ sky.x + 8, sky.y + 8, sky.width - 16, sky.height - 16 },
-                Fade(COL_BG_LIFT, 0.35f), Fade(COL_BG_DEEP, 0.85f));
+                Fade(COL_BG_LIFT, 0.32f), Fade(COL_BG_DEEP, 0.88f));
 
-    draw_nebula((Vector2){ sky.x + 220.0f, sky.y + 120.0f }, 180.0f, COL_DNA, 1.0f);
-    draw_nebula((Vector2){ sky.x + 880.0f, sky.y + 300.0f }, 200.0f, COL_ACCENT, 0.9f);
-    draw_nebula((Vector2){ sky.x + 420.0f, sky.y + 460.0f }, 160.0f, COL_TEAL, 0.8f);
+    draw_nebula((Vector2){ sky.x + 250.0f, sky.y + 130.0f }, 180.0f, COL_DNA, 0.9f);
+    draw_nebula((Vector2){ sky.x + 900.0f, sky.y + 380.0f }, 200.0f, COL_ACCENT, 0.8f);
+    draw_nebula((Vector2){ sky.x + 520.0f, sky.y + 450.0f }, 150.0f, COL_TEAL, 0.7f);
 
-    for (int i = 0; i < 220; ++i) {
+    for (int i = 0; i < 160; ++i) {
         float x = sky.x + 6.0f + hash01((unsigned int)i * 3u + 1u) * (sky.width - 12.0f);
         float y = sky.y + 6.0f + hash01((unsigned int)i * 3u + 2u) * (sky.height - 12.0f);
-        float a = 0.05f + 0.24f * hash01((unsigned int)i * 3u + 3u);
+        float a = 0.04f + 0.20f * hash01((unsigned int)i * 3u + 3u);
         float tw = 0.62f + 0.38f * sinf(g_ui.time * (0.6f + 0.9f * hash01((unsigned int)i * 5u)) + (float)i);
-        DrawCircleV((Vector2){ x, y }, 0.7f + 1.3f * hash01((unsigned int)i * 7u + 9u),
+        DrawCircleV((Vector2){ x, y }, 0.7f + 1.2f * hash01((unsigned int)i * 7u + 9u),
                     Fade(COL_TEXT, a * tw));
     }
 
-    for (int s = 2; s < STAR_STAGES; s += 2) {
-        float rx = RING_RX(s);
-        float ry = RING_RY(s);
-        Vector2 prev = { STAR_GRAV_X + rx, STAR_GRAV_Y };
-        for (int k = 1; k <= 72; ++k) {
-            float a = (float)k * (2.0f * PI / 72.0f);
-            Vector2 p = { STAR_GRAV_X + cosf(a) * rx, STAR_GRAV_Y + sinf(a) * ry };
-            DrawLineEx(prev, p, 1.0f, Fade(COL_LINE_STRONG, 0.10f));
+    float zoom = g_ui.tree_zoom > 0.05f ? g_ui.tree_zoom : 1.0f;
+    Vector2 center = tree_center();
+    Vector2 c2 = { center.x + g_ui.tree_pan_x, center.y + g_ui.tree_pan_y };
+    int maxst = tree_max_stage();
+
+    /* ---------- 同心圈（阶段刻度） ---------- */
+    for (int s = 1; s <= maxst; ++s) {
+        float rx = tree_ring_rx(s) * zoom, ry = tree_ring_ry(s) * zoom;
+        Vector2 prev = { c2.x + rx, c2.y };
+        for (int k = 1; k <= 64; ++k) {
+            float a = (float)k * (2.0f * PI / 64.0f);
+            Vector2 p = { c2.x + cosf(a) * rx, c2.y + sinf(a) * ry };
+            DrawLineEx(prev, p, 1.0f, Fade(COL_LINE_STRONG, s % 2 ? 0.10f : 0.16f));
             prev = p;
         }
+        /* 圈号不写字：14 个"阶段 N"会在轴上叠成一串，还和标签抢位置。
+         * 只留一个刻度点，阶段数在底部详情条里跟着选中物种显示。 */
+        DrawCircleV((Vector2){ c2.x, c2.y - ry }, 1.6f, Fade(COL_ACCENT, 0.35f));
     }
     for (int k = 0; k < 12; ++k) {
         float a = (float)k * (2.0f * PI / 12.0f);
-        DrawLineEx((Vector2){ STAR_GRAV_X + cosf(a) * 26.0f, STAR_GRAV_Y + sinf(a) * 13.0f },
-                   (Vector2){ STAR_GRAV_X + cosf(a) * RING_RX(STAR_STAGES - 1),
-                              STAR_GRAV_Y + sinf(a) * RING_RY(STAR_STAGES - 1) },
-                   1.0f, Fade(COL_LINE, 0.10f));
+        DrawLineEx(c2, (Vector2){ c2.x + cosf(a) * tree_ring_rx(maxst) * zoom,
+                                  c2.y + sinf(a) * tree_ring_ry(maxst) * zoom },
+                   1.0f, Fade(COL_LINE, 0.08f));
     }
 
-    /* 原点 */
-    ui_glow((Vector2){ STAR_GRAV_X, STAR_GRAV_Y }, 60.0f, COL_ACCENT, 0.35f);
-    DrawRing((Vector2){ STAR_GRAV_X, STAR_GRAV_Y }, 27.0f, 28.0f, 0.0f, 360.0f, 64,
-             Fade(COL_ACCENT, 0.25f));
-
-    /* 节点位置：按主谱系做径向树布局（父→子的扇形分角），而不是“每个环上平均撒点”。
-       环仍代表阶段（越外越晚），角向位置代表它在谱系里的分支扇区。 */
     Vector2 node[SPECIES_COUNT];
-    float node_a[SPECIES_COUNT];
-    for (int i = 0; i < SPECIES_COUNT; ++i) {
-        node[i] = (Vector2){ STAR_GRAV_X, STAR_GRAV_Y };
-        node_a[i] = -PI * 0.5f;
-        s_kidn[i] = 0;
-        s_leafw[i] = 1.0f;
-    }
-    for (int i = 1; i < SPECIES_COUNT; ++i) {
-        int ps[4];
-        int n = ua_species_parents(i, ps, 4);
-        int own = ua_species_stage(i);
-        int best = -1, best_st = -1;
-        for (int k = 0; k < n; ++k) {
-            int p = ps[k];
-            if (p < 0 || p >= SPECIES_COUNT) continue;
-            int st = ua_species_stage(p);
-            if (st < own && st > best_st) { best = p; best_st = st; }
-        }
-        if (best < 0) best = 0;                    /* 没有更早的祖先就先挂在原点 */
-        if (best == i) continue;
-        if (s_kidn[best] < SPECIES_COUNT) s_kid[best][s_kidn[best]++] = i;
-    }
-    star_weight(0, 0);
-    star_place(0, -PI * 0.5f, 2.0f * PI * 0.94f, node, node_a, 0);
+    Vector2 vp[SPECIES_COUNT];
+    int parent_of[SPECIES_COUNT];
+    tree_layout(node, parent_of, NULL);
+    float nr = tree_node_r();
+
+    for (int i = 0; i < SPECIES_COUNT; ++i) vp[i] = tree_view(node[i]);
 
     int main_id = game->run.active_species_count > 0 ? game->run.active_species[0].species_id : 0;
+    int sel = (S->tree_sel >= 0 && S->tree_sel < SPECIES_COUNT) ? S->tree_sel : main_id;
 
-    for (int child = 0; child < SPECIES_COUNT; ++child) {
-        int parents[4];
-        int n = ua_species_parents(child, parents, 4);
-        for (int k = 0; k < n; ++k) {
-            int p = parents[k];
-            if (p < 0 || p >= SPECIES_COUNT) continue;
-            if (ua_species_stage(p) >= ua_species_stage(child)) continue;
-            bool lit = (game->legacy.codex_species[p] || game->run.discovered_species[p]) &&
-                       (game->legacy.codex_species[child] || game->run.discovered_species[child]);
-            float pulse = 0.5f + 0.5f * sinf(g_ui.time * 2.4f);
-            Color c = (child == main_id) ? Fade(COL_ACCENT, 0.45f + 0.40f * pulse)
-                    : lit                 ? Fade(ecology_color(child), 0.55f)
-                                          : Fade(COL_LINE_STRONG, 0.22f);
-            star_curve(node[p], node[child], c, (child == main_id) ? 2.0f : 1.0f);
+    bool on_route[SPECIES_COUNT];
+    for (int i = 0; i < SPECIES_COUNT; ++i) on_route[i] = false;
+    for (int v = sel, guard = 0; v >= 0 && v < SPECIES_COUNT && guard < SPECIES_COUNT; ++guard) {
+        on_route[v] = true;
+        int p = parent_of[v];
+        if (p == v || p < 0) break;
+        v = p;
+    }
+
+    /* ---------- 亲缘连线 ----------
+     * 只画三类：选中路线（亮）、两端都已点亮（生态色）、从已点亮往外一格的前沿（暗）。
+     * 186 个物种的"全连线"是一张糊住的网，深层未探索的支线对玩家没有信息量。
+     *
+     * 放大后连线会伸出画框（贝塞尔曲线弯出去），所以整段用 scissor 兜住 sky：
+     * 曲线可以到边界为止，但不会画到标题文字上。scissor 用渲染目标像素，
+     * 逻辑坐标要乘超采样倍数。 */
+    int sss = ui_canvas_ss();
+    BeginScissorMode((int)(sky.x * (float)sss), (int)(sky.y * (float)sss),
+                     (int)(sky.width * (float)sss), (int)(sky.height * (float)sss));
+    {
+        Rectangle cull = { sky.x - 80.0f, sky.y - 80.0f, sky.width + 160.0f, sky.height + 160.0f };
+        for (int child = 0; child < SPECIES_COUNT; ++child) {
+            int ps[4];
+            int n = ua_species_parents(child, ps, 4);
+            int own = ua_species_stage(child);
+            bool child_found = game->legacy.codex_species[child] || game->run.discovered_species[child];
+            for (int k = 0; k < n; ++k) {
+                int p = ps[k];
+                if (p < 0 || p >= SPECIES_COUNT || p == child) continue;
+                if (ua_species_stage(p) >= own) continue;    /* 只画"早 → 晚"的方向 */
+
+                bool parent_found = game->legacy.codex_species[p] || game->run.discovered_species[p];
+                bool lit = parent_found && child_found;
+                bool hi = on_route[child] && on_route[p];
+                bool frontier = parent_found != child_found;
+
+                if (!hi && !lit && !frontier) continue;
+                if (!CheckCollisionPointRec(vp[p], cull) && !CheckCollisionPointRec(vp[child], cull))
+                    continue;
+
+                if (hi) {
+                    float pulse = 0.5f + 0.5f * sinf(g_ui.time * 2.0f + (float)child * 0.4f);
+                    tree_edge(vp[p], vp[child], c2, Fade(COL_ACCENT, 0.10f + 0.08f * pulse), 4.5f);
+                    tree_edge(vp[p], vp[child], c2, Fade(COL_ACCENT, 0.55f + 0.30f * pulse), 2.0f);
+                } else if (lit) {
+                    tree_edge(vp[p], vp[child], c2, Fade(ecology_color(child), 0.42f), 1.3f);
+                } else {
+                    tree_edge(vp[p], vp[child], c2, Fade(COL_LINE_STRONG, 0.13f), 1.0f);
+                }
+            }
         }
     }
 
+    /* 圆心 */
+    ui_glow(c2, 46.0f * zoom, COL_ACCENT, 0.30f);
+
+    /* ---------- 节点 ---------- */
     for (int i = 0; i < SPECIES_COUNT; ++i) {
-        Vector2 p = node[i];
+        Vector2 p = vp[i];
+        if (p.x < sky.x - nr || p.x > sky.x + sky.width + nr) continue;
+        if (p.y < sky.y - nr || p.y > sky.y + sky.height + nr) continue;
+
         bool found = game->legacy.codex_species[i] || game->run.discovered_species[i];
         bool cur = (i == main_id);
+        bool pick = (i == sel);
         Color col = ecology_color(i);
-        int st = ua_species_stage(i);
 
-        if (cur) {
-            float pulse = 0.5f + 0.5f * sinf(g_ui.time * 2.2f);
-            ui_glow(p, 38.0f + 5.0f * pulse, COL_ACCENT, 0.55f);
-            DrawCircleV(p, 20.0f, Fade(COL_ACCENT, 0.12f));
+        if (pick) {
+            float pulse = 0.5f + 0.5f * sinf(g_ui.time * 2.4f);
+            ui_glow(p, nr + 15.0f + 3.0f * pulse, COL_ACCENT, 0.5f);
         } else if (found) {
-            ui_glow(p, 30.0f, col, 0.32f);
+            ui_glow(p, nr + 7.0f, col, 0.28f);
         }
 
-        DrawCircleV(p, 17.0f, (found || cur) ? COL_PANEL_HI : COL_SURFACE_OFF);
-        DrawRing(p, 16.2f, 17.4f, 0.0f, 360.0f, 44,
-                 (found || cur) ? Fade(col, 0.85f) : Fade(COL_LINE, 1.0f));
-        draw_organism(p, 10.0f, i, st, col, g_ui.time + (float)i * 0.7f,
-                      found || cur, found || cur, (found || cur) ? 1.0f : 0.9f);
+        DrawCircleV(p, nr, found ? COL_PANEL_HI : COL_SURFACE_OFF);
+        DrawRing(p, nr - 1.0f, nr, 0.0f, 360.0f, 40,
+                 found ? Fade(col, 0.90f) : Fade(COL_LINE, 0.9f));
+        draw_organism(p, nr * 0.70f, i, ua_species_stage(i), col,
+                      g_ui.time + (float)i * 0.7f, found, found, found ? 1.0f : 0.85f);
+
+        if (cur) {
+            DrawRing(p, nr + 2.0f, nr + 3.0f, 0.0f, 360.0f, 40, Fade(COL_ACCENT, 0.55f));
+        }
     }
 
-    /* 标签：8 个候选方向 + 贪心避让，失败也保底绘制（宁可轻微重叠，也不要丢名字） */
+    /* ---------- 标签 ----------
+     * 贴着节点沿半径向外放；八个候选方向 × 两档距离，撞到已放标签、别的节点、
+     * 圈号或底部条就换下一个。当前/选中的名字永远画（宁可压一点点，也不能丢）。
+     * 挤不下的普通名字直接不画 —— 名字少一个好过糊成一团。 */
     {
         Rectangle placed[SPECIES_COUNT];
         int placed_n = 0;
@@ -3677,96 +4832,129 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
             for (int i = 0; i < SPECIES_COUNT; ++i) {
                 bool found = game->legacy.codex_species[i] || game->run.discovered_species[i];
                 bool cur = (i == main_id);
-                if (!(found || cur)) continue;
-                if ((pass == 0) != cur) continue;
+                bool pick = (i == sel);
+                bool must = cur || pick;
+                if (!(found || must)) continue;
+                if ((pass == 0) != must) continue;
+
+                Vector2 p = vp[i];
+                if (p.x < sky.x - 20.0f || p.x > sky.x + sky.width + 20.0f) continue;
+                if (p.y < sky.y - 20.0f || p.y > sky.y + sky.height + 20.0f) continue;
 
                 const char *nm = ua_species_name(i);
                 float w = ui_text_w(nm, F_CAPTION);
-                float ca = cosf(node_a[i]);
-                float sa = sinf(node_a[i]);
+                float base = atan2f(p.y - c2.y, p.x - c2.x);
 
-                float offs[8] = { 0.0f, 0.55f, -0.55f, 1.10f, -1.10f, 1.70f, -1.70f, PI };
+                const float offs[8] = { 0.0f, 0.42f, -0.42f, 0.84f, -0.84f, 1.35f, -1.35f, PI };
                 Rectangle best = { 0, 0, 0, 0 };
 
                 for (int c = 0; c < 8 && best.width <= 0.0f; ++c) {
-                  for (int ring = 0; ring < 2 && best.width <= 0.0f; ++ring) {
-                    float d = 26.0f + 13.0f * (float)ring;      /* 先贴近节点，挤不下再往外让一格 */
-                    float a = node_a[i] + offs[c];
-                    float dx = cosf(a), dy = sinf(a);
-                    if (i == 0) { dx = 0.0f; dy = 1.0f; }
-                    Rectangle lr;
-                    lr.width = w;
-                    lr.height = 15.0f;
-                    lr.y = node[i].y + dy * d - 7.0f;
-                    if (dx > 0.35f)       lr.x = node[i].x + dx * d;
-                    else if (dx < -0.35f) lr.x = node[i].x + dx * d - w;
-                    else                  lr.x = node[i].x - w * 0.5f;
+                    for (int ring = 0; ring < 2 && best.width <= 0.0f; ++ring) {
+                        float d = nr + 12.0f + 14.0f * (float)ring;
+                        float a = base + offs[c];
+                        float dx = cosf(a), dy = sinf(a);
+                        Rectangle lr;
+                        lr.width = w;
+                        lr.height = 14.0f;
+                        lr.y = p.y + dy * d - 7.0f;
+                        if (dx > 0.30f)       lr.x = p.x + dx * d;
+                        else if (dx < -0.30f) lr.x = p.x + dx * d - w;
+                        else                  lr.x = p.x - w * 0.5f;
 
-                    bool clash = false;
-                    for (int k = 0; k < placed_n && !clash; ++k) {
-                        if (CheckCollisionRecs(lr, placed[k])) clash = true;
+                        bool clash = false;
+                        Rectangle pad = { lr.x - 3.0f, lr.y - 3.0f, lr.width + 6.0f, lr.height + 6.0f };
+                        for (int k = 0; k < placed_n && !clash; ++k) {
+                            if (CheckCollisionRecs(pad, placed[k])) clash = true;
+                        }
+                        for (int j = 0; j < SPECIES_COUNT && !clash; ++j) {
+                            if (j == i) continue;
+                            /* 未探索的暗点不参与避让：它们只有 8px 且很淡，让标签绕开
+                             * 186 个点等于一律放不下。只避让已点亮/当前/选中的节点。 */
+                            bool j_found = game->legacy.codex_species[j] || game->run.discovered_species[j];
+                            if (!j_found && j != sel) continue;
+                            if (vp[j].x < sky.x - nr || vp[j].x > sky.x + sky.width + nr) continue;
+                            if (vp[j].y < sky.y - nr || vp[j].y > sky.y + sky.height + nr) continue;
+                            Rectangle q = { vp[j].x - nr - 5.0f, vp[j].y - nr - 5.0f,
+                                            (nr + 5.0f) * 2.0f, (nr + 5.0f) * 2.0f };
+                            if (CheckCollisionRecs(pad, q)) clash = true;
+                        }
+                        if (lr.x < sky.x + 4.0f || lr.x + lr.width > sky.x + sky.width - 4.0f) clash = true;
+                        if (lr.y < sky.y + 4.0f || lr.y + lr.height > sky.y + sky.height - 62.0f) clash = true;
+                        if (!clash) best = lr;
                     }
-                    for (int j = 0; j < SPECIES_COUNT && !clash; ++j) {
-                        if (j == i) continue;
-                        Rectangle nr = { node[j].x - 19.0f, node[j].y - 19.0f, 38.0f, 38.0f };
-                        if (CheckCollisionRecs(lr, nr)) clash = true;
-                    }
-                    if (lr.x < sky.x + 4.0f || lr.x + lr.width > sky.x + sky.width - 4.0f) clash = true;
-                    if (lr.y < sky.y + 4.0f || lr.y + lr.height > sky.y + sky.height - 62.0f) clash = true;
-                    if (!clash) best = lr;
-                  }
+                }
+                if (i == 0 && best.width > 0.0f) {
+                    /* 圆心那枚节点的名字固定放正上方：它周围一圈全是第一代分支 */
+                    best.x = p.x - w * 0.5f;
+                    best.y = p.y - nr - 26.0f;
                 }
                 if (best.width <= 0.0f) {
-                    /* 保底：沿半径向外 34px */
+                    if (!must) continue;
                     best.width = w;
                     best.height = 14.0f;
-                    best.x = node[i].x + ca * 34.0f - (ca < -0.2f ? w : (ca > 0.2f ? 0.0f : w * 0.5f));
-                    best.y = node[i].y + sa * 34.0f - 7.0f;
+                    best.x = p.x - w * 0.5f;
+                    best.y = p.y + nr + 6.0f;
                     if (best.x < sky.x + 4.0f) best.x = sky.x + 4.0f;
                     if (best.x + best.width > sky.x + sky.width - 4.0f)
                         best.x = sky.x + sky.width - 4.0f - best.width;
-                    if (best.y < sky.y + 4.0f) best.y = sky.y + 4.0f;
+                    if (best.y + best.height > sky.y + sky.height - 62.0f)
+                        best.y = sky.y + sky.height - 62.0f - best.height;
                 }
 
-                ui_text(nm, best.x + 1.0f, best.y + 1.5f, F_CAPTION, Fade(COL_BG_DEEP, 0.90f));
-                ui_text(nm, best.x, best.y, F_CAPTION, cur ? COL_ACCENT : COL_DIM);
+                ui_text(nm, best.x + 1.0f, best.y + 1.0f, F_CAPTION, Fade(COL_BG_DEEP, 0.85f));
+                ui_text(nm, best.x, best.y, F_CAPTION, pick ? COL_ACCENT : (found ? COL_DIM : COL_FAINT));
                 placed[placed_n++] = best;
             }
         }
     }
+    EndScissorMode();
 
-    Rectangle bar = { sky.x + 12.0f, sky.y + sky.height - 58.0f, sky.width - 24.0f, 46.0f };
+    /* ---------- 底部详情条 ---------- */
+    Rectangle bar = { sky.x + 12.0f, sky.y + sky.height - 56.0f, sky.width - 24.0f, 44.0f };
     ui_panel(bar, R_CARD, COL_PANEL, Fade(COL_ACCENT, 0.30f));
 
     {
-        int sid = main_id;
+        int sid = sel;
         int st = ua_species_stage(sid);
-        draw_organism((Vector2){ bar.x + 26.0f, bar.y + 23.0f }, 13.0f, sid, st,
+        draw_organism((Vector2){ bar.x + 24.0f, bar.y + 22.0f }, 12.0f, sid, st,
                       ecology_color(sid), S->time, true, true, 1.0f);
-        ui_text_strong(ua_species_name(sid), bar.x + 46.0f, bar.y + 6.0f, F_LABEL, COL_TEXT);
+        ui_text_strong(ua_species_name(sid), bar.x + 44.0f, bar.y + 5.0f, F_LABEL, COL_TEXT);
 
-        char line[128], pn[24], cn[24];
-        if (game->run.active_species_count > 0) {
-            SpeciesRates rates;
-            ua_species_rates(game, 0, &rates);
-            ui_fmt_num(game->run.active_species[0].population, pn, (int)sizeof(pn));
-            ui_fmt_num(rates.final_population_cap, cn, (int)sizeof(cn));
-            snprintf(line, sizeof(line), "%s · 阶段 %d · 种群 %s / %s",
-                     ua_ecology_name(sid), st, pn, cn);
+        char line[192];
+        int pp[4];
+        int pn = ua_species_parents(sid, pp, 4);
+        if (pn > 0) {
+            snprintf(line, sizeof(line), "%s · 阶段 %d · 分化自 %s",
+                     ua_ecology_name(sid), st, ua_species_name(pp[0]));
         } else {
-            snprintf(line, sizeof(line), "%s · 阶段 %d", ua_ecology_name(sid), st);
+            snprintf(line, sizeof(line), "%s · 阶段 %d · 万物起点", ua_ecology_name(sid), st);
         }
-        ui_text(line, bar.x + 46.0f, bar.y + 26.0f, F_CAPTION, COL_DIM);
+        ui_text(line, bar.x + 44.0f, bar.y + 24.0f, F_CAPTION, COL_DIM);
 
-        char cnt[48];
+        double pop = -1.0, cap = 0.0;
+        for (int s = 0; s < game->run.active_species_count; ++s) {
+            if (game->run.active_species[s].species_id != sid) continue;
+            SpeciesRates rates;
+            ua_species_rates(game, s, &rates);
+            pop = game->run.active_species[s].population;
+            cap = rates.final_population_cap;
+            break;
+        }
+        if (pop >= 0.0) {
+            char pbuf[24], cbuf[24], tail[96];
+            ui_fmt_num(pop, pbuf, (int)sizeof(pbuf));
+            ui_fmt_num(cap, cbuf, (int)sizeof(cbuf));
+            snprintf(tail, sizeof(tail), "本轮在场 · 种群 %s / %s", pbuf, cbuf);
+            ui_text_right(tail, bar.x + bar.width - 14.0f, bar.y + 6.0f, F_CAPTION, COL_BIOMASS);
+        }
+
+        char cnt[64];
         snprintf(cnt, sizeof(cnt), "已点亮 %d / %d", discovered, SPECIES_COUNT);
-        ui_text_right(cnt, bar.x + bar.width - 14.0f, bar.y + 7.0f, F_BODY, COL_EP);
-        ui_text_right("徽记亮起 = 该物种进过图鉴", bar.x + bar.width - 14.0f, bar.y + 27.0f,
-                      F_CAPTION, COL_FAINT);
+        ui_text_right(cnt, bar.x + bar.width - 14.0f, bar.y + 24.0f, F_CAPTION, COL_EP);
     }
 
     {
-        const char *lg[3] = { "当前路径", "已点亮", "未探索" };
+        const char *lg[3] = { "选中路线", "已点亮", "未探索" };
         Color lc[3] = { COL_ACCENT, COL_BIOMASS, COL_LINE_STRONG };
         float lx = panel.x + 24.0f;
         for (int i = 0; i < 3; ++i) {
@@ -3774,6 +4962,190 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
             ui_text(lg[i], lx + 12.0f, panel.y + panel.height - 25.0f, F_CAPTION, COL_FAINT);
             lx += 12.0f + ui_text_w(lg[i], F_CAPTION) + 18.0f;
         }
+        char zt[32];
+        snprintf(zt, sizeof(zt), "缩放 ×%.1f", zoom);
+        ui_text_right(zt, panel.x + panel.width - 24.0f, panel.y + panel.height - 25.0f,
+                      F_CAPTION, COL_FAINT);
+    }
+}
+
+/* ---------------- 突变图谱 ---------------- */
+
+
+static Rectangle mut_list_panel_rect(void)
+{
+    return (Rectangle){ 60.0f, 52.0f, 1160.0f, 612.0f };
+}
+
+static void draw_mut_list_overlay(const GameState *game, const UIState *S)
+{
+    Rectangle panel = mut_list_panel_rect();
+    ui_halo(panel, R_PANEL, COL_DNA, 0.10f);
+    ui_panel(panel, R_PANEL, COL_PANEL, Fade(COL_DNA, 0.30f));
+
+    ui_text_strong("突变图谱", panel.x + 24.0f, panel.y + 14.0f, F_TITLE, COL_TEXT);
+    ui_text("本轮已经获得的全部突变，按物种分栏；底部是本轮点亮的共振",
+            panel.x + 24.0f, panel.y + 44.0f, F_CAPTION, COL_DIM);
+
+    UiButton *close = btn_find(S, UI_BTN_CLOSE_OVERLAY, -1);
+    if (close) ui_btn_draw(close, "关闭", NULL, is_hot(S, close));
+
+    int slots = game->run.active_species_count;
+    int cols = slots <= 2 ? (slots < 1 ? 1 : slots) : 2;
+
+    Rectangle area = { panel.x + 20.0f, panel.y + 78.0f, panel.width - 40.0f, 366.0f };
+    float gap = 12.0f;
+    float cw = (area.width - gap * (float)(cols - 1)) / (float)cols;
+    float ch = (slots > 2) ? (area.height - gap) * 0.5f : area.height;
+
+    int total_owned = 0;
+    for (int s = 0; s < slots; ++s) {
+        for (int m = 0; m < MUTATION_COUNT; ++m) {
+            if (game->run.active_species[s].mutations[m]) ++total_owned;
+        }
+    }
+
+    int boxes = cols * ((slots + cols - 1) / cols);
+    if (boxes < 1) boxes = 1;
+
+    for (int si = 0; si < boxes; ++si) {
+        Rectangle box = { area.x + (float)(si % cols) * (cw + gap),
+                          area.y + (float)(si / cols) * (ch + gap), cw, ch };
+        bool exists = si < slots;
+        Color accent = exists ? ecology_color(game->run.active_species[si].species_id) : COL_LINE;
+
+        ui_panel(box, R_CARD, exists ? Fade(COL_BG_LIFT, 0.35f) : COL_SURFACE_OFF,
+                 exists ? Fade(accent, 0.35f) : Fade(COL_LINE, 0.45f));
+
+        if (!exists) {
+            ui_text_center(si == 0 ? "等待主谱系" : "空置物种槽",
+                           box.x + box.width * 0.5f, box.y + box.height * 0.5f - 9.0f,
+                           F_LABEL, COL_FAINT);
+            ui_text_center(si == 0 ? "开局后这里显示主谱系" : "多样性 Lv.2 解锁",
+                           box.x + box.width * 0.5f, box.y + box.height * 0.5f + 12.0f,
+                           F_CAPTION, COL_FAINT);
+            continue;
+        }
+
+        const SpeciesState *sp = &game->run.active_species[si];
+        int sid = sp->species_id;
+        DrawRectangleRounded((Rectangle){ box.x + 6.0f, box.y + 8.0f, 3.0f, box.height - 16.0f },
+                             1.0f, 4, Fade(accent, 0.8f));
+        draw_organism((Vector2){ box.x + 30.0f, box.y + 24.0f }, 11.0f, sid,
+                      ua_species_stage(sid), accent, S->time, true, true, 1.0f);
+        ui_text_strong(ua_species_name(sid), box.x + 48.0f, box.y + 10.0f, F_LABEL, COL_TEXT);
+
+        int owned = 0;
+        for (int m = 0; m < MUTATION_COUNT; ++m) {
+            if (sp->mutations[m]) ++owned;
+        }
+        char line[160];
+        snprintf(line, sizeof(line), "%s · 阶段 %d · %d 项突变",
+                 ua_ecology_name(sid), ua_species_stage(sid), owned);
+        ui_text(line, box.x + 48.0f, box.y + 32.0f, F_CAPTION, COL_DIM);
+
+        /* 格子 3 列 × N 行：一屏装不下的按剩余数量标一句，不静默丢 */
+        float gx = box.x + 14.0f;
+        float gy = box.y + 52.0f;
+        float gw = (box.width - 28.0f - 12.0f) / 3.0f;
+        float gh = 26.0f;
+        int max_rows = (int)((box.height - 56.0f) / gh);
+        if (max_rows < 1) max_rows = 1;
+        int cap = 3 * max_rows;
+        int drawn = 0;
+
+        for (int m = 0; m < MUTATION_COUNT; ++m) {
+            if (!sp->mutations[m]) continue;
+            if (drawn >= cap) break;
+            int rr = drawn / 3, cc = drawn % 3;
+            Rectangle cell = { gx + (float)cc * (gw + 6.0f), gy + (float)rr * gh, gw, gh - 5.0f };
+            Color sig = ua_mutation_is_rare(m) ? COL_EP : COL_DNA;
+            ui_panel(cell, 6.0f, Fade(sig, 0.07f), Fade(sig, 0.18f));
+            /* 小尺寸纹章：半径 20 的 draw_mutation_sigil 放不进去，这里用
+             * “环 + 核 + 两颗卫星”的简化形，颜色仍然区分稀有度。 */
+            Vector2 sc = { cell.x + 12.0f, cell.y + cell.height * 0.5f };
+            DrawRing(sc, 5.0f, 6.0f, 0.0f, 360.0f, 20, Fade(sig, 0.9f));
+            DrawCircleV(sc, 2.0f, Fade(sig, 0.85f));
+            DrawCircleV((Vector2){ sc.x + 6.5f, sc.y - 3.0f }, 1.4f, Fade(sig, 0.55f));
+            DrawCircleV((Vector2){ sc.x - 6.0f, sc.y + 3.5f }, 1.1f, Fade(sig, 0.45f));
+            ui_text(ua_mutation_name(m), cell.x + 22.0f, cell.y + 4.0f, F_CAPTION, COL_TEXT);
+            ++drawn;
+        }
+
+        if (owned == 0) {
+            ui_text("还没有获得任何突变 · 按 M 打开突变面板",
+                    gx, gy + 6.0f, F_CAPTION, COL_FAINT);
+        } else if (owned > drawn) {
+            char more[32];
+            snprintf(more, sizeof(more), "还有 %d 项", owned - drawn);
+            int rr = drawn / 3;
+            ui_text(more, gx, gy + (float)rr * gh + 6.0f, F_CAPTION, COL_FAINT);
+        }
+    }
+
+    /* ---------- 本轮共振 ---------- */
+    Rectangle syn = { panel.x + 20.0f, area.y + area.height + 12.0f,
+                      panel.width - 40.0f, panel.height - (area.y - panel.y) - area.height - 46.0f };
+    ui_panel(syn, R_CARD, Fade(COL_EP, 0.06f), Fade(COL_EP, 0.28f));
+    ui_text("本轮共振", syn.x + 14.0f, syn.y + 8.0f, F_CAPTION, COL_EP);
+
+    int syn_n = ua_synergy_count();
+    int active_n = 0;
+    float cx = syn.x + 14.0f;
+    float cy = syn.y + 26.0f;
+    for (int i = 0; i < syn_n; ++i) {
+        bool on = false;
+        for (int s = 0; s < slots && !on; ++s) on = ua_synergy_active(game, s, i);
+        if (!on) continue;
+        ++active_n;
+
+        int pair[2];
+        ua_synergy_pair(i, pair);
+        const char *nm = ua_synergy_name(i);
+
+        float w = ui_text_w(nm, F_CAPTION) + 18.0f;
+        if (cx + w > syn.x + syn.width - 14.0f) {
+            cx = syn.x + 14.0f;
+            cy += 24.0f;
+        }
+        if (cy > syn.y + syn.height - 22.0f) break;
+
+        Rectangle chip = { cx, cy, w, 20.0f };
+        ui_panel(chip, 10.0f, Fade(COL_EP, 0.16f), Fade(COL_EP, 0.45f));
+        ui_text_center(nm, chip.x + chip.width * 0.5f, chip.y + 4.0f, F_CAPTION, COL_EP);
+        cx += w + 6.0f;
+
+        /* 组名后面跟“哪两个突变凑出来的”，一行放下就写，放不下就不写 */
+        char pairbuf[128];
+        snprintf(pairbuf, sizeof(pairbuf), "%s + %s",
+                 ua_mutation_name(pair[0]), ua_mutation_name(pair[1]));
+        float pw = ui_text_w(pairbuf, F_CAPTION) + 10.0f;
+        if (cx + pw < syn.x + syn.width - 14.0f && cy <= syn.y + syn.height - 22.0f) {
+            ui_text(pairbuf, cx, cy + 5.0f, F_CAPTION, COL_DIM);
+            cx += pw;
+        }
+    }
+
+    if (active_n == 0) {
+        char hint[192];
+        snprintf(hint, sizeof(hint),
+                 "同一个物种凑齐两条前置突变即触发共振 · 共 %d 条可解锁", syn_n);
+        ui_text(hint, syn.x + 14.0f, syn.y + 30.0f, F_CAPTION, COL_FAINT);
+    }
+
+    /* ---------- 页脚 ---------- */
+    {
+        char foot[160];
+        int codex_mut = 0;
+        for (int m = 0; m < MUTATION_COUNT; ++m) {
+            if (game->legacy.codex_mutations[m]) ++codex_mut;
+        }
+        snprintf(foot, sizeof(foot), "本轮 %d 项突变 · 图鉴收录 %d / %d · 共振 %d / %d",
+                 total_owned, codex_mut, MUTATION_COUNT, active_n, syn_n);
+        ui_text(foot, panel.x + 24.0f, panel.y + panel.height - 24.0f, F_CAPTION, COL_DIM);
+        ui_text_right("按 V 随时打开 · 进化树里能看到这些突变把你带到了哪一支",
+                      panel.x + panel.width - 24.0f, panel.y + panel.height - 24.0f,
+                      F_CAPTION, COL_FAINT);
     }
 }
 
@@ -3785,7 +5157,9 @@ static void draw_overlay(const GameState *game, const UIState *S)
     case UI_OVL_MUTATION:   draw_mutation_overlay(game, S); break;
     case UI_OVL_SPECIATION: draw_speciation_overlay(game, S); break;
     case UI_OVL_CODEX:      draw_codex_overlay(game, S); break;
+    case UI_OVL_CODEX_DETAIL: draw_codex_detail(game, S); break;
     case UI_OVL_TREE:       draw_tree_overlay(game, S); break;
+    case UI_OVL_MUT_LIST:   draw_mut_list_overlay(game, S); break;
     default: break;
     }
 }
@@ -3817,3 +5191,4 @@ void screens_draw(const GameState *game, const UIState *state, const ActionResul
     }
     draw_overlay(game, state);
 }
+

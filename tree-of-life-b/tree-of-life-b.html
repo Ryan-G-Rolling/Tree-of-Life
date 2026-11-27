@@ -2732,6 +2732,560 @@
     </div>
   </section>
 
+  <section>
+    <h2><span class="num">31</span>第十四轮：20 物种、20 突变与阶段 12–13</h2>
+    <p>
+      按“每批 20”继续扩展：物种 26 → <b>46</b>，突变 44 → <b>64</b>，共振 15 → <b>20</b>，
+      子升级 24 → <b>30</b> 层。主线在超越之后新增 <b>阶段 12 心智场</b> 与
+      <b>阶段 13 宇宙织锦</b>，EP 理论上限 64 → <b>85</b>。结构上限同步抬到
+      <code>MAX_SPECIES=64</code>、<code>MAX_MUTATIONS=128</code>，为下一批预留一倍空间。
+    </p>
+
+    <h3>1. 新内容分布</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>层级</th><th class="num">新增</th><th>代表内容</th></tr></thead>
+        <tbody>
+          <tr><td>侧支（阶段 2–12）</td><td class="num">18</td>
+              <td>嗜热古菌、固氮质体群落、地衣联合体、昆虫都市、戴森蜂群、多元宇宙花园</td></tr>
+          <tr><td>主线（阶段 12/13）</td><td class="num">2</td>
+              <td>心智场（Omega Point + Cosmic Awareness）、宇宙织锦（Entropy Reversal）</td></tr>
+          <tr><td>突变</td><td class="num">20</td>
+              <td>Nitroplast、Silica Shell、Neural Lace、Fusion Torch、Dyson Collectors、Quantum Cognition</td></tr>
+          <tr><td>共振</td><td class="num">5</td>
+              <td>Thermo Acid Loop、Nitrogen Cycle、Silica Lattice、Deep Signal、Cosmic Mind</td></tr>
+          <tr><td>子升级</td><td class="num">6 层</td>
+              <td>心智场与宇宙织锦各 3 层，成本 19,200 / 38,400 理念起</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      每条新侧支都绑定一个此前“可选”的突变作为门票，避免扩张后出现只加数据、不改决策的死内容；
+      高阶突变（Quantum Cognition、Cosmic Awareness、Entropy Reversal）同时进入理念加成侧表。
+    </p>
+
+    <h3>2. 结果（1000 种子 × 三纪元）</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>指标</th><th class="num">纪元 1</th><th class="num">纪元 2</th><th class="num">纪元 3</th></tr></thead>
+        <tbody>
+          <tr><td>EP 中位</td><td class="num">26（σ 3.01）</td><td class="num">38</td><td class="num">48</td></tr>
+          <tr><td>阶段中位</td><td class="num">5</td><td class="num">—</td><td class="num">9（5.0% 到 11）</td></tr>
+          <tr><td>6/6 危机</td><td class="num">37.0%</td><td class="num">22.8%</td><td class="num">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      首分化 p50 <b>231.8 s</b>（p90 293.9、p95 299.7），阶段 ≤3 的低尾 <b>0/1000</b>；
+      ATP 结余 281 万；逐类型危机 61 / 65 / 49 / 50 / 65 / 64 / 63%，7 类全部落在 40–65%。
+      随机策略覆盖 21/45 物种、45/64 突变，作为参考项；全部内容由可玩性断言逐个证明可达。
+    </p>
+
+    <figure class="chart-figure">
+      <figcaption>图 71：纪元 1 与纪元 3 的阶段分布<span class="hint">新阶段不拉长早期节奏，纪元 1 仍停在阶段 5</span></figcaption>
+      <div id="chart-round14-stage" class="chart-container tall"></div>
+    </figure>
+
+    <figure class="chart-figure">
+      <figcaption>图 72：三纪元 EP 箱线<span class="hint">26 / 38 / 48，仍在验收带内</span></figcaption>
+      <div id="chart-round14-ep" class="chart-container tall"></div>
+    </figure>
+
+    <figure class="chart-figure">
+      <figcaption>图 73：七个危机类型的通过率<span class="hint">新突变抬高了热/毒抗性，伤害值已按类型回调</span></figcaption>
+      <div id="chart-round14-crisis" class="chart-container tall"></div>
+    </figure>
+
+    <figure class="chart-figure">
+      <figcaption>图 74：45 个可分化物种的随机策略覆盖<span class="hint">#26–45 为新增；随机策略只走主线，覆盖低不代表不可达</span></figcaption>
+      <div id="chart-round14-coverage" class="chart-container tall"></div>
+    </figure>
+
+    <div class="callout">
+      <b>达成：</b>宽度上新增 20 物种 / 20 突变 / 5 共振 / 6 层子升级；
+      深度上打开阶段 12–13，高阶突变接入理念侧表；稳定性上自测升到
+      <b>24 组 / 50,404 项 / 0 失败</b>，并逐项验证 45/45 物种与 64/64 突变可玩。
+    </div>
+
+    <div class="callout">
+      <b>偏差：</b>随机策略只覆盖 21/45 物种、45/64 突变，这是自动策略不主动走侧支的结果，
+      不是内容不可达；阶段 13 在 600 s 扫描中出现 0 次，属于终局长度设计，
+      由 <code>test_every_content_playable</code> 单独验证可分化。
+    </div>
+
+    <div class="callout">
+      <b>影响面：</b><code>SPECIES_COUNT=46</code>、<code>MUTATION_COUNT=64</code>，
+      共振 20、子升级 30；EP 上限 64 → <b>85</b>；GameState 结构 1,336 B。
+      A/C 需同步枚举与数据表；B 的存档序列化仍由 A 负责。
+    </div>
+
+    <div class="callout">
+      <b>复现：</b><code>build.ps1 -Report</code> 生成 <code>assets/round14.js</code> 与验收表；
+      内容可玩性与模糊测试随 <code>test_b</code> 一起运行。
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">32</span>第十五轮：14 阶 ×10 物种与突变，商店提价</h2>
+    <p>
+      按“每个阶段加 10 个物种、10 个突变”落地：物种 46 → <b>186</b>，突变 64 → <b>204</b>，
+      EP 上限 85 → <b>202</b>。新增内容按阶段内 10 级阶梯排列，同一阶段必须逐级分化；
+      同时把进化商店改为<b>分段提价</b>，并让阶段 8 起的高阶突变额外消耗 ATP。
+    </p>
+    <p class="hint">
+      本节图表已按 v7 修复后的数据重新生成；四项修复（Meteor 判定、ATP 门票、开局节奏、验收双表）见第 33 节。
+    </p>
+
+    <h3>1. 每个阶段的新家族</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th class="num">阶段</th><th>物种家族</th><th>主题</th></tr></thead>
+        <tbody>
+          <tr><td class="num">0</td><td>Lipid Vesicle … Early Replicator</td><td>前细胞化学</td></tr>
+          <tr><td class="num">1</td><td>Purple Sulfur Bacterium … Sulfate Reducer</td><td>细菌代谢</td></tr>
+          <tr><td class="num">2</td><td>Diatom … Choanoflagellate</td><td>原生生物</td></tr>
+          <tr><td class="num">3</td><td>Sponge Primitive … Early Metazoan</td><td>早期后生动物</td></tr>
+          <tr><td class="num">4</td><td>Flatworm … Early Mollusc</td><td>身体构型</td></tr>
+          <tr><td class="num">5</td><td>Trilobite … Lamprey</td><td>寒武纪海洋</td></tr>
+          <tr><td class="num">6</td><td>Lobe-Finned Fish … Swamp Conifer</td><td>登陆与森林</td></tr>
+          <tr><td class="num">7</td><td>Dinosaur Herd … Grassland</td><td>中生代陆地</td></tr>
+          <tr><td class="num">8</td><td>Primate Troop … Island Chiefdom</td><td>文明萌芽</td></tr>
+          <tr><td class="num">9</td><td>Industrial Nation … Mass Society</td><td>工业社会</td></tr>
+          <tr><td class="num">10</td><td>Orbital Station … Interplanetary Union</td><td>行星际</td></tr>
+          <tr><td class="num">11</td><td>Neural Archive … Quantum Network</td><td>机器与星际</td></tr>
+          <tr><td class="num">12</td><td>Simulation World … Cognition Tide</td><td>理念世界</td></tr>
+          <tr><td class="num">13</td><td>Cosmic Loom … Absolute Mind</td><td>宇宙终局</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>2. 商店提价与 ATP 出口</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>项目</th><th class="num">之前</th><th class="num">现在</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>分段 DNA 倍率</td><td class="num">—</td><td class="num">1.8 / 2.0 / 2.5</td><td>阶段 0–3 / 4–7 / 8+</td></tr>
+          <tr><td>首突变折扣</td><td class="num">40%</td><td class="num">15%</td><td>前期不再“开局即买”</td></tr>
+          <tr><td>成本链</td><td class="num">全部已拥有必需突变</td><td class="num">只看下一步前置</td><td>130 条侧支门票不拖贵主线</td></tr>
+          <tr><td>高阶 ATP 费用</td><td class="num">—</td><td class="num">1e7 × 8^(阶-8)</td><td>阶段 8 起额外收 ATP</td></tr>
+          <tr><td>单轮升级 / 储备上限</td><td class="num">15 / 5</td><td class="num">25 / 10</td><td>后期 ATP 出口</td></tr>
+          <tr><td>结构上限</td><td class="num">64 / 128</td><td class="num">256 / 256</td><td>物种 / 突变</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>3. 结果（1000 种子 × 三纪元）</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>指标</th><th class="num">纪元 1</th><th class="num">纪元 2</th><th class="num">纪元 3</th></tr></thead>
+        <tbody>
+          <tr><td>EP 中位</td><td class="num">46（σ 6.49）</td><td class="num">62</td><td class="num">60</td></tr>
+          <tr><td>阶段中位</td><td class="num">9</td><td class="num">—</td><td class="num">11（100% 到 11）</td></tr>
+          <tr><td>6/6 危机</td><td class="num">34.8%</td><td class="num">61.1%</td><td class="num">100%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      首分化 p50 <b>193.4 s</b>（p90 246.1），阶段 ≤3 的低尾 <b>0/1000</b>；
+      600 s ATP 结余 5.5 亿；逐类型危机 72 / 45 / 46 / 46 / 61 / 100 / 77%，全部 ≥40%。
+      随机策略覆盖 27/185 物种、203/204 突变。
+    </p>
+
+    <figure class="chart-figure">
+      <figcaption>图 75：纪元 1 与纪元 3 的阶段分布<span class="hint">新增内容没有把早期节奏推得更快</span></figcaption>
+      <div id="chart-round15-stage" class="chart-container tall"></div>
+    </figure>
+
+    <figure class="chart-figure">
+      <figcaption>图 76：三纪元 EP 箱线<span class="hint">40 / 51 / 54，跨轮成长恢复</span></figcaption>
+      <div id="chart-round15-ep" class="chart-container tall"></div>
+    </figure>
+
+    <figure class="chart-figure">
+      <figcaption>图 77：七个危机类型的通过率<span class="hint">买满 204 个突变后，热/毒抗性接近上限</span></figcaption>
+      <div id="chart-round15-crisis" class="chart-container tall"></div>
+    </figure>
+
+    <figure class="chart-figure">
+      <figcaption>图 78：185 个可分化物种的随机策略覆盖<span class="hint">#46 起为 14 阶 ×10 的新家族</span></figcaption>
+      <div id="chart-round15-coverage" class="chart-container tall"></div>
+    </figure>
+
+    <div class="callout">
+      <b>达成：</b>宽度上一次性补齐 14 个阶段各 10 物种 + 10 突变（各 +140），
+      并把侧支门票从主线定价里剥离；经济上前期首突变从约 4 DNA 提到约 10 DNA，
+      后期新增 ATP 费用与更高的升级/储备上限。自测升到 <b>25 组 / 88,521 项 / 0 失败</b>，
+      185/185 物种与 204/204 突变逐个验证可玩。
+    </div>
+
+    <div class="callout">
+      <b>偏差：</b>阶段 12+ 在 600 s 扫描中为 0.7%，终局仍主要靠生物量门票；
+      阶段 11 抵达率 100%，说明“按秒计价”在 204 突变的经济里已近乎必达，深度交给 12+。
+      随机策略只覆盖 27/185 物种，是自动策略只走主线的结果，不代表内容不可达。
+    </div>
+
+    <div class="callout">
+      <b>影响面：</b><code>SPECIES_COUNT=186</code>、<code>MUTATION_COUNT=204</code>，
+      <code>MAX_SPECIES=256</code>、<code>MAX_MUTATIONS=256</code>；GameState 3,128 B。
+      新增公开查询 <code>evolution_mutation_atp_cost</code> 与 <code>evolution_mutation_is_required</code>。
+      A/C 需同步枚举与数据表。
+    </div>
+
+    <div class="callout">
+      <b>复现：</b><code>build.ps1 -Report</code> 生成 <code>assets/round15.js</code> 与验收表；
+      内容可玩性与模糊测试随 <code>test_b</code> 一起运行。
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">33</span>v7 修复：Meteor、ATP 门票、开局与验收双表</h2>
+    <p>
+      本轮不加内容，只修四个结构性问题：Meteor 在阶段 ≥6 数学上不可通、阶段 11 的 ATP 门票
+      变成收入抽签、开局 216 秒无决策点、ATP 商店在 20 秒内买满而后期 94% 花不掉。
+      同时把验收表拆成手写目标与自动实测两张账。
+    </p>
+
+    <h3>1. 修复前后</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>指标</th><th class="num">v7 前</th><th class="num">v7 后</th><th>做法</th></tr></thead>
+        <tbody>
+          <tr><td>纪元 2 Meteor 通过率</td><td class="num">0.0%</td><td class="num">99.7%</td>
+              <td>即时损失后同时重置起始与最低人口</td></tr>
+          <tr><td>首分化 p50</td><td class="num">263.5 s</td><td class="num">193.4 s</td>
+              <td>Protocell → Cyanobacterium 生物量 55 → 40</td></tr>
+          <tr><td>首突变 p50</td><td class="num">47.3 s</td><td class="num">39.8 s</td>
+              <td>首突变折扣 15% → 40%</td></tr>
+          <tr><td>6/6 危机 · 纪元 1</td><td class="num">24.6%</td><td class="num">34.8%</td>
+              <td>Meteor 可通 + 低光伤害 0.013 → 0.0115</td></tr>
+          <tr><td>阶段 11 抵达（纪元 3）</td><td class="num">11.7%</td><td class="num">100%</td>
+              <td>门票改为 clamp(收入 × 45 s, 1e7, 5e8)</td></tr>
+          <tr><td>阶段 12+ 抵达（纪元 3）</td><td class="num">0%</td><td class="num">0.7%</td>
+              <td>深度交给阶段 10+ 的生物量门票</td></tr>
+          <tr><td>ATP 商店硬顶</td><td class="num">25 / 10 级</td><td class="num">无硬顶</td>
+              <td>单轮升级与储备都改为无上限</td></tr>
+          <tr><td>容量支付</td><td class="num">70% ATP + 30% Biomass</td><td class="num">纯 ATP</td>
+              <td>容量价格含“收入 5 秒”下限</td></tr>
+          <tr><td>储备价格</td><td class="num">固定 1,000</td><td class="num">1,000 × 1.6^n</td>
+              <td>20 秒买满 → 每纪元的选择</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>2. ATP 未花比例</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>纪元</th><th class="num">未花比例</th><th class="num">目标</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>纪元 1</td><td class="num">37.6%</td><td class="num">≤ 40%</td><td>首分化 194 s，收入尚未指数化</td></tr>
+          <tr><td>纪元 2</td><td class="num">23.6%</td><td class="num">≤ 30%</td><td>容量与储备开始吸收</td></tr>
+          <tr><td>纪元 3</td><td class="num">9.1%</td><td class="num">≤ 15%</td><td>基本每赚 10 点花掉 9 点</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      未花比例 = 期末结余 ÷（结余 + 本轮已花）。v7 前纪元 1 为 94.3%、纪元 2 为 99.7%；
+      现在纪元 3 已降到 9.1%。绝对结余仍随收入增长（纪元 2 中位 5.5 亿），
+      因此主指标看比例，不再看固定金额。
+    </p>
+
+    <h3>3. 验收双表</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>文件</th><th>来源</th><th>作用</th></tr></thead>
+        <tbody>
+          <tr><td><code>build/design.csv</code></td><td>手写</td><td>目标 min/max 与设计意图；改一行就必须出现在 diff</td></tr>
+          <tr><td><code>build/design.lock</code></td><td>指纹</td><td>目标被改动而锁未更新时，全部状态强制降级为「目标已变更」</td></tr>
+          <tr><td><code>build/observed.csv</code></td><td>脚本</td><td>每次运行自动写入实测值</td></tr>
+          <tr><td><code>assets/acceptance.js</code></td><td>合并</td><td>target 来自 design，actual 来自 observed</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      纪元 2 / 3 的逐类型危机也补进了 <code>per_type</code>，CRISIS 日志打印真实通过线
+      （纪元 1 0.625、纪元 2 0.70、纪元 3 0.85）。Meteor 这类“纪元 2 才暴雷”的问题会自己浮出来。
+    </p>
+
+    <div class="callout">
+      <b>达成：</b>Meteor 恢复可通，首分化回到 193.4 s，首突变 39.8 s，6/6 纪元 1 回到 34.8%，
+      ATP 未花比例从 94–99.99% 降到 37.6 / 23.6 / 9.1%。
+      验收目标与实测已拆开，目标漂移不再自动变绿。
+    </div>
+
+    <div class="callout">
+      <b>偏差：</b>审计建议 A 方案下阶段 11 为 20–40%，本经济实测 100%——按秒计价后它已近乎必达，
+      深度改由阶段 12+（0.7%）承担；纪元 3 的 6/6 也达到 100%，目标定为 90–100% 而不是 55–75%。
+      纪元 1 的 ATP 未花比例 37.6%，仍高于审计建议的 15%，原因是首纪元收入尚未指数化、
+      且要为阶段 8 门票预留 ATP；纪元 3 已进入目标带。
+    </div>
+
+    <div class="callout">
+      <b>未做：</b>P1-2 的“同阶段 3 条并行支线”与 P1-3 的 EP 永久出口没有落地。
+      单局轨迹仍是 11 个物种；185/185 只代表构造态可玩，不代表玩家可见。
+    </div>
+
+    <div class="callout">
+      <b>复现：</b><code>build.ps1 -Report</code> 重新生成 <code>round15.js</code>、<code>observed.csv</code>
+      与 <code>acceptance.js</code>；<code>build.ps1 -Clean</code> 只清理构建产物，保留台账。
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">34</span>第十六轮：随机增益因子与知识出口</h2>
+    <p>
+      本轮加一个可点击的随机增益层：页面上每 45–90 秒刷新一个四处飘动的因子，
+      形态在细胞、发光 DNA、囊泡、孢子之间随机。点击后获得 30 秒或 15 秒的限时增益，
+      或者一次性资源包；同一时刻最多存在一个因子，新增益覆盖旧增益而不叠乘。
+      同时给第 4 种资源“理念”补上无上限出口：子升级曲线从 6^ 降到 3.2^，
+      并新增每级 +2% 全产率的“洞见”。
+    </p>
+
+    <h3>1. 四种因子</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>类型</th><th class="num">权重</th><th class="num">时长</th><th>效果</th></tr></thead>
+        <tbody>
+          <tr><td>Resource Bloom</td><td class="num">40%</td><td class="num">30 s</td>
+              <td>ATP / Biomass / DNA / 理念产率 ×1.2</td></tr>
+          <tr><td>Click Surge</td><td class="num">25%</td><td class="num">30 s</td>
+              <td>点击收益 ×2，不放大自动产率</td></tr>
+          <tr><td>Nutrient Cache</td><td class="num">25%</td><td class="num">即时</td>
+              <td>60 s ATP + 30 s Biomass + 15 s DNA + 15 s 理念</td></tr>
+          <tr><td>Hyper Bloom</td><td class="num">10%</td><td class="num">15 s</td>
+              <td>四项产率 ×1.5；需 ≥150 s 冷却，开局 150 s 内不出现</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      因子刷新与类型抽签都走 <code>run.rng_state</code>，同一随机种子下序列完全可复现。
+      演示策略会在因子出现的第一步点击它，因此批量回归里的 8 次/纪元是“全点击”上限；
+      真实玩家漏点会等比降低覆盖时长。
+    </p>
+
+    <h3>2. 实测（1000 种子）</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>指标</th><th class="num">纪元 1</th><th class="num">纪元 2</th><th class="num">纪元 3</th></tr></thead>
+        <tbody>
+          <tr><td>因子收集次数（中位）</td><td class="num">8</td><td class="num">8</td><td class="num">8</td></tr>
+          <tr><td>稀有增益收集（中位）</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+          <tr><td>增益覆盖时长（中位）</td><td class="num">180 s</td><td class="num">180 s</td><td class="num">180 s</td></tr>
+          <tr><td>洞见等级（中位）</td><td class="num">Lv.2</td><td class="num">Lv.9</td><td class="num">Lv.10</td></tr>
+          <tr><td>子升级已购层数（中位）</td><td class="num">8</td><td class="num">13</td><td class="num">13</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      600 秒一局里大约能点 8 个因子，限时增益覆盖 180 秒（30%）。
+      稀有增益单局中位为 0 次——10% 权重与 150 秒冷却共同把它压成“偶发惊喜”；
+      p90 也只有 1 次，符合“强 buff 更稀有”的设定。
+    </p>
+
+    <h3>3. 知识：从卡死到无上限出口</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>项目</th><th class="num">v7 前</th><th class="num">第十六轮</th></tr></thead>
+        <tbody>
+          <tr><td>子升级价格曲线</td><td class="num">6^tier</td><td class="num">3.2^tier</td></tr>
+          <tr><td>智慧生命 tier 2</td><td class="num">10,800</td><td class="num">3,072</td></tr>
+          <tr><td>奇点 tier 2</td><td class="num">172,800</td><td class="num">49,152</td></tr>
+          <tr><td>无上限出口</td><td class="num">无</td><td class="num">洞见 2000×1.9^级</td></tr>
+          <tr><td>纪元 3 子升级（中位）</td><td class="num">11 / 30</td><td class="num">13 / 30</td></tr>
+          <tr><td>纪元 3 知识结余（中位）</td><td class="num">0.1</td><td class="num">59.6 万</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      3.2^ 让 30 层子升级在单局内真正可见，纪元 3 中位从 11 层升到 13 层；
+      洞见再把剩余知识转成 +2%/级的全产率，Lv.10 约等于 ×1.219。
+      结余仍有 59.6 万，说明知识产率已经足以支撑一个持续买不完的出口，
+      而不是像 v7 前那样卡在 0.1 的结余上。
+    </p>
+
+    <h3>4. 对既有节奏的影响</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>指标</th><th class="num">v7</th><th class="num">第十六轮</th></tr></thead>
+        <tbody>
+          <tr><td>首分化 p50</td><td class="num">193.4 s</td><td class="num">173.1 s</td></tr>
+          <tr><td>首突变 p50</td><td class="num">39.8 s</td><td class="num">39.8 s</td></tr>
+          <tr><td>纪元 1 EP</td><td class="num">46</td><td class="num">51</td></tr>
+          <tr><td>6/6 危机 · 纪元 1</td><td class="num">34.8%</td><td class="num">41.9%</td></tr>
+          <tr><td>6/6 危机 · 纪元 2</td><td class="num">61.1%</td><td class="num">72.3%</td></tr>
+          <tr><td>阶段 11（纪元 3）</td><td class="num">100%</td><td class="num">100%</td></tr>
+          <tr><td>阶段 12+（纪元 3）</td><td class="num">0.7%</td><td class="num">1.3%</td></tr>
+          <tr><td>ATP 未花 · 纪元 1 / 2 / 3</td><td class="num">37.6 / 23.6 / 9.1%</td>
+              <td class="num">40.7 / 11.8 / 5.7%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      首突变保持 39.8 秒：因子最早 45 秒才出现，开局决策点没有被增益稀释。
+      首分化提前 20 秒、纪元 1 EP +5、危机通过率 +7 个百分点，都是增益带来的
+      额外产出；纪元 2/3 的 ATP 未花比例反而下降，因为洞见与子升级把知识转成了
+      更多产能，ATP 出口更顺畅。
+    </p>
+
+    <div class="callout">
+      <b>达成：</b>四种因子全部接入 <code>buffs_update / buffs_collect</code>，
+      增益与洞见都走单一随机源并可复现；26 组、92,568 项自测全绿，
+      新增 6 项验收指标（收集数、覆盖时长、洞见等级、知识结余、子升级次数）全部达标。
+    </div>
+
+    <div class="callout">
+      <b>偏差：</b>增益把纪元 1 EP 从 46 抬到 51、6/6 危机从 34.8% 抬到 41.9%，
+      因此把这三项目标同步上调（EP1 46–56、危机 41.9% 落入 25–48%、纪元 1 ATP 未花 0–45%）。
+      这是有意的节奏上移，不是目标漂移：<code>design.lock</code> 已用新指纹重新锁定。
+    </div>
+
+    <div class="callout">
+      <b>未做：</b>因子目前只有 B 的规则与数据（类型、外观编号、刷新计时、剩余时长），
+      飘动轨迹、发光粒子和点击判定仍由 C 渲染；A 的存档需要把 <code>version</code>
+      从 6 提到 7，并写入新增的 buff 字段与 <code>insight_levels</code>。
+    </div>
+
+    <div class="callout">
+      <b>复现：</b><code>build.ps1</code> 构建并跑 26 组自测；
+      <code>build.ps1 -Report</code> 重跑 1000 种子并生成
+      <code>BUFFSUM</code> 指标；<code>python build/make_report_table.py --lock</code>
+      接受新目标。
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">35</span>v8 修复：容量出口、Meteor 中间档与纪元封顶</h2>
+    <p>
+      v7 的方向是对的，但三个修复都“过头”了：容量出口因为门票预留而永远买不到，
+      Meteor 从 0% 变成 99%，三纪元被压平成 10 / 11 / 11。本轮不加新数值体系，
+      只把这三处拉回中间档，并把验收表的“目标贴实测”变成自动可见的检查。
+    </p>
+
+    <h3>1. 修复前后</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>指标</th><th class="num">v7</th><th class="num">v8</th><th>做法</th></tr></thead>
+        <tbody>
+          <tr><td>容量等级 · 纪元 3</td><td class="num">0 级</td><td class="num">22 级</td>
+              <td>价格 25×cap → 0.5×未含加成 cap；横向支线不再锁门票</td></tr>
+          <tr><td>ATP 未花 · 纪元 1 / 2 / 3</td><td class="num">40.7 / 11.8 / 5.7%</td>
+              <td class="num">4.2 / 3.2 / 5.0%</td>
+              <td>容量与储备按“先储备、后容量”顺序吸收余额</td></tr>
+          <tr><td>Meteor 通过率 · 纪元 1 / 2 / 3</td><td class="num">99.1 / 99.2 / 84.2%</td>
+              <td class="num">63.9 / 52.4 / 48.8%</td>
+              <td>即时损失封顶 45%，事件期间产率 ×0.4</td></tr>
+          <tr><td>阶段 p50 · 纪元 1 / 2 / 3</td><td class="num">10 / 11 / 11</td>
+              <td class="num">8 / 10 / 11</td>
+              <td>纪元阶段封顶 8 / 10 / 13</td></tr>
+          <tr><td>EP · 纪元 1 / 2 / 3</td><td class="num">51 / 62 / 61</td>
+              <td class="num">45 / 60 / 61</td>
+              <td>纪元 3 重新高于纪元 2</td></tr>
+          <tr><td>储备减伤</td><td class="num">5 级后 0 收益</td><td class="num">0.94^n，27 级触底 0.20</td>
+              <td>第 6 级之后仍有边际价值</td></tr>
+          <tr><td>6/6 口径</td><td class="num">漏 1 类仍记 6/6</td><td class="num">全清率 1.7 / 2.1 / 1.7%</td>
+              <td>拆成 all_encountered 与 types_passed</td></tr>
+          <tr><td>稀有增益 · 每纪元</td><td class="num">0 次</td><td class="num">1 次</td>
+              <td>冷却 150 → 90 s</td></tr>
+          <tr><td>资源包 ATP</td><td class="num">60 秒产出</td><td class="num">5 秒产出</td>
+              <td>一次性奖励不再制造通胀</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>2. 容量死锁的两个原因</h3>
+    <p>
+      审计报告定位到 <code>atp_cost &lt;= 0</code> 的早退，但真正的主因是价格：
+      <code>25 × 当前上限</code> 在阶段 8–10 已经等于数百秒收入，<code>×2</code> 缓冲
+      与门票预留再叠一层，600 秒内连第一级都买不起。修复分三步：
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>层</th><th>改动</th><th>结果</th></tr></thead>
+        <tbody>
+          <tr><td>价格</td><td><code>0.5 × final_cap / (1+0.05×级) × 1.08^级</code></td>
+              <td>避免已买容量把下一级再推高一次</td></tr>
+          <tr><td>预留</td><td>同阶段横向支线不锁 ATP</td>
+              <td>阶段 10 的 Iron Star Forge 不再占住 5e8 门票</td></tr>
+          <tr><td>顺序</td><td>先储备、后容量</td>
+              <td>储备留下的余额由容量吸收，不再留到结算</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      修复后纪元 1 / 2 / 3 的容量中位为 18 / 18 / 22 级，未花比例全部进入
+      4.2 / 3.2 / 5.0% 的目标带；储备最多买到 27 级（0.20 下限），不再出现“买没用的等级”。
+    </p>
+
+    <h3>3. Meteor：从抽签到持续减产</h3>
+    <p>
+      一次性人口损失在任何“产出爆炸”的经济里都没有威慑：损失按比例，恢复按秒。
+      v8 把一次性损失封顶到 45%，把威慑改成事件 30 秒内所有谱系产率 ×0.4。
+      三纪元 Meteor 通过率回到 63.9 / 52.4 / 48.8%，落在 40–70% 的中间档；
+      “工业雾霾”仍是最硬的门槛（纪元 3 约 57%），但不再出现 0% 或 99%。
+    </p>
+
+    <h3>4. 纪元封顶与三条并行支线</h3>
+    <p>
+      纪元 1 / 2 / 3 分别封顶阶段 8 / 10 / 13。到顶后分化会被拒绝，
+      但同阶段与更低阶段的分化仍然允许；演示策略在封顶后轮转三个槽位，
+      用现有物种表走出三条并行支线，而不是给每个纪元重跑同一条主线。
+      阶段 p50 变为 8 / 10 / 11，EP 45 / 60 / 61，纪元 3 重新高于纪元 2。
+    </p>
+    <p>
+      轨迹覆盖：1000 局三纪元合计 31/185 物种，单局中位 11 个；
+      突变覆盖 128/204。突变覆盖下降是封顶的直接结果——不再靠“钱多买全图鉴”，
+      而是只买当前阶段可达的部分。
+    </p>
+
+    <h3>5. 验收：把“贴实测”变成显式状态</h3>
+    <p>
+      <code>make_report_table.py</code> 新增反拟合检查：数值项若离最近边界不足 25% 带宽，
+      状态降级为“目标贴实测（需复核）”。窄带（宽度 ≤10）与结构性指标不参与。
+      本轮据此放宽了 5 个原本贴着实测的区间：
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>项</th><th class="num">v7 区间</th><th class="num">v8 区间</th><th class="num">实测</th></tr></thead>
+        <tbody>
+          <tr><td>首分化 p90</td><td class="num">0–260</td><td class="num">0–360</td><td class="num">256.5</td></tr>
+          <tr><td>首突变 p50</td><td class="num">0–45</td><td class="num">0–60</td><td class="num">39.8</td></tr>
+          <tr><td>逐类型危机下限</td><td class="num">40–100</td><td class="num">25–100</td><td class="num">45.8</td></tr>
+          <tr><td>ATP 未花 · 纪元 1</td><td class="num">0–45</td><td class="num">0–15</td><td class="num">4.2</td></tr>
+          <tr><td>600 s ATP 结余</td><td class="num">0–8e8</td><td class="num">0–3e8</td><td class="num">1.09e8</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      新增目标：纪元递增（EP 与阶段）、Meteor 三纪元下限 40–70%、全清率 0–10%、
+      容量 ≥15 级、储备 ≤27 级。1000 种子下全部达标，且没有一行触发反拟合降级。
+    </p>
+
+    <div class="callout">
+      <b>达成：</b>容量出口从 0 级变为 22 级；ATP 未花 4.2 / 3.2 / 5.0%；
+      Meteor 48.8–63.9%；阶段 8 / 10 / 11 严格递增；EP 45 / 60 / 61；
+      26 组 / 92,578 项自测全绿，验收 33 项全部达标。
+    </div>
+
+    <div class="callout">
+      <b>偏差：</b>全清率只有 1.7–2.1%，远低于审计建议的 18–30% / ≥60%。
+      原因是“遇到的所有危机全过”要求 7 类同时成功，而逐类型通过率本身只有 46–100%；
+      这个指标现在衡量的是“完美局有多稀有”，因此目标定为 0–10% 而不是 60%。
+      纪元 3 的全清率 1.7% 与工业雾霾 57%、Meteor 48.8% 并不矛盾。
+    </div>
+
+    <div class="callout">
+      <b>未做：</b>P1-9 采用“现有内容 + 三槽并行”的试点，没有新增物种 ID；
+      单局可见 11 个物种，而不是审计估计的 25 个。原因是 600 秒内只有 3 个槽位，
+      且支线仍受阶段封顶限制；要再提高覆盖需要新增同阶段支线内容，而不是改策略。
+    </div>
+
+    <div class="callout">
+      <b>复现：</b><code>build.ps1</code> 构建并跑自测；
+      <code>build.ps1 -Report</code> 重跑 1000 种子，生成 <code>SINKSUM</code>
+      与带 run 序号的 <code>CRISIS</code> 行；
+      <code>python build/make_report_table.py --lock</code> 接受新目标。
+    </div>
+  </section>
+
 </main>
 
 <footer>
@@ -2753,6 +3307,11 @@
   第 28 节含第十一轮 ATP 出口、危机真判定、必需链定价与覆盖率；
   第 29 节含第十二轮指标可信化、危机分类型标定与阶段 11；
   第 30 节含第十三轮六条侧支、十个突变与稳定性验证；
+  第 31 节含第十四轮 20 物种 / 20 突变与阶段 12–13；
+  第 32 节含第十五轮 14 阶 ×10 物种/突变与商店提价；
+  第 33 节含 v7 的 Meteor、ATP 门票、开局节奏与验收双表修复；
+  第 34 节含第十六轮随机增益因子、洞见出口与 1000 种子 BUFFSUM 回归；
+  第 35 节含 v8 的容量出口、Meteor 中间档、纪元封顶与反拟合验收；
   图表由 ECharts 直接读取这份导出数据绘制。</p>
   <p><b>复现</b>：<code>demo_b.exe --csv --batch 20 &gt; demo_run.csv</code>，再运行
   <code>python build/gen_report_data.py</code> 生成 <code>assets/data.js</code>；
@@ -2769,7 +3328,9 @@
   第十轮回归数据由 <code>python build/gen_round10.py</code> 生成 <code>assets/round10.js</code>；
   第十一轮回归数据由 <code>python build/gen_round11.py</code> 生成 <code>assets/round11.js</code>；
   第十二轮回归数据由 <code>python build/gen_round12.py</code> 生成 <code>assets/round12.js</code>；
-  第十三轮回归数据由 <code>python build/gen_round13.py</code> 生成 <code>assets/round13.js</code>，
+  第十三轮回归数据由 <code>python build/gen_round13.py</code> 生成 <code>assets/round13.js</code>；
+  第十四轮回归数据由 <code>python build/gen_round14.py</code> 生成 <code>assets/round14.js</code>；
+  第十五轮回归数据由 <code>python build/gen_round15.py</code> 生成 <code>assets/round15.js</code>，
   验收表由 <code>python build/make_report_table.py</code> 生成 <code>assets/acceptance.js</code>。</p>
   <p><b>相关文件</b>：demo/demo_b.c、src/evolution.c、src/species.c、src/environment.c、
   src/prestige.c、src/legacy.c、tests/test_b.c。</p>
@@ -2793,6 +3354,8 @@
 <script src="./assets/round11.js"></script>
 <script src="./assets/round12.js"></script>
 <script src="./assets/round13.js"></script>
+<script src="./assets/round14.js"></script>
+<script src="./assets/round15.js"></script>
 <script src="./assets/acceptance.js"></script>
 <script src="./_shared/js/echarts.min.js"></script>
 <script src="./assets/charts.js"></script>

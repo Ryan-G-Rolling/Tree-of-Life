@@ -18,8 +18,48 @@
 #include "environment.h"
 #include "evolution.h"
 #include "legacy.h"
+#include "codex.h"
 
 /* ================= A 侧：经济与单轮升级 ================= */
+
+double ua_insight_cost(const GameState *game)
+{
+    return evolution_insight_cost(game);
+}
+
+double ua_insight_multiplier(const GameState *game)
+{
+    return evolution_insight_multiplier(game);
+}
+
+double ua_insight_next_multiplier(const GameState *game)
+{
+    if (!game) return 1.0;
+    /* 规则层只暴露"当前倍率"，下一级就是再叠一层 2% 的乘算 */
+    return evolution_insight_multiplier(game) * (1.0 + INSIGHT_BONUS_PER_LEVEL);
+}
+
+double ua_knowledge_rate(const GameState *game)
+{
+    if (!game) return 0.0;
+    double sum = 0.0;
+    for (int i = 0; i < game->run.active_species_count && i < MAX_ACTIVE_SPECIES; ++i) {
+        SpeciesRates r = evolution_calculate_species_rates(game, i);
+        sum += r.knowledge_per_second;
+    }
+    return sum;
+}
+
+double ua_buff_duration(int buff_type)
+{
+    /* 只转发 balance.h 的常量，倍率与刷新规则仍归 B 的 buffs.c */
+    switch (buff_type) {
+    case BUFF_PRODUCTION:        return BUFF_PRODUCTION_DURATION;
+    case BUFF_PRODUCTION_STRONG: return BUFF_STRONG_DURATION;
+    case BUFF_CLICK:             return BUFF_CLICK_DURATION;
+    default:                     return 0.0;
+    }
+}
 
 double ua_run_upgrade_cost(const GameState *game, RunUpgradeType type)
 {
@@ -76,7 +116,8 @@ double ua_click_atp(const GameState *game)
 
 const char *ua_species_name(int species_id)
 {
-    return species_name(species_id);
+    const CodexEntry *entry = codex_entry(CODEX_SPECIES, species_id);
+    return entry ? entry->name : "未知物种";
 }
 
 const char *ua_ecology_name(int species_id)
@@ -158,7 +199,8 @@ int ua_speciation_children(const GameState *game, int *out, int max_out)
     if (!game || !out || max_out <= 0) return 0;
     if (game->run.active_species_count <= 0) return 0;
     int parent = game->run.active_species[0].species_id;
-    return species_children(parent, out, max_out);
+    int total = species_children(parent, out, max_out);
+    return total < max_out ? total : max_out;
 }
 
 int ua_species_parents(int species_id, int *out, int max_out)
@@ -169,6 +211,22 @@ int ua_species_parents(int species_id, int *out, int max_out)
         if (species_has_parent(species_id, p)) out[n++] = p;
     }
     return n;
+}
+
+int ua_max_species_stage(void)
+{
+    int mx = 0;
+    for (int i = 0; i < SPECIES_COUNT; ++i) {
+        int st = species_phase(i);
+        if (st > mx) mx = st;
+    }
+    return mx;
+}
+
+int ua_species_child_list(int parent_id, int *out, int max_out)
+{
+    if (!out || max_out <= 0) return 0;
+    return species_children(parent_id, out, max_out);
 }
 
 double ua_speciation_cost(const GameState *game, int target_species_id)
@@ -200,8 +258,10 @@ const char *ua_speciation_requirement(int target_species_id, char *buf, int buf_
     int muts[TRAIT_COUNT + 8];
     int n = species_required_mutations(target_species_id, muts, (int)(sizeof muts / sizeof muts[0]));
     for (int i = 0; i < n; ++i) {
+        /* 用图鉴里的中文名：B 的规则表是英文名，直接显示会在一句中文里夹一个英文词 */
+        const CodexEntry *entry = codex_entry(CODEX_MUTATION, muts[i]);
         const MutationDef *def = mutation_get(muts[i]);
-        const char *name = def ? def->name : "未知突变";
+        const char *name = entry ? entry->name : (def ? def->name : "未知突变");
         used += (size_t)snprintf(buf + used, (size_t)(buf_size - (int)used), "%s%s",
                                  need++ > 0 ? " + " : "", name);
     }
@@ -224,13 +284,94 @@ const char *ua_speciation_requirement(int target_species_id, char *buf, int buf_
 
 const char *ua_mutation_name(int mutation_id)
 {
-    const MutationDef *def = mutation_get(mutation_id);
-    return def ? def->name : "未知突变";
+    const CodexEntry *entry = codex_entry(CODEX_MUTATION, mutation_id);
+    return entry ? entry->name : "未知突变";
+}
+
+/* 追加一小段文案；snprintf 返回的是"本该写多长"，必须夹回缓冲区真实长度。 */
+static void text_append(char *buf, int size, size_t *used, const char *piece)
+{
+    if (!buf || size <= 1 || *used >= (size_t)size - 1) return;
+    int n = snprintf(buf + *used, (size_t)size - *used, "%s", piece);
+    if (n <= 0) return;
+    *used += (size_t)n;
+    if (*used > (size_t)size - 1) *used = (size_t)size - 1;
 }
 
 const char *ua_mutation_desc(int mutation_id, char *buf, int buf_size)
 {
     const MutationDef *def = mutation_get(mutation_id);
+    if (!buf || buf_size <= 0) return buf;
+    buf[0] = '\0';
+    if (!def) {
+        snprintf(buf, (size_t)buf_size, "-");
+        return buf;
+    }
+
+    /* 规则表的 description 是英文（"A stage-0 adaptation that improves light capture."），
+     * 而且同一阶段的多条突变共用一句模板，既不是中文也没有区分度。
+     * 这里直接按 MutationDef 的真实数值生成中文摘要：玩家看到的就是这一条到底加什么。 */
+    size_t used = 0;
+    char piece[64];
+    snprintf(piece, sizeof(piece), "阶段 %d", def->min_phase);
+    text_append(buf, buf_size, &used, piece);
+
+    int shown = 0;
+    const struct { double v; const char *label; } gains[5] = {
+        { def->atp_bonus, "ATP" },
+        { def->biomass_bonus, "生物量" },
+        { def->dna_bonus, "DNA" },
+        { def->cap_bonus, "上限" },
+        { def->growth_bonus, "增速" },
+    };
+    for (int i = 0; i < 5; ++i) {
+        if (gains[i].v < 0.0005) continue;
+        snprintf(piece, sizeof(piece), " · %s +%d%%", gains[i].label,
+                 (int)(gains[i].v * 100.0 + 0.5));
+        text_append(buf, buf_size, &used, piece);
+        ++shown;
+    }
+
+    /* 抗性加的是"环境等级"，不是百分比 */
+    static const char *trait_zh[TRAIT_COUNT] = { "耐热", "耐寒", "耐暗", "耐氧", "耐毒" };
+    for (int t = 0; t < TRAIT_COUNT; ++t) {
+        if (def->trait_bonus[t] == 0) continue;
+        snprintf(piece, sizeof(piece), " · %s%+d", trait_zh[t], def->trait_bonus[t]);
+        text_append(buf, buf_size, &used, piece);
+        ++shown;
+    }
+
+    double kb = evolution_mutation_knowledge_bonus(mutation_id);
+    if (kb > 0.0005) {
+        snprintf(piece, sizeof(piece), " · 理念 +%d%%", (int)(kb * 100.0 + 0.5));
+        text_append(buf, buf_size, &used, piece);
+        ++shown;
+    }
+
+    if (shown == 0) text_append(buf, buf_size, &used, " · 无产出加成");
+    return buf;
+}
+
+bool ua_mutation_is_rare(int mutation_id)
+{
+    const MutationDef *def = mutation_get(mutation_id);
+    return def && def->rarity >= 1;
+}
+
+int ua_synergy_count(void)
+{
+    return evolution_synergy_count();
+}
+
+const char *ua_synergy_name(int index)
+{
+    const MutationSynergyDef *def = evolution_synergy_get(index);
+    return def ? def->name : "未知共振";
+}
+
+const char *ua_synergy_desc(int index, char *buf, int buf_size)
+{
+    const MutationSynergyDef *def = evolution_synergy_get(index);
     if (!def) {
         snprintf(buf, (size_t)buf_size, "-");
         return buf;
@@ -239,10 +380,17 @@ const char *ua_mutation_desc(int mutation_id, char *buf, int buf_size)
     return buf;
 }
 
-bool ua_mutation_is_rare(int mutation_id)
+void ua_synergy_pair(int index, int out[2])
 {
-    const MutationDef *def = mutation_get(mutation_id);
-    return def && def->rarity >= 1;
+    if (!out) return;
+    const MutationSynergyDef *def = evolution_synergy_get(index);
+    out[0] = def ? def->mutation_a : -1;
+    out[1] = def ? def->mutation_b : -1;
+}
+
+bool ua_synergy_active(const GameState *game, int species_slot, int index)
+{
+    return evolution_synergy_active(game, species_slot, index);
 }
 
 /* ================= B 侧：环境 ================= */
@@ -499,3 +647,4 @@ void ua_register_font_strings(void)
         ui_font_register(ua_achievement_desc(i));
     }
 }
+

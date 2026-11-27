@@ -2,6 +2,8 @@ build/
 *.exe
 *.o
 *.obj
+*.pdb
+*.ilk
 *.sav
 *.sav.tmp
 shot_*.png
@@ -14,3 +16,25 @@ data.zip
 claude-ds.ps1
 CLAUDE_DS.md
 assets/fonts/
+
+# 实验/调试输出
+*.csv
+*.log
+
+# 验收台账：目标与实测必须可审计
+!tools/reports/design.csv
+!tools/reports/observed.csv
+!tools/reports/design.lock
+
+# 临时目录
+.screenshots/
+.trae-html-share-packages/
+.trae/
+.vscode/
+
+# 系统文件
+Thumbs.db
+desktop.ini
+
+# 智能体工作区数据（不参与交付）
+.workbuddy/

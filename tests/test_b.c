@@ -17,6 +17,7 @@
 #include <string.h>
 
 #include "balance.h"
+#include "buffs.h"
 #include "environment.h"
 #include "evolution.h"
 #include "game_types.h"
@@ -87,7 +88,8 @@ static void test_rng(void)
 
 static void test_species_data(void)
 {
-    CHECK(SPECIES_COUNT == 26);
+    CHECK(SPECIES_COUNT == 186);
+    CHECK(MUTATION_COUNT == 204);
     CHECK(species_phase(SPECIES_PROTOCELL) == 0);
     CHECK(species_phase(SPECIES_MULTICELLULAR_COLONY) == 3);
     CHECK(species_phase(SPECIES_DIFFERENTIATED_TISSUE) == 4);
@@ -98,10 +100,10 @@ static void test_species_data(void)
     CHECK_NEAR(species_base_speciation_cost(SPECIES_ALGAL_EUKARYOTE), 350.0, 0.001);
 
     int children[SPECIES_COUNT];
-    CHECK(species_children(SPECIES_PROTOCELL, children, SPECIES_COUNT) == 2);
-    CHECK(species_children(SPECIES_PROTOZOAN, children, SPECIES_COUNT) == 3);
-    CHECK(species_children(SPECIES_MULTICELLULAR_COLONY, children, SPECIES_COUNT) == 5);
-    CHECK(species_children(SPECIES_DIFFERENTIATED_TISSUE, children, SPECIES_COUNT) == 1);
+    CHECK(species_children(SPECIES_PROTOCELL, children, SPECIES_COUNT) == 22);
+    CHECK(species_children(SPECIES_PROTOZOAN, children, SPECIES_COUNT) == 5);
+    CHECK(species_children(SPECIES_MULTICELLULAR_COLONY, children, SPECIES_COUNT) == 16);
+    CHECK(species_children(SPECIES_DIFFERENTIATED_TISSUE, children, SPECIES_COUNT) == 11);
     CHECK(species_has_parent(SPECIES_EXTREMOPHILE_COLONY, SPECIES_PROTOZOAN));
     CHECK(species_has_parent(SPECIES_COGNITIVE_BIOSPHERE, SPECIES_SYMBIOTIC_SUPERORGANISM));
     CHECK(!species_has_parent(SPECIES_EXTREMOPHILE_COLONY, SPECIES_PROTOCELL));
@@ -126,12 +128,12 @@ static void test_mutation_rules(void)
     GameState game;
     reset_game(&game, SPECIES_PROTOCELL);
 
-    /* 第十二轮：尚未拥有任何突变时首个突变 6 折（18 × 0.35 × 0.6 = 3.78 -> 4） */
-    CHECK_NEAR(evolution_mutation_cost(&game, MUTATION_PHOTOSYNTHESIS), 4.0, 0.001);
+    /* v7 P0-3：首突变折扣回到 0.40（18 × 0.35 × 1.8 × 0.60 = 6.804 -> 7） */
+    CHECK_NEAR(evolution_mutation_cost(&game, MUTATION_PHOTOSYNTHESIS), 7.0, 0.001);
     game.legacy.levels[LEGACY_MUTATION] = 1;
-    CHECK_NEAR(evolution_mutation_cost(&game, MUTATION_PHOTOSYNTHESIS), 4.0, 0.001);
+    CHECK_NEAR(evolution_mutation_cost(&game, MUTATION_PHOTOSYNTHESIS), 7.0, 0.001);
     game.legacy.levels[LEGACY_MUTATION] = 2;
-    CHECK_NEAR(evolution_mutation_cost(&game, MUTATION_PHOTOSYNTHESIS), 4.0, 0.001);
+    CHECK_NEAR(evolution_mutation_cost(&game, MUTATION_PHOTOSYNTHESIS), 6.0, 0.001);
 
     game.legacy.levels[LEGACY_MUTATION] = 0;
     CHECK(evolution_mutation_available(&game, 0, MUTATION_CELL_MEMBRANE));
@@ -143,15 +145,14 @@ static void test_mutation_rules(void)
     CHECK(evolution_mutation_available(&game, 0, MUTATION_ADAPTIVE_HYPERMUTATION));
 
     /* 第十轮：光合/化能取消阶段上限，阶段 2 之后可“补课”，价格 ×2。
-     * 阶段 3、尚无任何突变（首突变 6 折）：
-     * 18 × (0.35 + 0.12×3) × 2 × 0.6 = 15.34 -> 16 */
+     * stage 3、首突变 0.60：18 × 0.71 × 2 × 1.8 × 0.60 = 27.65 -> 28 */
     game.legacy.levels[LEGACY_MUTATION] = 0;
     game.run.active_species[0].species_id = SPECIES_MULTICELLULAR_COLONY;
     CHECK(evolution_mutation_available(&game, 0, MUTATION_PHOTOSYNTHESIS));
     CHECK(evolution_mutation_available(&game, 0, MUTATION_CHEMOSYNTHESIS));
-    CHECK_NEAR(evolution_mutation_cost(&game, MUTATION_PHOTOSYNTHESIS), 16.0, 0.001);
-    /* 同阶段下不受补课加价的突变：22 × 0.71 × 0.6 = 9.37 -> 10 */
-    CHECK_NEAR(evolution_mutation_cost(&game, MUTATION_CELL_WALL), 10.0, 0.001);
+    CHECK_NEAR(evolution_mutation_cost(&game, MUTATION_PHOTOSYNTHESIS), 28.0, 0.001);
+    /* 同阶段下不受补课加价的突变：22 × 0.71 × 1.8 × 0.60 = 16.87 -> 17 */
+    CHECK_NEAR(evolution_mutation_cost(&game, MUTATION_CELL_WALL), 17.0, 0.001);
     CHECK(evolution_mutation_available(&game, 0, MUTATION_MULTICELLULARITY));
     CHECK(!evolution_mutation_available(&game, 0, MUTATION_CELL_DIFFERENTIATION));
     game.run.active_species[0].mutations[MUTATION_MULTICELLULARITY] = true;
@@ -310,7 +311,7 @@ static void test_speciation(void)
     CHECK(game.run.active_species[0].species_id == SPECIES_CYANOBACTERIUM);
     CHECK(game.run.active_species[0].is_main_lineage);
     CHECK_NEAR(game.run.active_species[0].population, 70.0, 0.001);
-    CHECK_NEAR(game.run.biomass, 45.0, 0.001); /* 第十轮：首次分化 80 → 55 */
+    CHECK_NEAR(game.run.biomass, 60.0, 0.001); /* v7 P0-3：首次分化 55 → 40 */
     CHECK(game.run.discovered_species[SPECIES_CYANOBACTERIUM]);
     CHECK(game.legacy.codex_species[SPECIES_CYANOBACTERIUM]);
     CHECK(game.run.active_species[0].mutations[MUTATION_PHOTOSYNTHESIS]); /* 继承亲本突变 */
@@ -412,15 +413,15 @@ static void test_rates(void)
     CHECK_NEAR(rates.environment_multiplier, 1.0, 0.0001);
     CHECK(!rates.synergy_active);
 
-    /* 单轮代谢升级 ×1.25 */
+    /* 单轮代谢升级保留线性 +25%，但不再有硬顶 */
     game.run.run_upgrade_levels[UPGRADE_METABOLISM] = 1;
     rates = evolution_calculate_species_rates(&game, 0);
-    CHECK_NEAR(rates.atp_per_second, 1.00, 0.0001);
+    CHECK_NEAR(rates.atp_per_second, 0.80 * 1.25, 0.0001);
 
     /* 永久代谢 Lv.1 ×1.08 */
     game.legacy.levels[LEGACY_METABOLISM] = 1;
     rates = evolution_calculate_species_rates(&game, 0);
-    CHECK_NEAR(rates.atp_per_second, 1.08, 0.0001);
+    CHECK_NEAR(rates.atp_per_second, 0.80 * 1.25 * 1.08, 0.0001);
 
     /* 多样性 Lv.1 提高上限 10% */
     game.legacy.levels[LEGACY_DIVERSIFICATION] = 1;
@@ -539,7 +540,7 @@ static void test_environment_steps(void)
     CHECK(step.event_started);
     CHECK_NEAR(step.environment_time_left, 45.0 * 0.85 * EVENT_DURATION_SCALE, 0.0001);
 
-    /* Meteor Impact：阶段 3 解锁，即时损失 0.35 + 0.05×3 = 50% */
+    /* Meteor Impact：阶段 3 解锁，一次性损失被 v8 压到象征值 45% */
     GameState meteor;
     reset_game(&meteor, SPECIES_MULTICELLULAR_COLONY);
     meteor.run.active_species[0].population = 100.0;
@@ -548,13 +549,18 @@ static void test_environment_steps(void)
     meteor.run.next_environment_id = ENV_METEOR_IMPACT;
     step = environment_calculate_step(&meteor, FIXED_STEP_SECONDS);
     CHECK(step.event_started);
-    CHECK_NEAR(step.instant_population_loss_ratio, 0.50, 0.0001);
+    CHECK_NEAR(step.instant_population_loss_ratio, INSTANT_LOSS_MAX, 0.0001);
     environment_apply_step(&meteor, &step);
-    CHECK_NEAR(meteor.run.active_species[0].population, 50.0, 0.0001);
-    CHECK_NEAR(meteor.run.crisis_start_population, 100.0, 0.0001);
-    CHECK_NEAR(meteor.run.crisis_min_population, 50.0, 0.0001);
+    CHECK_NEAR(meteor.run.active_species[0].population, 100.0 * (1.0 - INSTANT_LOSS_MAX), 0.0001);
+    /* v7 P0-1：Meteor 的判定基准重置为“挨完即时损失之后” */
+    CHECK_NEAR(meteor.run.crisis_start_population, 55.0, 0.0001);
+    CHECK_NEAR(meteor.run.crisis_min_population, 55.0, 0.0001);
+    meteor.run.environment_time_left = 0.05;
+    step = environment_calculate_step(&meteor, FIXED_STEP_SECONDS);
+    CHECK(step.event_ended);
+    CHECK(step.crisis_survived);
 
-    /* 应急储备 Lv.5 把即时损失减半：0.50 × 0.5 = 25% */
+    /* 应急储备 Lv.5：乘算 0.94^5 = 0.7339，损失 45% × 0.7339 */
     GameState meteor_reserve;
     reset_game(&meteor_reserve, SPECIES_MULTICELLULAR_COLONY);
     meteor_reserve.run.active_species[0].population = 100.0;
@@ -563,7 +569,13 @@ static void test_environment_steps(void)
     meteor_reserve.run.event_interval_left = 0.05;
     meteor_reserve.run.next_environment_id = ENV_METEOR_IMPACT;
     step = environment_calculate_step(&meteor_reserve, FIXED_STEP_SECONDS);
-    CHECK_NEAR(step.instant_population_loss_ratio, 0.25, 0.0001);
+    CHECK_NEAR(step.instant_population_loss_ratio, INSTANT_LOSS_MAX * pow(0.94, 5.0), 0.0001);
+
+    /* v8 P0-15：储备减伤乘算，约 27 级触底 0.20 */
+    CHECK_NEAR(reserve_damage_scale(0), 1.0, 1e-9);
+    CHECK_NEAR(reserve_damage_scale(5), pow(0.94, 5.0), 1e-9);
+    CHECK_NEAR(reserve_damage_scale(27), 0.20, 1e-9);
+    CHECK_NEAR(reserve_damage_scale(80), 0.20, 1e-9);
 
     /* Adaptation Lv.3 事件预览 */
     GameState preview;
@@ -600,7 +612,10 @@ static void test_adaptation_shield(void)
     double cap = 80.0;
     double damage = environment_damage_per_second(ENV_GLOBAL_WARMING);
     double positive = population * 0.010 * 1.10 * (1.0 - population / cap); /* 原始细胞基石 */
-    double raw_loss = population * damage * (2.0 - environment) * CRISIS_DAMAGE_MULTIPLIER;
+    /* v9 P0-19：伤害的阶段放大从 CRISIS_EARLY_SCALE 起算（原始细胞阶段 0） */
+    double stage_scale = CRISIS_EARLY_SCALE + CRISIS_DAMAGE_STAGE_SCALE * 0.0;
+    double raw_loss = population * damage * (2.0 - environment) * stage_scale *
+                      CRISIS_DAMAGE_MULTIPLIER;
     double expected = positive - raw_loss * 0.2;
 
     SpeciesRates shielded = evolution_calculate_species_rates(&game, 0);
@@ -678,7 +693,8 @@ static void test_prestige(void)
     CHECK(prestige_biomass_milestone_level(5000000.0) == 9);
     CHECK(prestige_biomass_milestone_level(10000000.0) == 10);
 
-    /* 第八轮长线后的理论上限：2*10 + 33/3 + 18/2 + 6 + 10 = 56 */
+    /* 第十五轮长线后的理论上限（阶段 10、全内容）：
+     * 2*10 + 204/3 + 185/2 + 6 + 10 = 20 + 68 + 92 + 6 + 10 = 196 */
     GameState full;
     reset_game(&full, SPECIES_SINGULARITY);
     for (int id = 0; id < MUTATION_COUNT; ++id) {
@@ -693,13 +709,13 @@ static void test_prestige(void)
     full.run.max_biomass = 10000000.0;
     EraReward max_reward = prestige_preview_reward(&full);
     CHECK(max_reward.era_points == 20);
-    CHECK(max_reward.mutation_points == 14);
-    CHECK(max_reward.species_points == 12);
+    CHECK(max_reward.mutation_points == 68);
+    CHECK(max_reward.species_points == 92);
     CHECK(max_reward.crisis_points == 6);
     CHECK(max_reward.biomass_points == 10);
-    CHECK(max_reward.total_points == 62);
+    CHECK(max_reward.total_points == 196);
 
-    /* 第十二轮阶段 11 后的理论上限：2*11 + 34/3 + 19/2 + 6 + 10 = 58 */
+    /* 阶段 11 的理论上限：22 + 68 + 92 + 6 + 10 = 198 */
     GameState full11;
     reset_game(&full11, SPECIES_TRANSCENDENCE);
     for (int id = 0; id < MUTATION_COUNT; ++id) {
@@ -714,11 +730,28 @@ static void test_prestige(void)
     full11.run.max_biomass = 10000000.0;
     EraReward max11 = prestige_preview_reward(&full11);
     CHECK(max11.era_points == 22);
-    CHECK(max11.mutation_points == 14);
-    CHECK(max11.species_points == 12);
+    CHECK(max11.mutation_points == 68);
+    CHECK(max11.species_points == 92);
     CHECK(max11.crisis_points == 6);
     CHECK(max11.biomass_points == 10);
-    CHECK(max11.total_points == 64);
+    CHECK(max11.total_points == 198);
+
+    /* 第十五轮阶段 13 的理论上限：26 + 68 + 92 + 6 + 10 = 202 */
+    GameState full13;
+    reset_game(&full13, SPECIES_COSMIC_WEAVE);
+    for (int id = 0; id < MUTATION_COUNT; ++id) {
+        full13.run.discovered_mutations[id] = true;
+    }
+    for (int id = 1; id < SPECIES_COUNT; ++id) {
+        full13.run.discovered_species[id] = true;
+    }
+    for (int id = 1; id < ENV_COUNT && id < MAX_ENVIRONMENTS; ++id) {
+        full13.run.survived_crises[id] = true;
+    }
+    full13.run.max_biomass = 10000000.0;
+    EraReward max13 = prestige_preview_reward(&full13);
+    CHECK(max13.era_points == 26);
+    CHECK(max13.total_points == 202);
 
     /* 危机最多计 6 个（上限翻倍） */
     game.run.survived_crises[ENV_LOW_LIGHT_PERIOD] = true;
@@ -888,6 +921,8 @@ static void simulate_fixed_step(GameState *game, double dt)
     double dna = 0.0;
     double knowledge = 0.0;
 
+    buffs_update(game, dt);
+
     for (int i = 0; i < game->run.active_species_count && i < MAX_ACTIVE_SPECIES; ++i) {
         rates[i] = evolution_calculate_species_rates(game, i);
         atp += rates[i].atp_per_second;
@@ -919,31 +954,50 @@ static void simulate_fixed_step(GameState *game, double dt)
     environment_apply_step(game, &step);
 
     int main_slot = evolution_main_slot(game);
-    if (!game->run.mutation_offer.active) {
-        evolution_open_mutation_offer(game, main_slot);
-    }
-    if (game->run.mutation_offer.active) {
-        int cheapest = -1;
-        for (int i = 0; i < game->run.mutation_offer.choice_count; ++i) {
-            if (cheapest < 0 || game->run.mutation_offer.dna_costs[i] <
-                                    game->run.mutation_offer.dna_costs[cheapest]) {
-                cheapest = i;
-            }
-        }
-        if (cheapest >= 0 && game->run.dna >= game->run.mutation_offer.dna_costs[cheapest]) {
-            evolution_apply_mutation(game, main_slot,
-                                     game->run.mutation_offer.mutation_ids[cheapest]);
-        }
-    }
-
+    /* 第十五轮：候选池扩到 204 后，模拟策略聚焦“阶段最高的子物种”，
+     * 只买它的前置突变，避免把 DNA 花在旁支门票上。 */
     int children[SPECIES_COUNT];
     int child_count = species_children(game->run.active_species[main_slot].species_id, children,
                                        SPECIES_COUNT);
+    int target = -1;
+    int best_phase = -1;
     for (int i = 0; i < child_count; ++i) {
-        if (evolution_validate_speciation(game, main_slot, children[i]) == ACTION_OK) {
-            evolution_apply_speciation(game, main_slot, children[i], 0);
-            break;
+        int phase = species_phase(children[i]);
+        if (phase > best_phase) {
+            best_phase = phase;
+            target = children[i];
         }
+    }
+
+    if (!game->run.mutation_offer.active) {
+        evolution_open_mutation_offer(game, main_slot);
+    }
+    if (game->run.mutation_offer.active && target >= 0) {
+        int required[4];
+        int required_count = species_required_mutations(target, required, 4);
+        int pick = -1;
+        for (int i = 0; i < game->run.mutation_offer.choice_count && pick < 0; ++i) {
+            int id = game->run.mutation_offer.mutation_ids[i];
+            for (int r = 0; r < required_count; ++r) {
+                const MutationDef *def = mutation_get(required[r]);
+                if (id == required[r] ||
+                    (def && def->requires_mutation == id)) {
+                    if (game->run.dna >= game->run.mutation_offer.dna_costs[i] &&
+                        game->run.atp >= evolution_mutation_atp_cost(game, id)) {
+                        pick = i;
+                    }
+                    break;
+                }
+            }
+        }
+        if (pick >= 0) {
+            evolution_apply_mutation(game, main_slot,
+                                     game->run.mutation_offer.mutation_ids[pick]);
+        }
+    }
+
+    if (target >= 0 && evolution_validate_speciation(game, main_slot, target) == ACTION_OK) {
+        evolution_apply_speciation(game, main_slot, target, 0);
     }
 }
 
@@ -956,8 +1010,12 @@ static void test_long_run_simulation(void)
 
     const double dt = FIXED_STEP_SECONDS;
     const int steps = 9000; /* 15 分钟 */
+    int event_steps = 0;
     for (int i = 0; i < steps; ++i) {
         simulate_fixed_step(&game, dt);
+        if (game.run.current_environment_id != ENV_NORMAL_OCEAN) {
+            ++event_steps;
+        }
 
         CHECK(game.run.active_species_count >= 1);
         CHECK(game.run.active_species[0].is_main_lineage);
@@ -979,10 +1037,12 @@ static void test_long_run_simulation(void)
                                    first.species_points + first.crisis_points +
                                    first.biomass_points);
 
+    /* v9 P0-19：环境事件必须真实发生；但“不做任何适应也想通过危机”不再成立，
+     * 因此这里只锁“事件发生过”和“通过类型数不超过本纪元的 4 类”。 */
+    CHECK(event_steps > 0);
     int crises = 0;
     prestige_run_stats(&game, 0, 0, 0, &crises);
-    CHECK(crises >= 1);
-    CHECK(crises <= ENV_COUNT - 1);
+    CHECK(crises <= 4);
 
     CHECK(game.run.environment_time_left <= 50.0 + 0.001);
     CHECK(game.run.event_interval_left <= EVENT_INTERVAL + 0.001);
@@ -1002,7 +1062,7 @@ static void test_synergy(void)
 
     GameState game;
     reset_game(&game, SPECIES_PROTOCELL);
-    CHECK(evolution_synergy_count() == 15);
+    CHECK(evolution_synergy_count() == 20);
     CHECK(evolution_active_synergy_count(&game, 0) == 0);
 
     game.run.active_species[0].mutations[MUTATION_PHOTOSYNTHESIS] = true;
@@ -1111,30 +1171,30 @@ static void test_knowledge_and_sub_upgrades(void)
     CHECK_NEAR(rates.knowledge_per_second, 3.0, 0.0001);
     CHECK_NEAR(evolution_knowledge_per_second(&game), 3.0, 0.0001);
 
-    /* 子升级表：6 个高阶物种各 3 层，成本逐层 ×6 */
-    CHECK(evolution_sub_upgrade_count() == 24);
+    /* 子升级表：6 个高阶物种各 3 层，成本逐层 ×3.2（第十六轮） */
+    CHECK(evolution_sub_upgrade_count() == 30);
     const SubUpgradeDef *first = evolution_sub_upgrade_get(0);
     CHECK(first != 0);
     CHECK(first->species_id == SPECIES_SAPIENT_LIFE);
     CHECK(first->tier == 0);
     CHECK_NEAR(evolution_sub_upgrade_cost(first), 300.0, 0.001);
     const SubUpgradeDef *second = evolution_sub_upgrade_get(1);
-    CHECK_NEAR(evolution_sub_upgrade_cost(second), 1800.0, 0.001);
+    CHECK_NEAR(evolution_sub_upgrade_cost(second), 960.0, 0.001);
     const SubUpgradeDef *last = evolution_sub_upgrade_get(14);
     CHECK(last->species_id == SPECIES_SINGULARITY);
     CHECK(last->tier == 2);
-    CHECK_NEAR(evolution_sub_upgrade_cost(last), 172800.0, 0.001);
-    /* 第十二轮：阶段 11 追加 3 层，基础 9600，tier2 = 345600 */
+    CHECK_NEAR(evolution_sub_upgrade_cost(last), 49152.0, 0.001);
+    /* 第十二轮：阶段 11 追加 3 层，基础 9600，tier2 = 98304 */
     const SubUpgradeDef *omega = evolution_sub_upgrade_get(17);
     CHECK(omega->species_id == SPECIES_TRANSCENDENCE);
     CHECK(omega->tier == 2);
-    CHECK_NEAR(evolution_sub_upgrade_cost(omega), 345600.0, 0.001);
-    /* 第十三轮：两条侧支各 3 层，最后一条为 Stellar Logistics（2400 × 36） */
+    CHECK_NEAR(evolution_sub_upgrade_cost(omega), 98304.0, 0.001);
+    /* 第十三轮：两条侧支各 3 层，最后一条为 Stellar Logistics（2400 × 3.2^2） */
     const SubUpgradeDef *stellar = evolution_sub_upgrade_get(23);
     CHECK(stellar->species_id == SPECIES_ORBITAL_SWARM);
     CHECK(stellar->tier == 2);
-    CHECK_NEAR(evolution_sub_upgrade_cost(stellar), 86400.0, 0.001);
-    CHECK(evolution_sub_upgrade_get(24) == 0);
+    CHECK_NEAR(evolution_sub_upgrade_cost(stellar), 24576.0, 0.001);
+    CHECK(evolution_sub_upgrade_get(30) == 0);
 
     /* 低阶物种没有子升级 */
     reset_game(&game, SPECIES_MULTICELLULAR_COLONY);
@@ -1167,8 +1227,8 @@ static void test_knowledge_and_sub_upgrades(void)
 
     /* 买满 3 层后拒绝；总乘数 1.35^3 */
     game.run.knowledge = 20000.0;
-    CHECK(evolution_apply_sub_upgrade(&game, 0) == ACTION_OK); /* tier 1，1800 */
-    CHECK(evolution_apply_sub_upgrade(&game, 0) == ACTION_OK); /* tier 2，10800 */
+    CHECK(evolution_apply_sub_upgrade(&game, 0) == ACTION_OK); /* tier 1，960 */
+    CHECK(evolution_apply_sub_upgrade(&game, 0) == ACTION_OK); /* tier 2，3072 */
     CHECK(evolution_sub_upgrade_level(&game, 0) == 3);
     CHECK(evolution_sub_upgrade_next(&game, 0) == 0);
     CHECK(evolution_apply_sub_upgrade(&game, 0) == ACTION_LEVEL_MAXED);
@@ -1177,6 +1237,159 @@ static void test_knowledge_and_sub_upgrades(void)
     /* 非 RUNNING 阶段拒绝 */
     game.phase = PHASE_END_ERA_PREVIEW;
     CHECK(evolution_apply_sub_upgrade(&game, 0) == ACTION_INVALID_PHASE);
+}
+
+/* 第十六轮：随机增益因子（刷新 / 收集 / 过期 / 冷却）与洞见升级 */
+static void test_buffs_and_insight(void)
+{
+    GameState game;
+    reset_game(&game, SPECIES_PROTOCELL);
+    buffs_init_run(&game);
+    CHECK(!buffs_factor_visible(&game));
+    CHECK_NEAR(buffs_production_multiplier(&game), 1.0, 1e-9);
+    CHECK_NEAR(buffs_click_multiplier(&game), 1.0, 1e-9);
+    CHECK(game.run.buff_spawn_timer >= BUFF_SPAWN_MIN - 1e-9);
+    CHECK(game.run.buff_spawn_timer <= BUFF_SPAWN_MAX + 1e-9);
+
+    /* 确定性：相同种子得到相同的刷新序列 */
+    GameState a;
+    GameState b;
+    reset_game(&a, SPECIES_PROTOCELL);
+    reset_game(&b, SPECIES_PROTOCELL);
+    a.run.rng_state = 0xABCDEF01u;
+    b.run.rng_state = 0xABCDEF01u;
+    buffs_init_run(&a);
+    buffs_init_run(&b);
+    for (int step = 0; step < 4000; ++step) {
+        buffs_update(&a, 0.1);
+        buffs_update(&b, 0.1);
+    }
+    CHECK(a.run.buff_visible == b.run.buff_visible);
+    CHECK(a.run.buff_visible_type == b.run.buff_visible_type);
+    CHECK(a.run.buff_visible_icon == b.run.buff_visible_icon);
+    CHECK(a.run.buff_spawn_timer == b.run.buff_spawn_timer);
+    CHECK(buffs_factor_visible(&a)); /* 45–90 s 内必然出现 */
+
+    /* 普通产率增益：×1.2 / 30 s，到期回到 1.0 */
+    reset_game(&game, SPECIES_PROTOCELL);
+    buffs_init_run(&game);
+    game.run.buff_visible = true;
+    game.run.buff_visible_type = BUFF_PRODUCTION;
+    CHECK(buffs_collect(&game) == ACTION_OK);
+    CHECK_NEAR(buffs_production_multiplier(&game), BUFF_PRODUCTION_MULT, 1e-9);
+    CHECK_NEAR(buffs_click_multiplier(&game), 1.0, 1e-9);
+    SpeciesRates boosted = evolution_calculate_species_rates(&game, 0);
+    CHECK_NEAR(boosted.atp_per_second, 0.80 * BUFF_PRODUCTION_MULT, 1e-4);
+    buffs_update(&game, BUFF_PRODUCTION_DURATION - 0.1);
+    CHECK_NEAR(buffs_production_multiplier(&game), BUFF_PRODUCTION_MULT, 1e-9);
+    buffs_update(&game, 0.2);
+    CHECK_NEAR(buffs_production_multiplier(&game), 1.0, 1e-9);
+    CHECK_NEAR(game.run.buff_total_active_time, BUFF_PRODUCTION_DURATION, 1e-6);
+
+    /* 点击增益：×2 / 30 s，不放大产率 */
+    reset_game(&game, SPECIES_PROTOCELL);
+    buffs_init_run(&game);
+    game.run.buff_visible = true;
+    game.run.buff_visible_type = BUFF_CLICK;
+    CHECK(buffs_collect(&game) == ACTION_OK);
+    CHECK_NEAR(buffs_click_multiplier(&game), BUFF_CLICK_MULT, 1e-9);
+    CHECK_NEAR(buffs_production_multiplier(&game), 1.0, 1e-9);
+
+    /* 稀有增益：×1.5 / 15 s，并记录冷却起点 */
+    reset_game(&game, SPECIES_PROTOCELL);
+    buffs_init_run(&game);
+    game.run.buff_clock = 200.0;
+    game.run.buff_visible = true;
+    game.run.buff_visible_type = BUFF_PRODUCTION_STRONG;
+    CHECK(buffs_collect(&game) == ACTION_OK);
+    CHECK_NEAR(buffs_production_multiplier(&game), BUFF_STRONG_MULT, 1e-9);
+    CHECK_NEAR(game.run.buff_last_rare_time, 200.0, 1e-9);
+    CHECK(game.run.buff_rare_collected == 1);
+    buffs_update(&game, BUFF_STRONG_DURATION + 0.1);
+    CHECK_NEAR(buffs_production_multiplier(&game), 1.0, 1e-9);
+
+    /* 一次性资源包：按当前每秒收入折算，不留下限时增益 */
+    reset_game(&game, SPECIES_SAPIENT_LIFE); /* 阶段 6，有理念产出 */
+    buffs_init_run(&game);
+    double atp_before = game.run.atp;
+    double knowledge_before = game.run.knowledge;
+    SpeciesRates current = evolution_calculate_species_rates(&game, 0);
+    game.run.buff_visible = true;
+    game.run.buff_visible_type = BUFF_INSTANT;
+    CHECK(buffs_collect(&game) == ACTION_OK);
+    CHECK_NEAR(game.run.atp - atp_before, current.atp_per_second * BUFF_INSTANT_ATP_SECONDS, 0.001);
+    CHECK_NEAR(game.run.knowledge - knowledge_before,
+               current.knowledge_per_second * BUFF_INSTANT_KNOWLEDGE_SECONDS, 0.001);
+    CHECK_NEAR(buffs_production_multiplier(&game), 1.0, 1e-9);
+    CHECK(game.run.buff_total_active_time == 0.0);
+
+    /* 没有因子时点击无效 */
+    reset_game(&game, SPECIES_PROTOCELL);
+    buffs_init_run(&game);
+    CHECK(buffs_collect(&game) == ACTION_INVALID_TARGET);
+
+    /* 强增益冷却：开局 150 s 内不会刷出，冷却结束后可刷出 */
+    reset_game(&game, SPECIES_PROTOCELL);
+    buffs_init_run(&game);
+    bool early_rare = false;
+    for (int spawn = 0; spawn < 20; ++spawn) {
+        game.run.buff_visible = false;
+        game.run.buff_spawn_timer = 0.0;
+        buffs_update(&game, 0.1);
+        if (game.run.buff_visible_type == BUFF_PRODUCTION_STRONG) {
+            early_rare = true;
+        }
+    }
+    CHECK(!early_rare);
+    CHECK(game.run.buff_clock < BUFF_RARE_COOLDOWN);
+
+    buffs_update(&game, BUFF_RARE_COOLDOWN);
+    bool late_rare = false;
+    for (int spawn = 0; spawn < 240 && !late_rare; ++spawn) {
+        game.run.buff_visible = false;
+        game.run.buff_spawn_timer = 0.0;
+        buffs_update(&game, 0.1);
+        if (game.run.buff_visible_type == BUFF_PRODUCTION_STRONG) {
+            late_rare = true;
+        }
+    }
+    CHECK(late_rare);
+
+    /* 洞见：价格指数增长，每级 +2% 产率，知识不足时拒绝 */
+    reset_game(&game, SPECIES_SAPIENT_LIFE);
+    CHECK_NEAR(evolution_insight_cost(&game), INSIGHT_BASE_COST, 1e-6);
+    game.run.knowledge = INSIGHT_BASE_COST - 1.0;
+    CHECK(evolution_apply_insight(&game) == ACTION_NOT_ENOUGH_KNOWLEDGE);
+    CHECK(game.run.insight_levels == 0);
+    game.run.knowledge = INSIGHT_BASE_COST;
+    CHECK(evolution_apply_insight(&game) == ACTION_OK);
+    CHECK(game.run.insight_levels == 1);
+    CHECK_NEAR(game.run.knowledge, 0.0, 1e-6);
+    CHECK_NEAR(evolution_insight_cost(&game), INSIGHT_BASE_COST * INSIGHT_COST_GROWTH, 1e-6);
+    CHECK_NEAR(evolution_insight_multiplier(&game), 1.0 + INSIGHT_BONUS_PER_LEVEL, 1e-9);
+
+    SpeciesRates with_insight = evolution_calculate_species_rates(&game, 0);
+    game.run.insight_levels = 0;
+    SpeciesRates plain = evolution_calculate_species_rates(&game, 0);
+    game.run.insight_levels = 1;
+    CHECK_NEAR(with_insight.atp_per_second / plain.atp_per_second, 1.02, 1e-9);
+    game.run.insight_levels = 5;
+    CHECK_NEAR(evolution_insight_multiplier(&game), pow(1.02, 5.0), 1e-9);
+
+    /* 增益与洞见叠乘 */
+    GameState combo;
+    reset_game(&combo, SPECIES_PROTOCELL);
+    buffs_init_run(&combo);
+    combo.run.insight_levels = 2;
+    combo.run.buff_visible = true;
+    combo.run.buff_visible_type = BUFF_PRODUCTION;
+    CHECK(buffs_collect(&combo) == ACTION_OK);
+    SpeciesRates both = evolution_calculate_species_rates(&combo, 0);
+    CHECK_NEAR(both.atp_per_second, 0.80 * BUFF_PRODUCTION_MULT * pow(1.02, 2.0), 1e-6);
+
+    /* 非 RUNNING 阶段拒绝洞见 */
+    game.phase = PHASE_END_ERA_PREVIEW;
+    CHECK(evolution_apply_insight(&game) == ACTION_INVALID_PHASE);
 }
 
 static void test_round10_economy(void)
@@ -1195,18 +1408,19 @@ static void test_round10_economy(void)
     CHECK(evolution_apply_capacity_upgrade(&game) == ACTION_OK);
     CHECK(game.run.capacity_levels == 201);
 
-    /* 双币拆分：前 3 级 100% Biomass，第 4 级起 70/30 且总价不变 */
+    /* v7 P0-4b：容量改纯 ATP，任意等级 ATP=总价、Biomass=0 */
     GameState split;
     reset_game(&split, SPECIES_PROTOCELL);
     split.run.capacity_levels = 2;
-    CHECK_NEAR(evolution_capacity_atp_cost(&split), 0.0, 0.001);
-    CHECK_NEAR(evolution_capacity_biomass_cost(&split), evolution_capacity_cost(&split), 0.001);
-    split.run.capacity_levels = 3;
     double total = evolution_capacity_cost(&split);
-    CHECK_NEAR(evolution_capacity_atp_cost(&split), ceil(total * 0.70), 0.001);
-    CHECK_NEAR(evolution_capacity_biomass_cost(&split), ceil(total * 0.30), 0.001);
+    CHECK_NEAR(evolution_capacity_atp_cost(&split), total, 0.001);
+    CHECK_NEAR(evolution_capacity_biomass_cost(&split), 0.0, 0.001);
+    split.run.capacity_levels = 3;
+    total = evolution_capacity_cost(&split);
+    CHECK_NEAR(evolution_capacity_atp_cost(&split), total, 0.001);
+    CHECK_NEAR(evolution_capacity_biomass_cost(&split), 0.0, 0.001);
 
-    /* 双币支付：ATP 不足时拒绝且不扣 Biomass */
+    /* 纯 ATP 支付：ATP 不足时拒绝且不改等级与 Biomass */
     GameState poor;
     reset_game(&poor, SPECIES_PROTOCELL);
     poor.run.capacity_levels = 3;
@@ -1398,7 +1612,7 @@ static void test_round12_stage11_and_crisis(void)
     for (int attempt = 0; attempt < 100; ++attempt) {
         GameState cheap;
         reset_game(&cheap, SPECIES_PROTOCELL);
-        cheap.run.dna = 3.0;
+        cheap.run.dna = 15.0;
         cheap.run.rng_state = 0xBEEF0001u + (unsigned int)attempt * 7919u;
         if (evolution_open_mutation_offer(&cheap, 0) != ACTION_OK) {
             continue;
@@ -1449,6 +1663,21 @@ static void test_round12_stage11_and_crisis(void)
     era2.run.environment_time_left = 0.05;
     EnvironmentStep step2 = environment_calculate_step(&era2, FIXED_STEP_SECONDS);
     CHECK(!step2.crisis_survived); /* 68 < 70 */
+
+    /* v8 P0-17：阶段封顶 8 / 10 / 13，到顶后不能再跨阶段分化 */
+    GameState cap;
+    reset_game(&cap, SPECIES_CIVILIZATION);
+    cap.run.active_species[0].mutations[MUTATION_ROCKETRY] = true;
+    cap.run.biomass = 1.0e12;
+    CHECK(evolution_era_stage_cap(&cap) == 8);
+    CHECK(evolution_validate_speciation(&cap, 0, SPECIES_SPACE_AGE) ==
+          ACTION_REQUIREMENT_NOT_MET);
+    cap.run.era = 2;
+    CHECK(evolution_era_stage_cap(&cap) == 10);
+    CHECK(evolution_validate_speciation(&cap, 0, SPECIES_SPACE_AGE) == ACTION_OK);
+    cap.run.era = 3;
+    CHECK(evolution_era_stage_cap(&cap) == 13);
+    CHECK(evolution_validate_speciation(&cap, 0, SPECIES_SPACE_AGE) == ACTION_OK);
 }
 
 static void test_round13_content_and_fuzz(void)
@@ -1467,7 +1696,7 @@ static void test_round13_content_and_fuzz(void)
     CHECK(species_required_mutations(SPECIES_HIVE_POLITY, required, 4) == 2);
     CHECK(required[0] == MUTATION_QUORUM_SENSING);
     CHECK(required[1] == MUTATION_LANGUAGE);
-    CHECK(evolution_synergy_count() == 15);
+    CHECK(evolution_synergy_count() == 20);
 
     /* 理念加成突变（侧表实现，不扩 MutationDef） */
     CHECK_NEAR(evolution_mutation_knowledge_bonus(MUTATION_COLLECTIVE_MEMORY), 0.30, 1e-9);
@@ -1525,12 +1754,15 @@ static void test_round13_content_and_fuzz(void)
             if (roll % 17u == 0) {
                 evolution_apply_sub_upgrade(&fuzz, 0);
             }
+            if (roll % 11u == 0 && buffs_factor_visible(&fuzz)) {
+                buffs_collect(&fuzz);
+            }
             if (roll % 23u == 0) {
                 int children[SPECIES_COUNT];
                 int count = species_children(fuzz.run.active_species[0].species_id, children,
                                              SPECIES_COUNT);
                 for (int c = 0; c < count; ++c) {
-                    int target = children[((int)roll + c) % count];
+                    int target = children[(roll % (unsigned int)count + (unsigned int)c) % (unsigned int)count];
                     if (evolution_validate_speciation(&fuzz, 0, target) == ACTION_OK) {
                         evolution_apply_speciation(&fuzz, 0, target, 0);
                         break;
@@ -1546,6 +1778,10 @@ static void test_round13_content_and_fuzz(void)
             CHECK(isfinite(fuzz.run.knowledge) && fuzz.run.knowledge >= 0.0);
             CHECK(fuzz.run.active_species_count >= 1);
             CHECK(fuzz.run.active_species_count <= MAX_ACTIVE_SPECIES);
+            CHECK(fuzz.run.buff_active_time_left >= 0.0);
+            CHECK(fuzz.run.insight_levels >= 0);
+            CHECK(fuzz.run.buff_visible_type >= 0 && fuzz.run.buff_visible_type < BUFF_TYPE_COUNT);
+            CHECK(fuzz.run.buff_visible_icon >= 0 && fuzz.run.buff_visible_icon < BUFF_ICON_COUNT);
             CHECK(fuzz.run.current_environment_id >= 0 &&
                   fuzz.run.current_environment_id < ENV_COUNT);
             for (int i = 0; i < fuzz.run.active_species_count; ++i) {
@@ -1561,6 +1797,139 @@ static void test_round13_content_and_fuzz(void)
             }
         }
     }
+}
+
+/* v9 P0-18：主线后继必须是显式数据，而且每一环都是真实的分化边。
+ * 这里锁死“超越 → 无生命场 → 宇宙织体”，防止再退回按 ID 最小者猜主线。 */
+static void test_main_lineage(void)
+{
+    CHECK(species_main_child(SPECIES_PROTOCELL) == SPECIES_CYANOBACTERIUM);
+    CHECK(species_main_child(SPECIES_CYANOBACTERIUM) == SPECIES_ALGAL_EUKARYOTE);
+    CHECK(species_main_child(SPECIES_ALGAL_EUKARYOTE) == SPECIES_MULTICELLULAR_COLONY);
+    CHECK(species_main_child(SPECIES_MULTICELLULAR_COLONY) == SPECIES_DIFFERENTIATED_TISSUE);
+    CHECK(species_main_child(SPECIES_DIFFERENTIATED_TISSUE) == SPECIES_COGNITIVE_BIOSPHERE);
+    CHECK(species_main_child(SPECIES_COGNITIVE_BIOSPHERE) == SPECIES_SAPIENT_LIFE);
+    CHECK(species_main_child(SPECIES_SAPIENT_LIFE) == SPECIES_TECHNOSPHERE);
+    CHECK(species_main_child(SPECIES_TECHNOSPHERE) == SPECIES_CIVILIZATION);
+    CHECK(species_main_child(SPECIES_CIVILIZATION) == SPECIES_SPACE_AGE);
+    CHECK(species_main_child(SPECIES_SPACE_AGE) == SPECIES_SINGULARITY);
+    CHECK(species_main_child(SPECIES_SINGULARITY) == SPECIES_TRANSCENDENCE);
+    CHECK(species_main_child(SPECIES_TRANSCENDENCE) == SPECIES_NOETIC_FIELD);
+    CHECK(species_main_child(SPECIES_NOETIC_FIELD) == SPECIES_COSMIC_WEAVE);
+    CHECK(species_main_child(SPECIES_COSMIC_WEAVE) == -1);
+    CHECK(species_main_child(SPECIES_PHOTOSYNTHETIC_MAT) == -1);
+
+    /* 每一环都必须是合法的分化边，并且阶段严格递增 */
+    int chain[16];
+    int count = 0;
+    for (int id = SPECIES_PROTOCELL; id >= 0 && count < 16; id = species_main_child(id)) {
+        chain[count++] = id;
+    }
+    CHECK(count == 14);
+    for (int i = 1; i < count; ++i) {
+        CHECK(species_has_parent(chain[i], chain[i - 1]));
+        CHECK(species_phase(chain[i]) > species_phase(chain[i - 1]));
+    }
+    /* 阶段 12 的门槛必须由保底深度覆盖，阶段 13 不被保底 */
+    CHECK(species_phase(SPECIES_NOETIC_FIELD) <= MAINLINE_GUARANTEE_MAX_PHASE);
+    CHECK(species_phase(SPECIES_COSMIC_WEAVE) > MAINLINE_GUARANTEE_MAX_PHASE);
+}
+
+/* 第十四轮：20 物种 / 20 突变 / 两个新阶段的结构与可达性 */
+static void test_round14_content(void)
+{
+    CHECK(SPECIES_COUNT == 186);
+    CHECK(MUTATION_COUNT == 204);
+    CHECK(species_phase(SPECIES_THERMOPHILIC_ARCHAEA) == 2);
+    CHECK(species_phase(SPECIES_DYSON_SWARM) == 8);
+    CHECK(species_phase(SPECIES_NOETIC_FIELD) == 12);
+    CHECK(species_phase(SPECIES_COSMIC_WEAVE) == 13);
+    CHECK(species_has_parent(SPECIES_NOETIC_FIELD, SPECIES_TRANSCENDENCE));
+    CHECK(species_has_parent(SPECIES_COSMIC_WEAVE, SPECIES_NOETIC_FIELD));
+    CHECK(species_has_parent(SPECIES_NITROPLAST_CONSORTIUM, SPECIES_ALGAL_EUKARYOTE));
+    CHECK(species_has_parent(SPECIES_INSECT_METROPOLIS, SPECIES_HIVE_POLITY));
+
+    int required[4];
+    CHECK(species_required_mutations(SPECIES_NOETIC_FIELD, required, 4) == 2);
+    CHECK(required[0] == MUTATION_OMEGA_POINT);
+    CHECK(required[1] == MUTATION_COSMIC_AWARENESS);
+    CHECK(species_required_mutations(SPECIES_COSMIC_WEAVE, required, 4) == 2);
+    CHECK(required[0] == MUTATION_COSMIC_AWARENESS);
+    CHECK(required[1] == MUTATION_ENTROPY_REVERSAL);
+    CHECK(evolution_synergy_count() == 20);
+    CHECK(evolution_sub_upgrade_count() == 30);
+    CHECK_NEAR(evolution_mutation_knowledge_bonus(MUTATION_COSMIC_AWARENESS), 0.30, 1e-9);
+
+    /* 新物种的每个前置突变，必须至少有一个亲本在其阶段就能买到 */
+    for (int species_id = SPECIES_THERMOPHILIC_ARCHAEA; species_id < SPECIES_COUNT; ++species_id) {
+        int parent_phase = -1;
+        for (int candidate = 0; candidate < SPECIES_COUNT; ++candidate) {
+            if (species_has_parent(species_id, candidate)) {
+                int phase = species_phase(candidate);
+                if (phase > parent_phase) {
+                    parent_phase = phase;
+                }
+            }
+        }
+        CHECK(parent_phase >= 0);
+        if (parent_phase < 0) {
+            continue;
+        }
+        int count = species_required_mutations(species_id, required, 4);
+        for (int i = 0; i < count; ++i) {
+            const MutationDef *def = mutation_get(required[i]);
+            CHECK(def != 0);
+            if (def) {
+                CHECK(def->min_phase <= parent_phase);
+            }
+        }
+    }
+
+    /* 新阶段的分化成本必须高于前一阶段 */
+    CHECK(species_base_speciation_cost(SPECIES_COSMIC_WEAVE) >
+          species_base_speciation_cost(SPECIES_NOETIC_FIELD));
+}
+
+/* 第十五轮：14 个阶段各 10 物种 + 10 突变，并检查 ATP 出口 */
+static void test_round15_content(void)
+{
+    CHECK(SPECIES_COUNT == 186);
+    CHECK(MUTATION_COUNT == 204);
+
+    int species_per_stage[14] = { 0 };
+    for (int id = 46; id < SPECIES_COUNT; ++id) {
+        int phase = species_phase(id);
+        CHECK(phase >= 0 && phase < 14);
+        if (phase >= 0 && phase < 14) {
+            ++species_per_stage[phase];
+        }
+    }
+    int mutation_per_stage[14] = { 0 };
+    for (int id = 64; id < MUTATION_COUNT; ++id) {
+        const MutationDef *def = mutation_get(id);
+        CHECK(def != 0);
+        if (def && def->min_phase >= 0 && def->min_phase < 14) {
+            ++mutation_per_stage[def->min_phase];
+        }
+    }
+    for (int stage = 0; stage < 14; ++stage) {
+        CHECK(species_per_stage[stage] >= 10);
+        CHECK(mutation_per_stage[stage] >= 10);
+    }
+
+    /* 高阶突变收 ATP（按收入 45 秒，夹在 1e7–5e8），低阶不收 */
+    GameState atp_game;
+    reset_game(&atp_game, SPECIES_PROTOCELL);
+    CHECK_NEAR(evolution_mutation_atp_cost(&atp_game, MUTATION_CELL_MEMBRANE), 0.0, 1e-9);
+    double atp_low = evolution_mutation_atp_cost(&atp_game, MUTATION_ION_DRIVE);
+    double atp_high = evolution_mutation_atp_cost(&atp_game, MUTATION_ENTROPY_REVERSAL);
+    CHECK(atp_low >= MUTATION_ATP_COST_MIN && atp_low <= MUTATION_ATP_COST_MAX);
+    CHECK(atp_high >= MUTATION_ATP_COST_MIN && atp_high <= MUTATION_ATP_COST_MAX);
+
+    /* 新物种的基石可读，且分化成本随阶段递增 */
+    CHECK(species_keystone(SPECIES_ABSOLUTE_MIND) != 0);
+    CHECK(species_base_speciation_cost(SPECIES_ABSOLUTE_MIND) >
+          species_base_speciation_cost(SPECIES_LIPID_VESICLE));
 }
 
 /* 每个物种都能实际分化、每个突变都能实际买到：
@@ -1581,6 +1950,7 @@ static void test_every_content_playable(void)
         }
         GameState game;
         reset_game(&game, parent);
+        game.run.era = 3; /* v8 阶段封顶：让所有阶段都可构造 */
         game.run.discovered_species[parent] = true;
         int required[4];
         int count = species_required_mutations(species_id, required, 4);
@@ -1625,7 +1995,8 @@ static void test_every_content_playable(void)
         if (def->requires_branch >= 0) {
             game.legacy.levels[def->requires_branch] = def->requires_level;
         }
-        game.run.dna = evolution_mutation_cost(&game, mutation_id) + 1.0;
+        game.run.dna = 1.0e12;
+        game.run.atp = 1.0e15;
         CHECK(evolution_mutation_available(&game, 0, mutation_id));
         /* apply_mutation 只接受“当前候选”中的突变，这里构造一个单候选 */
         game.run.mutation_offer.active = true;
@@ -1694,10 +2065,14 @@ int main(int argc, char **argv)
         test_synergy,
         test_keystone,
         test_knowledge_and_sub_upgrades,
+        test_buffs_and_insight,
         test_round10_economy,
         test_reachability,
         test_round12_stage11_and_crisis,
         test_round13_content_and_fuzz,
+        test_main_lineage,
+        test_round14_content,
+        test_round15_content,
         test_every_content_playable,
         test_codex_and_resilience,
         test_long_run_simulation,
@@ -1721,3 +2096,4 @@ int main(int argc, char **argv)
     }
     return g_failures == 0 ? 0 : 1;
 }
+

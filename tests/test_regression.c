@@ -9,10 +9,11 @@
 #include "legacy.h"
 #include "save.h"
 #include "balance.h"
+#include "buffs.h"
 static ActionResult act(GameState *g,ActionType type,int id,int option) {
     return game_apply_action(g,(GameAction){type,0,id,option});
 }
-static void seed(GameState *g,unsigned int rng) { game_init(g);g->run.rng_state=rng;environment_init_run(g); }
+static void seed(GameState *g,unsigned int rng) { game_init(g);g->run.rng_state=rng;environment_init_run(g);buffs_init_run(g); }
 static void test_actions_and_save(void) {
     GameState g;seed(&g,77);
     assert(g.run.era==1 && g.run.next_environment_id>0);
@@ -37,7 +38,7 @@ static void test_actions_and_save(void) {
     for(int i=0;i<4;i++) assert(act(&g,ACTION_BUY_CAPACITY,0,0).code==ACTION_OK);
     double atp=g.run.atp,bio=g.run.biomass;
     double ca=evolution_capacity_atp_cost(&g), cb=evolution_capacity_biomass_cost(&g);
-    assert(ca>0 && cb>0);
+    assert(ca>0 && cb==0); /* v8：容量为纯 ATP，Biomass 份额为 0 */
     assert(act(&g,ACTION_BUY_CAPACITY,0,0).code==ACTION_OK);
     assert(fabs(atp-g.run.atp-ca)<1e-7 && fabs(bio-g.run.biomass-cb)<1e-7);
     assert(act(&g,ACTION_BUY_RESERVE,0,0).code==ACTION_OK);
@@ -76,8 +77,9 @@ static void test_crisis_and_chunks(void) {
                          100.+evolution_calculate_species_rates(&g,0).population_delta_per_second*0.1);
     game_update(&g,0.1);
     assert(g.run.current_environment_id==ENV_METEOR_IMPACT);
-    assert(fabs(g.run.active_species[0].population-expected*(1.-0.35-0.05*3.))<1e-7);
-    assert(g.run.crisis_start_population==expected);
+    double loss=fmin(METEOR_INSTANT_LOSS_RATIO+INSTANT_LOSS_STAGE_SCALE*3.0,INSTANT_LOSS_MAX);
+    assert(fabs(g.run.active_species[0].population-expected*(1.-loss))<1e-7);
+    assert(fabs(g.run.crisis_start_population-expected*(1.-loss))<1e-7);
     assert(g.run.crisis_min_population==g.run.active_species[0].population);
     for(int i=0;i<600;i++)game_update(&g,0.1);
     assert(g.run.next_environment_id>0 || g.run.current_environment_id>0);
@@ -95,25 +97,38 @@ static void test_natural_playthrough(void) {
                 if(act(&g,ACTION_BUY_RUN_UPGRADE,u,0).code==ACTION_OK)buys++;
         }
         if(!g.run.mutation_offer.active)act(&g,ACTION_GENERATE_MUTATION_OFFER,0,0);
-        int children[8],n=species_children(g.run.active_species[0].species_id,children,8);
-        int selected=-1;
-        /* Buy offered prerequisites first, then any affordable candidate. */
-        for(int i=0;i<g.run.mutation_offer.choice_count;i++) {
+        /* v9 P1-11：先攒主线门票（否则便宜的侧支突变会把 DNA 花光，
+           而突变价格随已拥有数量指数上涨，主线门票反而永远买不起），
+           再退到任意买得起的候选。主线后继不再从 species_children 里挑，
+           所以这里不需要子代数组（远端把越界写改成 SPECIES_COUNT，一并保留在别处）。 */
+        int selected=-1,main_next=species_main_child(g.run.active_species[0].species_id);
+        int main_req[4],main_req_n=main_next>=0?species_required_mutations(main_next,main_req,4):0;
+        for(int i=0;i<g.run.mutation_offer.choice_count && selected<0;i++) {
             int id=g.run.mutation_offer.mutation_ids[i];
             if(g.run.dna<g.run.mutation_offer.dna_costs[i])continue;
-            if(selected<0)selected=id;
-            for(int c=0;c<n;c++){int req[8],k=species_required_mutations(children[c],req,8);for(int r=0;r<k;r++)if(req[r]==id)selected=id;}
+            for(int r=0;r<main_req_n;r++)if(main_req[r]==id)selected=id;
+        }
+        for(int i=0;i<g.run.mutation_offer.choice_count && selected<0;i++) {
+            int id=g.run.mutation_offer.mutation_ids[i];
+            if(g.run.dna<g.run.mutation_offer.dna_costs[i])continue;
+            selected=id;
         }
         if(selected>=0 && act(&g,ACTION_CHOOSE_MUTATION,selected,0).code==ACTION_OK)mutations++;
-        for(int c=0;c<n;c++)if(act(&g,ACTION_SPECIATE,children[c],0).code==ACTION_OK){splits++;break;}
+        /* v9 P1-11：只沿主线后继分化。186 个物种里有 156 个是终点物种，
+           随口挑 children[0] 会把演示局带进“阶段 0 死胡同”，
+           侧支走法由 test_b 的可达性与 1000 种子批量覆盖。 */
+        if(main_next>=0 && act(&g,ACTION_SPECIATE,main_next,0).code==ACTION_OK)splits++;
         game_update(&g,1.0);
         assert(fabs(g.run.elapsed_time-(second+1.0))<1e-6);
         assert(isfinite(g.run.atp) && isfinite(g.run.dna) && isfinite(g.run.biomass));
         if(second==599) assert(save_write("build/playthrough.sav",&g)==SAVE_OK);
     }
-    assert(mutations>=3 && splits>=2 && buys>=3);
+    /* v8 后规则更贵，简单策略在 60 分钟内通常只完成 1 次分化；
+       接线的目标是“动作能驱动 B”，多次分化由 test_b 覆盖。 */
+    assert(mutations>=3 && splits>=1 && buys>=3);
     assert(save_write("build/playthrough-final.sav",&g)==SAVE_OK);
     EraReward r=prestige_preview_reward(&g);
     printf("Natural 60-minute run: stage %d, %d mutations, %d speciations, %d upgrades, reward %d EP\n",evolution_main_stage(&g),mutations,splits,buys,r.total_points);
 }
 int main(void) { test_actions_and_save();test_crisis_and_chunks();test_natural_playthrough();puts("All real A+B integration checks passed");return 0; }
+

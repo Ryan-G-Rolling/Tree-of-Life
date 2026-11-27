@@ -7,11 +7,13 @@
  */
 
 #include "evolution.h"
+#include "buffs.h"
 #include "environment.h"
 #include "legacy.h"
 #include "balance.h"
 
 #include <math.h>
+#include <limits.h>
 #include <string.h>
 
 /* 字段顺序：name, description, dna, atp%, biomass%, dna%, cap%, growth%,
@@ -185,6 +187,629 @@ static const MutationDef k_mutations[MUTATION_COUNT] = {
     { "Deep Time Archive", "Ten billion years of data, compressed.",
       150.0, 0.0, 0.0, 0.25, 0.0, 0.0, { 0, 0, 0, 0, 0 },
       2, 10, -1, MUTATION_RECURSIVE_SELF_IMPROVEMENT, -1, -1 },
+    /* 44–63：第十四轮，新侧支前置与阶段 12/13 构筑 */
+    { "Thermophilic Enzymes", "Heat-stable enzymes keep output steady on hot rock.",
+      45.0, 0.0, 0.10, 0.0, 0.0, 0.05, { 2, 0, 0, 0, 1 },
+      0, 0, -1, -1, -1, -1 },
+    { "Nitroplast", "An internal organelle fixes nitrogen for the whole colony.",
+      95.0, 0.10, 0.20, 0.0, 0.0, 0.04, { 0, 0, 0, 1, 0 },
+      1, 2, -1, MUTATION_NITROGEN_SENSE, -1, -1 },
+    { "Amoeboid Movement", "The colony crawls towards food instead of waiting.",
+      60.0, 0.05, 0.12, 0.10, 0.0, 0.04, { 0, 0, 0, 0, 0 },
+      0, 2, -1, -1, -1, -1 },
+    { "Silica Shell", "A glass shell raises the ceiling and absorbs shocks.",
+      85.0, 0.0, 0.0, 0.0, 0.25, 0.0, { 1, 1, 0, 0, 1 },
+      0, 2, -1, MUTATION_CHITIN_WALL, -1, -1 },
+    { "Symbiotic Lichen", "Algae and fungi share one durable body.",
+      110.0, 0.10, 0.15, 0.0, 0.15, 0.0, { 1, 0, 0, 0, 0 },
+      1, 3, -1, MUTATION_PHOTOSYMBIOSIS, -1, -1 },
+    { "Hemoglobin", "An oxygen carrier lets the colony grow at the vent.",
+      130.0, 0.15, 0.10, 0.0, 0.0, 0.0, { 2, 0, 0, 2, 0 },
+      1, 2, -1, MUTATION_SULFUR_METABOLISM, -1, -1 },
+    { "Bioluminescence", "Light is made, not only captured.",
+      100.0, 0.20, 0.0, 0.05, 0.0, 0.0, { 0, 0, -1, 0, 0 },
+      0, 4, -1, MUTATION_PHOTONIC_SKIN, -1, -1 },
+    { "Neural Lace", "A fine network threads every cell into one nervous system.",
+      170.0, 0.10, 0.0, 0.15, 0.05, 0.0, { 0, 0, 0, 1, 0 },
+      1, 5, -1, MUTATION_NEURAL_SIGNALING, -1, -1 },
+    { "Echolocation", "Sound maps the world in the dark.",
+      190.0, 0.15, 0.0, 0.10, 0.0, 0.04, { 0, 0, 0, 1, 0 },
+      1, 6, -1, MUTATION_NEURAL_SIGNALING, -1, -1 },
+    { "Chemical Language", "A vocabulary of molecules carries every idea.",
+      240.0, 0.0, 0.0, 0.25, 0.10, 0.0, { 0, 0, 0, 1, 0 },
+      2, 6, -1, MUTATION_LANGUAGE, -1, -1 },
+    { "Distributed Memory", "The colony remembers in every cell at once.",
+      160.0, 0.0, 0.0, 0.20, 0.15, 0.0, { 0, 0, 0, 0, 0 },
+      1, 5, -1, MUTATION_SIGNAL_LITERACY, -1, -1 },
+    { "Fusion Torch", "Bottled star-fire pushes ships past the home world.",
+      380.0, 0.25, 0.20, 0.0, 0.20, 0.0, { 2, 0, 0, 1, 0 },
+      2, 8, -1, MUTATION_ROCKETRY, -1, -1 },
+    { "Seasteading", "Floating settlements farm the open ocean.",
+      260.0, 0.10, 0.20, 0.0, 0.20, 0.0, { 0, 0, 0, 1, 0 },
+      1, 7, -1, MUTATION_URBANIZATION, -1, -1 },
+    { "Dyson Collectors", "A collector grid drinks the star's whole output.",
+      450.0, 0.30, 0.0, 0.0, 0.25, 0.0, { 1, 1, 0, 0, 0 },
+      2, 9, -1, MUTATION_ORBITAL_HABITATS, -1, -1 },
+    { "Warp Probe", "Probes cross interstellar space and report back.",
+      520.0, 0.20, 0.0, 0.25, 0.15, 0.0, { 1, 1, 1, 1, 1 },
+      2, 9, -1, MUTATION_ROCKETRY, -1, -1 },
+    { "Stellar Foundry", "A star is taken apart and rebuilt as a machine.",
+      650.0, 0.30, 0.25, 0.0, 0.25, 0.0, { 2, 1, 0, 0, 0 },
+      2, 10, -1, MUTATION_MACHINE_INTELLIGENCE, -1, -1 },
+    { "Quantum Cognition", "Thought runs on entangled states.",
+      800.0, 0.30, 0.0, 0.30, 0.20, 0.0, { 2, 2, 2, 2, 2 },
+      2, 11, -1, MUTATION_RECURSIVE_SELF_IMPROVEMENT, -1, -1 },
+    { "Multiverse Tuning", "Every branch of possibility is adjusted at once.",
+      900.0, 0.30, 0.25, 0.20, 0.25, 0.0, { 2, 2, 2, 2, 2 },
+      2, 11, -1, MUTATION_OMEGA_POINT, -1, -1 },
+    { "Cosmic Awareness", "The process perceives the whole cosmos as itself.",
+      750.0, 0.35, 0.0, 0.25, 0.25, 0.0, { 2, 2, 2, 2, 2 },
+      2, 11, -1, MUTATION_OMEGA_POINT, -1, -1 },
+    { "Entropy Reversal", "Decay is redirected into structure.",
+      950.0, 0.40, 0.30, 0.30, 0.30, 0.0, { 3, 3, 3, 3, 3 },
+      /* v9 P0-18：阶段 13 不再吃保底，改为提高抽取权重（稀有 20 → 普通 100），
+       * 让“最深的最后一步”保持稀有但可遇到（目标 1–8%）。 */
+      0, 12, -1, MUTATION_COSMIC_AWARENESS, -1, -1 },
+    /* 第十五轮：阶段 0 · 第 1 支 */
+    { "Lipid Repair", "A stage-0 adaptation that improves light capture.",
+      13.5, 0.04, 0.06, 0.04, 0.05, 0.01, { 2, 0, 0, 0, 1 },
+      0, 0, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 0 · 第 2 支 */
+    { "RNA Proofreading", "A stage-0 adaptation that improves chemical energy.",
+      13.8, 0.05, 0.06, 0.05, 0.06, 0.01, { 0, 2, 0, 0, 1 },
+      0, 0, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 0 · 第 3 支 */
+    { "Mineral Catalysis", "A stage-0 adaptation that improves detritus recycling.",
+      14.1, 0.06, 0.07, 0.03, 0.07, 0.02, { 0, 0, 2, 0, 1 },
+      0, 0, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 0 · 第 4 支 */
+    { "Proton Gradient", "A stage-0 adaptation that improves armour.",
+      14.4, 0.06, 0.05, 0.04, 0.05, 0.01, { 0, 0, 0, 2, 1 },
+      0, 0, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 0 · 第 5 支 */
+    { "Vesicle Fission", "A stage-0 adaptation that improves speed.",
+      14.7, 0.04, 0.06, 0.04, 0.06, 0.01, { 1, 1, 0, 0, 1 },
+      0, 0, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 0 · 第 6 支 */
+    { "Surface Adhesion", "A stage-0 adaptation that improves symbiosis.",
+      15.0, 0.05, 0.06, 0.05, 0.07, 0.02, { 1, 0, 1, 0, 0 },
+      1, 0, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 0 · 第 7 支 */
+    { "Osmotic Control", "A stage-0 adaptation that improves colony coordination.",
+      15.3, 0.06, 0.07, 0.03, 0.05, 0.01, { 0, 1, 0, 1, 0 },
+      1, 0, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 0 · 第 8 支 */
+    { "UV Screening", "A stage-0 adaptation that improves storage.",
+      15.6, 0.06, 0.05, 0.04, 0.06, 0.01, { 0, 0, 1, 1, 0 },
+      1, 0, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 0 · 第 9 支 */
+    { "Thermal Buffering", "A stage-0 adaptation that improves defence.",
+      15.9, 0.04, 0.06, 0.04, 0.07, 0.02, { 2, 0, 0, 0, 0 },
+      2, 0, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 0 · 第 10 支 */
+    { "Prebiotic Cycling", "A stage-0 adaptation that improves reproduction.",
+      16.2, 0.05, 0.06, 0.05, 0.05, 0.01, { 0, 0, 0, 0, 2 },
+      2, 0, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 1 · 第 1 支 */
+    { "Bacteriorhodopsin", "A stage-1 adaptation that improves light capture.",
+      22.5, 0.06, 0.07, 0.05, 0.07, 0.01, { 2, 0, 0, 0, 1 },
+      0, 1, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 1 · 第 2 支 */
+    { "Sulfur Oxidation", "A stage-1 adaptation that improves chemical energy.",
+      23.0, 0.06, 0.07, 0.06, 0.07, 0.01, { 0, 2, 0, 0, 1 },
+      0, 1, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 1 · 第 3 支 */
+    { "Methanogenesis", "A stage-1 adaptation that improves detritus recycling.",
+      23.5, 0.07, 0.08, 0.04, 0.09, 0.02, { 0, 0, 2, 0, 1 },
+      0, 1, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 1 · 第 4 支 */
+    { "Salt Pump", "A stage-1 adaptation that improves armour.",
+      24.0, 0.08, 0.06, 0.05, 0.07, 0.01, { 0, 0, 0, 2, 1 },
+      0, 1, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 1 · 第 5 支 */
+    { "Acid Shield", "A stage-1 adaptation that improves speed.",
+      24.5, 0.06, 0.07, 0.05, 0.07, 0.01, { 1, 1, 0, 0, 1 },
+      0, 1, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 1 · 第 6 支 */
+    { "Iron Chelation", "A stage-1 adaptation that improves symbiosis.",
+      25.0, 0.06, 0.07, 0.06, 0.09, 0.02, { 1, 0, 1, 0, 0 },
+      1, 1, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 1 · 第 7 支 */
+    { "Hydrogenase", "A stage-1 adaptation that improves colony coordination.",
+      25.5, 0.07, 0.08, 0.04, 0.07, 0.01, { 0, 1, 0, 1, 0 },
+      1, 1, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 1 · 第 8 支 */
+    { "Photosystem I", "A stage-1 adaptation that improves storage.",
+      26.0, 0.08, 0.06, 0.05, 0.07, 0.01, { 0, 0, 1, 1, 0 },
+      1, 1, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 1 · 第 9 支 */
+    { "Nitrite Oxidase", "A stage-1 adaptation that improves defence.",
+      26.5, 0.06, 0.07, 0.05, 0.09, 0.02, { 2, 0, 0, 0, 0 },
+      2, 1, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 1 · 第 10 支 */
+    { "Sulfate Reduction", "A stage-1 adaptation that improves reproduction.",
+      27.0, 0.06, 0.07, 0.06, 0.07, 0.01, { 0, 0, 0, 0, 2 },
+      2, 1, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 2 · 第 1 支 */
+    { "Silica Frustule", "A stage-2 adaptation that improves light capture.",
+      36.0, 0.07, 0.08, 0.06, 0.08, 0.01, { 2, 0, 0, 0, 1 },
+      0, 2, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 2 · 第 2 支 */
+    { "Cellulose Plate", "A stage-2 adaptation that improves chemical energy.",
+      36.8, 0.08, 0.09, 0.07, 0.09, 0.02, { 0, 2, 0, 0, 1 },
+      0, 2, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 2 · 第 3 支 */
+    { "Ciliary Beat", "A stage-2 adaptation that improves detritus recycling.",
+      37.6, 0.09, 0.09, 0.05, 0.10, 0.02, { 0, 0, 2, 0, 1 },
+      0, 2, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 2 · 第 4 支 */
+    { "Pseudopod Flow", "A stage-2 adaptation that improves armour.",
+      38.4, 0.09, 0.07, 0.06, 0.08, 0.01, { 0, 0, 0, 2, 1 },
+      0, 2, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 2 · 第 5 支 */
+    { "Chloroplast Endosymbiosis", "A stage-2 adaptation that improves speed.",
+      39.2, 0.07, 0.08, 0.06, 0.09, 0.02, { 1, 1, 0, 0, 1 },
+      0, 2, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 2 · 第 6 支 */
+    { "Calcium Shell", "A stage-2 adaptation that improves symbiosis.",
+      40.0, 0.08, 0.09, 0.07, 0.10, 0.02, { 1, 0, 1, 0, 0 },
+      1, 2, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 2 · 第 7 支 */
+    { "Vacuole Storage", "A stage-2 adaptation that improves colony coordination.",
+      40.8, 0.09, 0.09, 0.05, 0.08, 0.01, { 0, 1, 0, 1, 0 },
+      1, 2, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 2 · 第 8 支 */
+    { "Mixotrophy", "A stage-2 adaptation that improves storage.",
+      41.6, 0.09, 0.07, 0.06, 0.09, 0.02, { 0, 0, 1, 1, 0 },
+      1, 2, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 2 · 第 9 支 */
+    { "Sexual Cycle", "A stage-2 adaptation that improves defence.",
+      42.4, 0.07, 0.08, 0.06, 0.10, 0.02, { 2, 0, 0, 0, 0 },
+      2, 2, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 2 · 第 10 支 */
+    { "Colonial Glue", "A stage-2 adaptation that improves reproduction.",
+      43.2, 0.08, 0.09, 0.07, 0.08, 0.01, { 0, 0, 0, 0, 2 },
+      2, 2, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 3 · 第 1 支 */
+    { "Collagen Matrix", "A stage-3 adaptation that improves light capture.",
+      63.0, 0.08, 0.09, 0.07, 0.10, 0.02, { 2, 0, 0, 0, 1 },
+      0, 3, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 3 · 第 2 支 */
+    { "Nematocyst", "A stage-3 adaptation that improves chemical energy.",
+      64.4, 0.09, 0.10, 0.08, 0.10, 0.02, { 0, 2, 0, 0, 1 },
+      0, 3, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 3 · 第 3 支 */
+    { "Body Axis", "A stage-3 adaptation that improves detritus recycling.",
+      65.8, 0.10, 0.10, 0.06, 0.12, 0.02, { 0, 0, 2, 0, 1 },
+      0, 3, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 3 · 第 4 支 */
+    { "Gastrulation", "A stage-3 adaptation that improves armour.",
+      67.2, 0.11, 0.09, 0.07, 0.10, 0.02, { 0, 0, 0, 2, 1 },
+      0, 3, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 3 · 第 5 支 */
+    { "Spicule Skeleton", "A stage-3 adaptation that improves speed.",
+      68.6, 0.08, 0.09, 0.07, 0.10, 0.02, { 1, 1, 0, 0, 1 },
+      0, 3, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 3 · 第 6 支 */
+    { "Canal System", "A stage-3 adaptation that improves symbiosis.",
+      70.0, 0.09, 0.10, 0.08, 0.12, 0.02, { 1, 0, 1, 0, 0 },
+      1, 3, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 3 · 第 7 支 */
+    { "Basement Membrane", "A stage-3 adaptation that improves colony coordination.",
+      71.4, 0.10, 0.10, 0.06, 0.10, 0.02, { 0, 1, 0, 1, 0 },
+      1, 3, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 3 · 第 8 支 */
+    { "Stem Cell Pool", "A stage-3 adaptation that improves storage.",
+      72.8, 0.11, 0.09, 0.07, 0.10, 0.02, { 0, 0, 1, 1, 0 },
+      1, 3, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 3 · 第 9 支 */
+    { "Regeneration", "A stage-3 adaptation that improves defence.",
+      74.2, 0.08, 0.09, 0.07, 0.12, 0.02, { 2, 0, 0, 0, 0 },
+      2, 3, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 3 · 第 10 支 */
+    { "Colonial Division", "A stage-3 adaptation that improves reproduction.",
+      75.6, 0.09, 0.10, 0.08, 0.10, 0.02, { 0, 0, 0, 0, 2 },
+      2, 3, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 4 · 第 1 支 */
+    { "Bilateral Symmetry", "A stage-4 adaptation that improves light capture.",
+      108.0, 0.10, 0.10, 0.08, 0.11, 0.02, { 2, 0, 0, 0, 1 },
+      0, 4, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 4 · 第 2 支 */
+    { "Coelom", "A stage-4 adaptation that improves chemical energy.",
+      110.4, 0.11, 0.11, 0.09, 0.12, 0.02, { 0, 2, 0, 0, 1 },
+      0, 4, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 4 · 第 3 支 */
+    { "Circulatory Tube", "A stage-4 adaptation that improves detritus recycling.",
+      112.8, 0.12, 0.12, 0.07, 0.13, 0.02, { 0, 0, 2, 0, 1 },
+      0, 4, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 4 · 第 4 支 */
+    { "Nerve Cord", "A stage-4 adaptation that improves armour.",
+      115.2, 0.12, 0.10, 0.08, 0.11, 0.02, { 0, 0, 0, 2, 1 },
+      0, 4, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 4 · 第 5 支 */
+    { "Gill Slit", "A stage-4 adaptation that improves speed.",
+      117.6, 0.10, 0.10, 0.08, 0.12, 0.02, { 1, 1, 0, 0, 1 },
+      0, 4, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 4 · 第 6 支 */
+    { "Shell Gland", "A stage-4 adaptation that improves symbiosis.",
+      120.0, 0.11, 0.11, 0.09, 0.13, 0.02, { 1, 0, 1, 0, 0 },
+      1, 4, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 4 · 第 7 支 */
+    { "Segmentation", "A stage-4 adaptation that improves colony coordination.",
+      122.4, 0.12, 0.12, 0.07, 0.11, 0.02, { 0, 1, 0, 1, 0 },
+      1, 4, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 4 · 第 8 支 */
+    { "Exoskeleton", "A stage-4 adaptation that improves storage.",
+      124.8, 0.12, 0.10, 0.08, 0.12, 0.02, { 0, 0, 1, 1, 0 },
+      1, 4, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 4 · 第 9 支 */
+    { "Jointed Limb", "A stage-4 adaptation that improves defence.",
+      127.2, 0.10, 0.10, 0.08, 0.13, 0.02, { 2, 0, 0, 0, 0 },
+      2, 4, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 4 · 第 10 支 */
+    { "Filter Feeding", "A stage-4 adaptation that improves reproduction.",
+      129.6, 0.11, 0.11, 0.09, 0.11, 0.02, { 0, 0, 0, 0, 2 },
+      2, 4, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 5 · 第 1 支 */
+    { "Vertebra Column", "A stage-5 adaptation that improves light capture.",
+      180.0, 0.11, 0.12, 0.09, 0.12, 0.02, { 2, 0, 0, 0, 1 },
+      0, 5, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 5 · 第 2 支 */
+    { "Jaw", "A stage-5 adaptation that improves chemical energy.",
+      184.0, 0.12, 0.12, 0.10, 0.14, 0.02, { 0, 2, 0, 0, 1 },
+      0, 5, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 5 · 第 3 支 */
+    { "Swim Bladder", "A stage-5 adaptation that improves detritus recycling.",
+      188.0, 0.13, 0.13, 0.08, 0.14, 0.03, { 0, 0, 2, 0, 1 },
+      0, 5, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 5 · 第 4 支 */
+    { "Lateral Line", "A stage-5 adaptation that improves armour.",
+      192.0, 0.14, 0.11, 0.09, 0.12, 0.02, { 0, 0, 0, 2, 1 },
+      0, 5, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 5 · 第 5 支 */
+    { "Chitin Armor", "A stage-5 adaptation that improves speed.",
+      196.0, 0.11, 0.12, 0.09, 0.14, 0.02, { 1, 1, 0, 0, 1 },
+      0, 5, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 5 · 第 6 支 */
+    { "Coral Symbiosis", "A stage-5 adaptation that improves symbiosis.",
+      200.0, 0.12, 0.12, 0.10, 0.14, 0.03, { 1, 0, 1, 0, 0 },
+      1, 5, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 5 · 第 7 支 */
+    { "Bivalve Siphon", "A stage-5 adaptation that improves colony coordination.",
+      204.0, 0.13, 0.13, 0.08, 0.12, 0.02, { 0, 1, 0, 1, 0 },
+      1, 5, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 5 · 第 8 支 */
+    { "Cephalopod Jet", "A stage-5 adaptation that improves storage.",
+      208.0, 0.14, 0.11, 0.09, 0.14, 0.02, { 0, 0, 1, 1, 0 },
+      1, 5, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 5 · 第 9 支 */
+    { "Compound Eye", "A stage-5 adaptation that improves defence.",
+      212.0, 0.11, 0.12, 0.09, 0.14, 0.03, { 2, 0, 0, 0, 0 },
+      2, 5, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 5 · 第 10 支 */
+    { "Cambrian Predation", "A stage-5 adaptation that improves reproduction.",
+      216.0, 0.12, 0.12, 0.10, 0.12, 0.02, { 0, 0, 0, 0, 2 },
+      2, 5, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 6 · 第 1 支 */
+    { "Lung", "A stage-6 adaptation that improves light capture.",
+      288.0, 0.13, 0.13, 0.10, 0.14, 0.02, { 2, 0, 0, 0, 1 },
+      0, 6, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 6 · 第 2 支 */
+    { "Tetrapod Limb", "A stage-6 adaptation that improves chemical energy.",
+      294.4, 0.14, 0.13, 0.11, 0.15, 0.02, { 0, 2, 0, 0, 1 },
+      0, 6, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 6 · 第 3 支 */
+    { "Amniotic Egg", "A stage-6 adaptation that improves detritus recycling.",
+      300.8, 0.15, 0.14, 0.09, 0.16, 0.03, { 0, 0, 2, 0, 1 },
+      0, 6, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 6 · 第 4 支 */
+    { "Keratin Scale", "A stage-6 adaptation that improves armour.",
+      307.2, 0.15, 0.12, 0.10, 0.14, 0.02, { 0, 0, 0, 2, 1 },
+      0, 6, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 6 · 第 5 支 */
+    { "Wing Membrane", "A stage-6 adaptation that improves speed.",
+      313.6, 0.13, 0.13, 0.10, 0.15, 0.02, { 1, 1, 0, 0, 1 },
+      0, 6, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 6 · 第 6 支 */
+    { "Seed Coat", "A stage-6 adaptation that improves symbiosis.",
+      320.0, 0.14, 0.13, 0.11, 0.16, 0.03, { 1, 0, 1, 0, 0 },
+      1, 6, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 6 · 第 7 支 */
+    { "Vascular Cambium", "A stage-6 adaptation that improves colony coordination.",
+      326.4, 0.15, 0.14, 0.09, 0.14, 0.02, { 0, 1, 0, 1, 0 },
+      1, 6, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 6 · 第 8 支 */
+    { "Stomata Control", "A stage-6 adaptation that improves storage.",
+      332.8, 0.15, 0.12, 0.10, 0.15, 0.02, { 0, 0, 1, 1, 0 },
+      1, 6, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 6 · 第 9 支 */
+    { "Herbivore Gut", "A stage-6 adaptation that improves defence.",
+      339.2, 0.13, 0.13, 0.10, 0.16, 0.03, { 2, 0, 0, 0, 0 },
+      2, 6, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 6 · 第 10 支 */
+    { "Parental Care", "A stage-6 adaptation that improves reproduction.",
+      345.6, 0.14, 0.13, 0.11, 0.14, 0.02, { 0, 0, 0, 0, 2 },
+      2, 6, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 7 · 第 1 支 */
+    { "Endothermy", "A stage-7 adaptation that improves light capture.",
+      450.0, 0.14, 0.14, 0.11, 0.15, 0.02, { 2, 0, 0, 0, 1 },
+      0, 7, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 7 · 第 2 支 */
+    { "Feather Insulation", "A stage-7 adaptation that improves chemical energy.",
+      460.0, 0.15, 0.15, 0.12, 0.17, 0.03, { 0, 2, 0, 0, 1 },
+      0, 7, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 7 · 第 3 支 */
+    { "Mammary Gland", "A stage-7 adaptation that improves detritus recycling.",
+      470.0, 0.16, 0.15, 0.10, 0.17, 0.03, { 0, 0, 2, 0, 1 },
+      0, 7, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 7 · 第 4 支 */
+    { "Live Birth", "A stage-7 adaptation that improves armour.",
+      480.0, 0.17, 0.13, 0.11, 0.15, 0.02, { 0, 0, 0, 2, 1 },
+      0, 7, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 7 · 第 5 支 */
+    { "Flower Symbiosis", "A stage-7 adaptation that improves speed.",
+      490.0, 0.14, 0.14, 0.11, 0.17, 0.03, { 1, 1, 0, 0, 1 },
+      0, 7, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 7 · 第 6 支 */
+    { "Grass Teeth", "A stage-7 adaptation that improves symbiosis.",
+      500.0, 0.15, 0.15, 0.12, 0.17, 0.03, { 1, 0, 1, 0, 0 },
+      1, 7, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 7 · 第 7 支 */
+    { "Migratory Navigation", "A stage-7 adaptation that improves colony coordination.",
+      510.0, 0.16, 0.15, 0.10, 0.15, 0.02, { 0, 1, 0, 1, 0 },
+      1, 7, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 7 · 第 8 支 */
+    { "Social Roost", "A stage-7 adaptation that improves storage.",
+      520.0, 0.17, 0.13, 0.11, 0.17, 0.03, { 0, 0, 1, 1, 0 },
+      1, 7, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 7 · 第 9 支 */
+    { "Burrowing", "A stage-7 adaptation that improves defence.",
+      530.0, 0.14, 0.14, 0.11, 0.17, 0.03, { 2, 0, 0, 0, 0 },
+      2, 7, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 7 · 第 10 支 */
+    { "Cursorial Leg", "A stage-7 adaptation that improves reproduction.",
+      540.0, 0.15, 0.15, 0.12, 0.15, 0.02, { 0, 0, 0, 0, 2 },
+      2, 7, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 8 · 第 1 支 */
+    { "Agriculture", "A stage-8 adaptation that improves light capture.",
+      720.0, 0.16, 0.15, 0.12, 0.17, 0.03, { 2, 0, 0, 0, 1 },
+      0, 8, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 8 · 第 2 支 */
+    { "Pottery", "A stage-8 adaptation that improves chemical energy.",
+      736.0, 0.17, 0.16, 0.13, 0.18, 0.03, { 0, 2, 0, 0, 1 },
+      0, 8, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 8 · 第 3 支 */
+    { "Metallurgy", "A stage-8 adaptation that improves detritus recycling.",
+      752.0, 0.18, 0.16, 0.11, 0.19, 0.03, { 0, 0, 2, 0, 1 },
+      0, 8, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 8 · 第 4 支 */
+    { "Writing System", "A stage-8 adaptation that improves armour.",
+      768.0, 0.18, 0.15, 0.12, 0.17, 0.03, { 0, 0, 0, 2, 1 },
+      0, 8, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 8 · 第 5 支 */
+    { "Calendar", "A stage-8 adaptation that improves speed.",
+      784.0, 0.16, 0.15, 0.12, 0.18, 0.03, { 1, 1, 0, 0, 1 },
+      0, 8, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 8 · 第 6 支 */
+    { "Currency", "A stage-8 adaptation that improves symbiosis.",
+      800.0, 0.17, 0.16, 0.13, 0.19, 0.03, { 1, 0, 1, 0, 0 },
+      1, 8, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 8 · 第 7 支 */
+    { "Road Network", "A stage-8 adaptation that improves colony coordination.",
+      816.0, 0.18, 0.16, 0.11, 0.17, 0.03, { 0, 1, 0, 1, 0 },
+      1, 8, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 8 · 第 8 支 */
+    { "Siege Engineering", "A stage-8 adaptation that improves storage.",
+      832.0, 0.18, 0.15, 0.12, 0.18, 0.03, { 0, 0, 1, 1, 0 },
+      1, 8, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 8 · 第 9 支 */
+    { "Oral Epic", "A stage-8 adaptation that improves defence.",
+      848.0, 0.16, 0.15, 0.12, 0.19, 0.03, { 2, 0, 0, 0, 0 },
+      2, 8, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 8 · 第 10 支 */
+    { "Law Code", "A stage-8 adaptation that improves reproduction.",
+      864.0, 0.17, 0.16, 0.13, 0.17, 0.03, { 0, 0, 0, 0, 2 },
+      2, 8, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 9 · 第 1 支 */
+    { "Steam Engine", "A stage-9 adaptation that improves light capture.",
+      1260.0, 0.18, 0.16, 0.13, 0.18, 0.03, { 2, 0, 0, 0, 1 },
+      0, 9, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 9 · 第 2 支 */
+    { "Railway", "A stage-9 adaptation that improves chemical energy.",
+      1288.0, 0.18, 0.17, 0.14, 0.20, 0.03, { 0, 2, 0, 0, 1 },
+      0, 9, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 9 · 第 3 支 */
+    { "Telegraph", "A stage-9 adaptation that improves detritus recycling.",
+      1316.0, 0.19, 0.18, 0.12, 0.20, 0.03, { 0, 0, 2, 0, 1 },
+      0, 9, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 9 · 第 4 支 */
+    { "Electric Motor", "A stage-9 adaptation that improves armour.",
+      1344.0, 0.20, 0.16, 0.13, 0.18, 0.03, { 0, 0, 0, 2, 1 },
+      0, 9, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 9 · 第 5 支 */
+    { "Vaccination", "A stage-9 adaptation that improves speed.",
+      1372.0, 0.18, 0.16, 0.13, 0.20, 0.03, { 1, 1, 0, 0, 1 },
+      0, 9, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 9 · 第 6 支 */
+    { "Fertilizer", "A stage-9 adaptation that improves symbiosis.",
+      1400.0, 0.18, 0.17, 0.14, 0.20, 0.03, { 1, 0, 1, 0, 0 },
+      1, 9, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 9 · 第 7 支 */
+    { "Assembly Line", "A stage-9 adaptation that improves colony coordination.",
+      1428.0, 0.19, 0.18, 0.12, 0.18, 0.03, { 0, 1, 0, 1, 0 },
+      1, 9, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 9 · 第 8 支 */
+    { "Radio", "A stage-9 adaptation that improves storage.",
+      1456.0, 0.20, 0.16, 0.13, 0.20, 0.03, { 0, 0, 1, 1, 0 },
+      1, 9, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 9 · 第 9 支 */
+    { "Aviation", "A stage-9 adaptation that improves defence.",
+      1484.0, 0.18, 0.16, 0.13, 0.20, 0.03, { 2, 0, 0, 0, 0 },
+      2, 9, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 9 · 第 10 支 */
+    { "Mass Printing", "A stage-9 adaptation that improves reproduction.",
+      1512.0, 0.18, 0.17, 0.14, 0.18, 0.03, { 0, 0, 0, 0, 2 },
+      2, 9, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 10 · 第 1 支 */
+    { "Ion Drive", "A stage-10 adaptation that improves light capture.",
+      2160.0, 0.19, 0.18, 0.14, 0.20, 0.03, { 2, 0, 0, 0, 1 },
+      0, 10, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 10 · 第 2 支 */
+    { "Closed Life Support", "A stage-10 adaptation that improves chemical energy.",
+      2208.0, 0.20, 0.18, 0.15, 0.21, 0.03, { 0, 2, 0, 0, 1 },
+      0, 10, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 10 · 第 3 支 */
+    { "Asteroid Refining", "A stage-10 adaptation that improves detritus recycling.",
+      2256.0, 0.21, 0.19, 0.13, 0.22, 0.04, { 0, 0, 2, 0, 1 },
+      0, 10, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 10 · 第 4 支 */
+    { "Fusion Reactor", "A stage-10 adaptation that improves armour.",
+      2304.0, 0.21, 0.17, 0.14, 0.20, 0.03, { 0, 0, 0, 2, 1 },
+      0, 10, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 10 · 第 5 支 */
+    { "Space Elevator Cable", "A stage-10 adaptation that improves speed.",
+      2352.0, 0.19, 0.18, 0.14, 0.21, 0.03, { 1, 1, 0, 0, 1 },
+      0, 10, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 10 · 第 6 支 */
+    { "Solar Sail", "A stage-10 adaptation that improves symbiosis.",
+      2400.0, 0.20, 0.18, 0.15, 0.22, 0.04, { 1, 0, 1, 0, 0 },
+      1, 10, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 10 · 第 7 支 */
+    { "Cryo Sleep", "A stage-10 adaptation that improves colony coordination.",
+      2448.0, 0.21, 0.19, 0.13, 0.20, 0.03, { 0, 1, 0, 1, 0 },
+      1, 10, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 10 · 第 8 支 */
+    { "Terraforming Bacteria", "A stage-10 adaptation that improves storage.",
+      2496.0, 0.21, 0.17, 0.14, 0.21, 0.03, { 0, 0, 1, 1, 0 },
+      1, 10, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 10 · 第 9 支 */
+    { "Orbital Ring", "A stage-10 adaptation that improves defence.",
+      2544.0, 0.19, 0.18, 0.14, 0.22, 0.04, { 2, 0, 0, 0, 0 },
+      2, 10, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 10 · 第 10 支 */
+    { "Interstellar Beacon", "A stage-10 adaptation that improves reproduction.",
+      2592.0, 0.20, 0.18, 0.15, 0.20, 0.03, { 0, 0, 0, 0, 2 },
+      2, 10, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 11 · 第 1 支 */
+    { "Neural Interface", "A stage-11 adaptation that improves light capture.",
+      3600.0, 0.20, 0.19, 0.15, 0.21, 0.03, { 2, 0, 0, 0, 1 },
+      0, 11, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 11 · 第 2 支 */
+    { "Whole-Brain Emulation", "A stage-11 adaptation that improves chemical energy.",
+      3680.0, 0.21, 0.19, 0.16, 0.22, 0.04, { 0, 2, 0, 0, 1 },
+      0, 11, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 11 · 第 3 支 */
+    { "Machine Ethics", "A stage-11 adaptation that improves detritus recycling.",
+      3760.0, 0.22, 0.20, 0.14, 0.23, 0.04, { 0, 0, 2, 0, 1 },
+      0, 11, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 11 · 第 4 支 */
+    { "Stellar Lifter", "A stage-11 adaptation that improves armour.",
+      3840.0, 0.23, 0.18, 0.15, 0.21, 0.03, { 0, 0, 0, 2, 1 },
+      0, 11, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 11 · 第 5 支 */
+    { "Matrioshka Shell", "A stage-11 adaptation that improves speed.",
+      3920.0, 0.20, 0.19, 0.15, 0.22, 0.04, { 1, 1, 0, 0, 1 },
+      0, 11, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 11 · 第 6 支 */
+    { "Galactic Relay", "A stage-11 adaptation that improves symbiosis.",
+      4000.0, 0.21, 0.19, 0.16, 0.23, 0.04, { 1, 0, 1, 0, 0 },
+      1, 11, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 11 · 第 7 支 */
+    { "Stellar Engine", "A stage-11 adaptation that improves colony coordination.",
+      4080.0, 0.22, 0.20, 0.14, 0.21, 0.03, { 0, 1, 0, 1, 0 },
+      1, 11, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 11 · 第 8 支 */
+    { "Black Hole Generator", "A stage-11 adaptation that improves storage.",
+      4160.0, 0.23, 0.18, 0.15, 0.22, 0.04, { 0, 0, 1, 1, 0 },
+      1, 11, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 11 · 第 9 支 */
+    { "Quantum Entanglement Net", "A stage-11 adaptation that improves defence.",
+      4240.0, 0.20, 0.19, 0.15, 0.23, 0.04, { 2, 0, 0, 0, 0 },
+      2, 11, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 11 · 第 10 支 */
+    { "Mind Backup", "A stage-11 adaptation that improves reproduction.",
+      4320.0, 0.21, 0.19, 0.16, 0.21, 0.03, { 0, 0, 0, 0, 2 },
+      2, 11, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 12 · 第 1 支 */
+    { "Simulation Ethics", "A stage-12 adaptation that improves light capture.",
+      5850.0, 0.22, 0.20, 0.16, 0.23, 0.03, { 2, 0, 0, 0, 1 },
+      0, 12, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 12 · 第 2 支 */
+    { "Dream Compression", "A stage-12 adaptation that improves chemical energy.",
+      5980.0, 0.23, 0.21, 0.17, 0.24, 0.04, { 0, 2, 0, 0, 1 },
+      0, 12, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 12 · 第 3 支 */
+    { "Memory Crystal", "A stage-12 adaptation that improves detritus recycling.",
+      6110.0, 0.24, 0.21, 0.15, 0.25, 0.04, { 0, 0, 2, 0, 1 },
+      0, 12, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 12 · 第 4 支 */
+    { "Concept Algebra", "A stage-12 adaptation that improves armour.",
+      6240.0, 0.24, 0.19, 0.16, 0.23, 0.03, { 0, 0, 0, 2, 1 },
+      0, 12, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 12 · 第 5 支 */
+    { "Idea Pollination", "A stage-12 adaptation that improves speed.",
+      6370.0, 0.22, 0.20, 0.16, 0.24, 0.04, { 1, 1, 0, 0, 1 },
+      0, 12, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 12 · 第 6 支 */
+    { "Noetic Architecture", "A stage-12 adaptation that improves symbiosis.",
+      6500.0, 0.23, 0.21, 0.17, 0.25, 0.04, { 1, 0, 1, 0, 0 },
+      1, 12, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 12 · 第 7 支 */
+    { "Thought Ecology", "A stage-12 adaptation that improves colony coordination.",
+      6630.0, 0.24, 0.21, 0.15, 0.23, 0.03, { 0, 1, 0, 1, 0 },
+      1, 12, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 12 · 第 8 支 */
+    { "Logic Grafting", "A stage-12 adaptation that improves storage.",
+      6760.0, 0.24, 0.19, 0.16, 0.24, 0.04, { 0, 0, 1, 1, 0 },
+      1, 12, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 12 · 第 9 支 */
+    { "Paradigm Shift", "A stage-12 adaptation that improves defence.",
+      6890.0, 0.22, 0.20, 0.16, 0.25, 0.04, { 2, 0, 0, 0, 0 },
+      2, 12, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 12 · 第 10 支 */
+    { "Cognition Field", "A stage-12 adaptation that improves reproduction.",
+      7020.0, 0.23, 0.21, 0.17, 0.23, 0.03, { 0, 0, 0, 0, 2 },
+      2, 12, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 13 · 第 1 支 */
+    { "Entropy Accounting", "A stage-13 adaptation that improves light capture.",
+      9000.0, 0.24, 0.21, 0.17, 0.24, 0.04, { 2, 0, 0, 0, 1 },
+      0, 13, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 13 · 第 2 支 */
+    { "Multiverse Coupling", "A stage-13 adaptation that improves chemical energy.",
+      9200.0, 0.24, 0.22, 0.18, 0.26, 0.04, { 0, 2, 0, 0, 1 },
+      0, 13, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 13 · 第 3 支 */
+    { "Omega Recursion", "A stage-13 adaptation that improves detritus recycling.",
+      9400.0, 0.25, 0.22, 0.16, 0.27, 0.04, { 0, 0, 2, 0, 1 },
+      0, 13, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 13 · 第 4 支 */
+    { "First-Cause Access", "A stage-13 adaptation that improves armour.",
+      9600.0, 0.26, 0.21, 0.17, 0.24, 0.04, { 0, 0, 0, 2, 1 },
+      0, 13, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 13 · 第 5 支 */
+    { "Observer Collapse", "A stage-13 adaptation that improves speed.",
+      9800.0, 0.24, 0.21, 0.17, 0.26, 0.04, { 1, 1, 0, 0, 1 },
+      0, 13, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 13 · 第 6 支 */
+    { "Time Braiding", "A stage-13 adaptation that improves symbiosis.",
+      10000.0, 0.24, 0.22, 0.18, 0.27, 0.04, { 1, 0, 1, 0, 0 },
+      1, 13, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 13 · 第 7 支 */
+    { "Law Rewriting", "A stage-13 adaptation that improves colony coordination.",
+      10200.0, 0.25, 0.22, 0.16, 0.24, 0.04, { 0, 1, 0, 1, 0 },
+      1, 13, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 13 · 第 8 支 */
+    { "Void Gardening", "A stage-13 adaptation that improves storage.",
+      10400.0, 0.26, 0.21, 0.17, 0.26, 0.04, { 0, 0, 1, 1, 0 },
+      1, 13, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 13 · 第 9 支 */
+    { "Absolute Logic", "A stage-13 adaptation that improves defence.",
+      10600.0, 0.24, 0.21, 0.17, 0.27, 0.04, { 2, 0, 0, 0, 0 },
+      2, 13, -1, -1, -1, -1 },
+    /* 第十五轮：阶段 13 · 第 10 支 */
+    { "Final Integration", "A stage-13 adaptation that improves reproduction.",
+      10800.0, 0.24, 0.22, 0.18, 0.24, 0.04, { 0, 0, 0, 0, 2 },
+      2, 13, -1, -1, -1, -1 },
 };
 
 /* 突变共振：同一谱系同时拥有两个突变时解锁的构筑加成 */
@@ -236,6 +861,22 @@ static const MutationSynergyDef k_synergies[] = {
     { "Chitin Architecture", "Chitin Wall + Chitin Scaffold: a reef that builds itself.",
       MUTATION_CHITIN_WALL, MUTATION_CHITIN_SCAFFOLD,
       0.0, 0.0, 0.0, SYNERGY_CHITIN_CAP, SYNERGY_CHITIN_GROWTH, { 0, 1, 0, 0, 0 } },
+    /* 第十四轮：五条新共振 */
+    { "Thermo Acid Loop", "Heat Resistance + Thermophilic Enzymes: life on hot rock.",
+      MUTATION_HEAT_RESISTANCE, MUTATION_THERMOPHILIC_ENZYMES,
+      0.0, SYNERGY_THERMO_BIOMASS, 0.0, 0.0, 0.0, { 0, 0, 0, 0, 1 } },
+    { "Nitrogen Cycle", "Nitrogen Sense + Nitroplast: a closed nutrient loop.",
+      MUTATION_NITROGEN_SENSE, MUTATION_NITROPLAST,
+      0.0, SYNERGY_NITROGEN_BIOMASS, SYNERGY_NITROGEN_DNA, 0.0, 0.0, { 0, 0, 0, 0, 0 } },
+    { "Silica Lattice", "Chitin Wall + Silica Shell: an armoured glass frame.",
+      MUTATION_CHITIN_WALL, MUTATION_SILICA_SHELL,
+      0.0, 0.0, 0.0, SYNERGY_SILICA_CAP, 0.0, { 0, 1, 0, 0, 0 } },
+    { "Deep Signal", "Neural Signaling + Echolocation: a mind that hears the dark.",
+      MUTATION_NEURAL_SIGNALING, MUTATION_ECHOLOCATION,
+      SYNERGY_DEEP_SIGNAL_ATP, 0.0, SYNERGY_DEEP_SIGNAL_DNA, 0.0, 0.0, { 0, 0, 0, 1, 0 } },
+    { "Cosmic Mind", "Omega Point + Cosmic Awareness: the process sees itself.",
+      MUTATION_OMEGA_POINT, MUTATION_COSMIC_AWARENESS,
+      SYNERGY_COSMIC_MIND_ATP, 0.0, 0.0, SYNERGY_COSMIC_MIND_CAP, 0.0, { 1, 1, 1, 1, 1 } },
 };
 
 #define SYNERGY_COUNT ((int)(sizeof(k_synergies) / sizeof(k_synergies[0])))
@@ -266,6 +907,37 @@ static double late_mutation_multiplier(int mutation_id, int phase)
     return 1.0;
 }
 
+/* 第十五轮：进化商店分段提价。按突变自身可购买阶段取倍率。 */
+static double mutation_phase_band(int phase)
+{
+    if (phase >= MUTATION_COST_BAND_LATE_PHASE) {
+        return MUTATION_COST_BAND_LATE;
+    }
+    if (phase >= MUTATION_COST_BAND_MID_PHASE) {
+        return MUTATION_COST_BAND_MID;
+    }
+    return MUTATION_COST_BAND_EARLY;
+}
+
+double evolution_mutation_atp_cost(const GameState *game, int mutation_id)
+{
+    const MutationDef *def = mutation_get(mutation_id);
+    if (!def || def->min_phase < MUTATION_ATP_MIN_PHASE) {
+        return 0.0;
+    }
+    /* v7 P0-2/4d：按当前主谱系 ATP 收入的 45 秒计价，夹在 [1e7, 5e8] */
+    int slot = evolution_main_slot(game);
+    double rate = slot >= 0 ? evolution_calculate_species_rates(game, slot).atp_per_second : 0.0;
+    double cost = rate * MUTATION_ATP_SECONDS;
+    if (cost < MUTATION_ATP_COST_MIN) {
+        cost = MUTATION_ATP_COST_MIN;
+    }
+    if (cost > MUTATION_ATP_COST_MAX) {
+        cost = MUTATION_ATP_COST_MAX;
+    }
+    return ceil(cost);
+}
+
 /* 第十三轮：少数突变直接加成理念产出。单独成表，避免改动 MutationDef 的
  * 公开结构（A/C 已按旧字段读取）。 */
 typedef struct {
@@ -277,6 +949,11 @@ static const KnowledgeMutation k_knowledge_mutations[] = {
     { MUTATION_COLLECTIVE_MEMORY, 0.30 },
     { MUTATION_SYMBIOTIC_COGNITION, 0.20 },
     { MUTATION_DEEP_TIME_ARCHIVE, 0.20 },
+    /* 第十四轮：高阶认知突变同样直接加理念 */
+    { MUTATION_QUANTUM_COGNITION, 0.30 },
+    { MUTATION_COSMIC_AWARENESS, 0.30 },
+    { MUTATION_MULTIVERSE_TUNING, 0.20 },
+    { MUTATION_ENTROPY_REVERSAL, 0.20 },
 };
 
 #define KNOWLEDGE_MUTATION_COUNT \
@@ -412,6 +1089,17 @@ int evolution_main_stage(const GameState *game)
     return species ? species_phase(species->species_id) : 0;
 }
 
+int evolution_era_stage_cap(const GameState *game)
+{
+    if (game->run.era <= 1) {
+        return ERA_STAGE_CAP_1;
+    }
+    if (game->run.era == 2) {
+        return ERA_STAGE_CAP_2;
+    }
+    return ERA_STAGE_CAP_3;
+}
+
 double evolution_speciation_cost(const GameState *game, int target_species_id)
 {
     double base = species_base_speciation_cost(target_species_id);
@@ -461,8 +1149,9 @@ bool evolution_mutation_available(const GameState *game, int species_slot, int m
 }
 
 /* 第十一轮：被任一物种的分化前置引用的突变视为“必需”。
- * 只有必需突变进入 1.34 成本链，可选突变独立定价，避免买一个可选就把整条链拖贵。 */
-static bool mutation_is_required(int mutation_id)
+ * 只有必需突变进入 1.46 成本链，可选突变独立定价，避免买一个可选就把整条链拖贵。
+ * 第十五轮：公开只读查询，供演示策略区分“门票”和“纯属性突变”。 */
+bool evolution_mutation_is_required(int mutation_id)
 {
     int required[4];
     for (int species_id = 0; species_id < SPECIES_COUNT; ++species_id) {
@@ -476,11 +1165,22 @@ static bool mutation_is_required(int mutation_id)
     return false;
 }
 
+/* 第十五轮：成本链只看“下一个物种还缺多少前置”。
+ * 204 个突变里 130 个是侧支门票；若把它们都算进 owned 计数，
+ * 买一个旁支就会把主线价格指数推高。改为按首个子物种的前置计数，
+ * growth 最多 1.42^4，侧支不再污染主线定价。 */
 static int required_mutation_count(const SpeciesState *species)
 {
+    int children[SPECIES_COUNT];
+    int child_count = species_children(species->species_id, children, SPECIES_COUNT);
+    if (child_count <= 0) {
+        return 0;
+    }
+    int required[4];
+    int required_count = species_required_mutations(children[0], required, 4);
     int count = 0;
-    for (int id = 0; id < MUTATION_COUNT; ++id) {
-        if (species->mutations[id] && mutation_is_required(id)) {
+    for (int i = 0; i < required_count; ++i) {
+        if (species->mutations[required[i]]) {
             ++count;
         }
     }
@@ -498,13 +1198,15 @@ double evolution_mutation_cost_for_slot(const GameState *game, int species_slot,
     if (mutation_id >= MUTATION_CELL_DIFFERENTIATION) {
         base_cost *= EXPANSION_MUTATION_COST_SCALE;
     }
+    /* 第十五轮：按突变可购买阶段分段提价 */
+    base_cost *= mutation_phase_band(def->min_phase);
     int phase = 0;
     double growth = 1.0;
     double first_discount = 1.0;
     if (valid_slot(game, species_slot)) {
         const SpeciesState *species = &game->run.active_species[species_slot];
         phase = species_phase(species->species_id);
-        if (mutation_is_required(mutation_id)) {
+        if (evolution_mutation_is_required(mutation_id)) {
             growth = pow(MUTATION_COST_GROWTH, required_mutation_count(species));
         }
         /* 第十二轮：尚未拥有任何突变时，首个突变 6 折 */
@@ -554,25 +1256,32 @@ static int mutation_weight(const GameState *game, const MutationDef *def)
 static int find_key_mutation(const GameState *game, const SpeciesState *species,
                              const int *pool, int pool_n)
 {
-    int children[SPECIES_COUNT];
-    int child_count = species_children(species->species_id, children, SPECIES_COUNT);
-    if (child_count == 0) {
+    /* 第十二轮（D2）：只要下一阶段还缺必需突变，就强制占一个候选位。
+     * v9 P0-18：主线后继改为显式表（species_main_child），不再用“最小 ID 子物种”；
+     * 并把保底深度封在 MAINLINE_GUARANTEE_MAX_PHASE，避免最深一层变成必得。 */
+    (void)game;
+    int main_child = species_main_child(species->species_id);
+    if (main_child < 0 || species_phase(main_child) > MAINLINE_GUARANTEE_MAX_PHASE) {
         return -1;
     }
-    /* 第十二轮（D2）：不再等生物量门槛——只要下一阶段还缺必需突变，
-     * 就强制占一个候选位，避免“候选池里有 7 个却只开 2 格”造成的关键突变失约。 */
-    (void)game;
-    for (int c = 0; c < child_count; ++c) {
-        int required[4];
-        int required_count = species_required_mutations(children[c], required, 4);
-        for (int r = 0; r < required_count; ++r) {
-            if (species_owns(species, required[r])) {
-                continue;
-            }
-            for (int p = 0; p < pool_n; ++p) {
-                if (pool[p] == required[r]) {
-                    return required[r];
-                }
+    int required[4];
+    int required_count = species_required_mutations(main_child, required, 4);
+    int missing = 0;
+    for (int r = 0; r < required_count; ++r) {
+        if (!species_owns(species, required[r])) {
+            ++missing;
+        }
+    }
+    if (required_count > 0 && missing == 0) {
+        return -1;
+    }
+    for (int r = 0; r < required_count; ++r) {
+        if (species_owns(species, required[r])) {
+            continue;
+        }
+        for (int p = 0; p < pool_n; ++p) {
+            if (pool[p] == required[r]) {
+                return required[r];
             }
         }
     }
@@ -684,7 +1393,8 @@ MutationOfferState evolution_generate_mutation_offer_rng(const GameState *game, 
     double budget = game->run.dna + 15.0 * dna_rate;
     bool affordable = false;
     for (int i = 0; i < chosen_n; ++i) {
-        if (evolution_mutation_cost_for_slot(game, species_slot, chosen[i]) <= budget) {
+        if (evolution_mutation_cost_for_slot(game, species_slot, chosen[i]) <= budget &&
+            game->run.atp >= evolution_mutation_atp_cost(game, chosen[i])) {
             affordable = true;
             break;
         }
@@ -795,8 +1505,14 @@ ActionCode evolution_apply_mutation(GameState *game, int species_slot, int mutat
     if (game->run.dna < cost) {
         return ACTION_NOT_ENOUGH_DNA;
     }
+    /* 第十五轮：阶段 8 起的高阶突变额外收 ATP */
+    double atp_cost = evolution_mutation_atp_cost(game, mutation_id);
+    if (game->run.atp < atp_cost) {
+        return ACTION_NOT_ENOUGH_ATP;
+    }
 
     game->run.dna -= cost;
+    game->run.atp -= atp_cost;
     species->mutations[mutation_id] = true;
     game->run.discovered_mutations[mutation_id] = true;
     game->legacy.codex_mutations[mutation_id] = true;
@@ -820,6 +1536,10 @@ ActionCode evolution_validate_speciation(const GameState *game, int species_slot
     if (target_species_id == parent->species_id ||
         !species_has_parent(target_species_id, parent->species_id)) {
         return ACTION_INVALID_TARGET;
+    }
+    /* v8 P0-17：本纪元阶段封顶后只能横向扩展，不能跨阶段 */
+    if (species_phase(target_species_id) > evolution_era_stage_cap(game)) {
+        return ACTION_REQUIREMENT_NOT_MET;
     }
 
     int required[4];
@@ -934,8 +1654,15 @@ double evolution_capacity_cost(const GameState *game)
         return 0.0;
     }
     SpeciesRates rates = evolution_calculate_species_rates(game, slot);
-    return floor(CAPACITY_COST_PER_CAP * rates.final_population_cap *
-                 pow(CAPACITY_COST_GROWTH, (double)game->run.capacity_levels));
+    /* v8 P0-14：价格按“未含容量加成的上限”计，避免已买容量把下一级价格再推高一次 */
+    double cap_without_capacity =
+        rates.final_population_cap /
+        (1.0 + CAPACITY_GAIN_PER_LEVEL * (double)game->run.capacity_levels);
+    double cost = floor(CAPACITY_COST_PER_CAP * cap_without_capacity *
+                        pow(CAPACITY_COST_GROWTH, (double)game->run.capacity_levels));
+    /* v7 P0-4b：至少相当于当前 ATP 收入的 20 秒，让 ATP 有稳定出口 */
+    double floor_cost = rates.atp_per_second * CAPACITY_ATP_SECONDS;
+    return cost > floor_cost ? cost : floor_cost;
 }
 
 /* 第十一轮：容量双币拆分。前 CAPACITY_BIOMASS_ONLY_LEVELS 级仍只收 Biomass，
@@ -982,8 +1709,8 @@ ActionCode evolution_apply_capacity_upgrade(GameState *game)
 
 double evolution_reserve_cost(const GameState *game)
 {
-    (void)game;
-    return RESERVE_COST_ATP;
+    /* v7 P0-4c：储备改几何价，避免开局 20 秒连买满 */
+    return ceil(RESERVE_COST_ATP * pow(RESERVE_COST_GROWTH, (double)game->run.reserve_levels));
 }
 
 ActionCode evolution_apply_reserve(GameState *game)
@@ -991,13 +1718,14 @@ ActionCode evolution_apply_reserve(GameState *game)
     if (game->phase != PHASE_RUNNING) {
         return ACTION_INVALID_PHASE;
     }
-    if (game->run.reserve_levels >= RESERVE_MAX_LEVEL) {
+    if (RESERVE_MAX_LEVEL >= 0 && game->run.reserve_levels >= RESERVE_MAX_LEVEL) {
         return ACTION_LEVEL_MAXED;
     }
-    if (game->run.atp < RESERVE_COST_ATP) {
+    double cost = evolution_reserve_cost(game);
+    if (game->run.atp < cost) {
         return ACTION_NOT_ENOUGH_ATP;
     }
-    game->run.atp -= RESERVE_COST_ATP;
+    game->run.atp -= cost;
     ++game->run.reserve_levels;
     return ACTION_OK;
 }
@@ -1088,6 +1816,42 @@ double evolution_knowledge_per_second(const GameState *game)
     return total;
 }
 
+/* 第十六轮：洞见——无上限知识升级，价格指数增长，每级 +2% 全产率 */
+double evolution_insight_cost(const GameState *game)
+{
+    return INSIGHT_BASE_COST * pow(INSIGHT_COST_GROWTH, (double)game->run.insight_levels);
+}
+
+int evolution_insight_level(const GameState *game)
+{
+    return game->run.insight_levels;
+}
+
+double evolution_insight_multiplier(const GameState *game)
+{
+    return pow(1.0 + INSIGHT_BONUS_PER_LEVEL, (double)game->run.insight_levels);
+}
+
+ActionCode evolution_apply_insight(GameState *game)
+{
+    if (!game) return ACTION_INVALID_TARGET;
+    if (game->phase != PHASE_RUNNING) {
+        return ACTION_INVALID_PHASE;
+    }
+    double cost = evolution_insight_cost(game);
+    if (game->run.insight_levels < 0 || game->run.insight_levels == INT_MAX
+        || !isfinite(cost) || !isfinite(evolution_insight_multiplier(game) * (1.0 + INSIGHT_BONUS_PER_LEVEL))) {
+        return ACTION_LEVEL_MAXED;
+    }
+    if (!isfinite(game->run.knowledge)) return ACTION_REQUIREMENT_NOT_MET;
+    if (game->run.knowledge < cost) {
+        return ACTION_NOT_ENOUGH_KNOWLEDGE;
+    }
+    game->run.knowledge -= cost;
+    ++game->run.insight_levels;
+    return ACTION_OK;
+}
+
 /* ---------------- 特征与产率 ---------------- */
 
 int evolution_slot_trait_total(const GameState *game, int species_slot, EnvironmentTrait trait)
@@ -1175,11 +1939,12 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
         if (!mutation) {
             continue;
         }
-        mutation_atp += mutation->atp_bonus;
-        mutation_biomass += mutation->biomass_bonus;
-        mutation_dna += mutation->dna_bonus;
-        mutation_cap += mutation->cap_bonus;
-        mutation_growth += mutation->growth_bonus;
+        double bonus_scale = id >= ROUND15_MUTATION_FIRST_ID ? ROUND15_MUTATION_BONUS_SCALE : 1.0;
+        mutation_atp += mutation->atp_bonus * bonus_scale;
+        mutation_biomass += mutation->biomass_bonus * bonus_scale;
+        mutation_dna += mutation->dna_bonus * bonus_scale;
+        mutation_cap += mutation->cap_bonus * bonus_scale;
+        mutation_growth += mutation->growth_bonus * bonus_scale;
         mutation_knowledge += evolution_mutation_knowledge_bonus(id);
     }
 
@@ -1198,6 +1963,8 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
     double diversity = slot_has_synergy(game, species_slot) ? legacy_synergy_multiplier(&game->legacy)
                                                            : 1.0;
     double production = legacy_production_multiplier(&game->legacy);
+    /* 第十六轮：洞见（每级 +2%）与限时增益共同放大四类资源产率 */
+    double insight_buff = evolution_insight_multiplier(game) * buffs_production_multiplier(game);
     double environment = environment_multiplier_for_slot(game, species_slot);
     double population_scale = species->population / 10.0;
     double dna_scale = pow(population_scale, DNA_POPULATION_EXPONENT);
@@ -1235,20 +2002,20 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
     double sub = evolution_sub_upgrade_multiplier(game, species_slot);
     rates.atp_per_second = def->base_atp * population_scale * run_metabolism *
                            (1.0 + mutation_atp) * environment * permanent_atp * diversity *
-                           production * eco_atp * sub;
+                           production * eco_atp * sub * insight_buff;
     rates.biomass_per_second = def->base_biomass * population_scale * run_reproduction *
                                (1.0 + mutation_biomass) * environment * permanent_biomass *
-                               diversity * production * eco_biomass * sub;
+                               diversity * production * eco_biomass * sub * insight_buff;
     double knowledge_scale = pow(population_scale, KNOWLEDGE_POPULATION_EXPONENT);
     /* 第十轮：阶段 0–1 的 DNA 产出 ×1.5，缓解开局饥饿 */
     double early_dna = species_phase(species->species_id) <= EARLY_DNA_MAX_PHASE ? EARLY_DNA_BONUS
                                                                                : 1.0;
     rates.dna_per_second = def->base_dna * dna_scale * run_genome *
                            (1.0 + mutation_dna) * environment * permanent_dna * diversity *
-                           production * eco_dna * sub * early_dna;
+                           production * eco_dna * sub * early_dna * insight_buff;
     rates.knowledge_per_second = def->base_knowledge * knowledge_scale * run_genome *
                                  (1.0 + mutation_knowledge) * environment * production *
-                                 diversity * sub;
+                                 diversity * sub * insight_buff;
 
     double cap = def->base_cap * (1.0 + mutation_cap) * legacy_cap_multiplier(&game->legacy) *
                  syn_cap * key_cap;
@@ -1266,11 +2033,8 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
     double damage = environment_damage_per_second(run->current_environment_id);
     if (damage > 0.0) {
         int stage = species_phase(species->species_id);
-        double stage_scale = 1.0 + CRISIS_DAMAGE_STAGE_SCALE * (double)stage;
-        double reserve_scale = 1.0 - RESERVE_REDUCTION_PER_LEVEL * (double)run->reserve_levels;
-        if (reserve_scale < 0.5) {
-            reserve_scale = 0.5;
-        }
+        double stage_scale = CRISIS_EARLY_SCALE + CRISIS_DAMAGE_STAGE_SCALE * (double)stage;
+        double reserve_scale = reserve_damage_scale(run->reserve_levels);
         event_loss = species->population * damage * (2.0 - environment) * stage_scale;
         event_loss *= CRISIS_DAMAGE_MULTIPLIER;
         if (keystone) {
@@ -1286,3 +2050,4 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
     rates.population_delta_per_second = positive_growth - event_loss;
     return rates;
 }
+

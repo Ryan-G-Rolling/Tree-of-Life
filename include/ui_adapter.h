@@ -38,6 +38,14 @@ void ua_total_rates(const GameState *game, double out[3]);
 
 /* 点击一次能获得多少 ATP（用于按钮上的预期数值提示）。 */
 double ua_click_atp(const GameState *game);
+double ua_insight_cost(const GameState *game);
+/* 洞见当前 / 下一级的全物种产率倍率（1.00 表示尚未投资） */
+double ua_insight_multiplier(const GameState *game);
+double ua_insight_next_multiplier(const GameState *game);
+/* 全部在场物种的理念（Knowledge）每秒产量，顶栏与洞见卡共用 */
+double ua_knowledge_rate(const GameState *game);
+/* 某类限时增益的总时长，用于画皿壁上的剩余时间弧（0 表示一次性资源包） */
+double ua_buff_duration(int buff_type);
 
 /* ================= B 侧：物种 ================= */
 
@@ -59,13 +67,17 @@ const char *ua_fitness_breakdown(const GameState *game, int species_slot, char *
 
 /* ================= B 侧：分化 ================= */
 
-/* 当前主谱系可选的下一物种列表（写入 out，返回个数）。 */
+/* 当前主谱系可选的下一物种列表；返回已写入个数（<= max_out）。 */
 int ua_speciation_children(const GameState *game, int *out, int max_out);
 
 /* 物种的亲本列表：只读分化表，写入 out 并返回个数（<= max_out）。
    初始物种返回 0；一个子代允许有多个亲本（如多细胞群落）。
    UI 只用它画进化树的连线，不在这里判定“能否分化”——那是 ua_speciation_check 的事。 */
 int ua_species_parents(int species_id, int *out, int max_out);
+/* 内容里最高的形态阶段（星图环数按它动态生成，不再写死 11） */
+int ua_max_species_stage(void);
+/* 某物种的全部直接子代（图鉴"相邻"用：让玩家看到下一步能往哪走） */
+int ua_species_child_list(int parent_id, int *out, int max_out);
 
 /* 分化到该物种需要多少 Biomass（已含 Diversification Lv.4 折扣）。 */
 double ua_speciation_cost(const GameState *game, int target_species_id);
@@ -81,6 +93,16 @@ const char *ua_speciation_requirement(int target_species_id, char *buf, int buf_
 const char *ua_mutation_name(int mutation_id);
 const char *ua_mutation_desc(int mutation_id, char *buf, int buf_size);
 bool ua_mutation_is_rare(int mutation_id);
+
+/* 突变共振（同一物种凑齐两个突变才生效的构筑加成）。
+   “突变图谱”弹层要列出本轮已触发的共振，判定必须问 B，UI 不自己比对。 */
+int ua_synergy_count(void);
+const char *ua_synergy_name(int index);
+const char *ua_synergy_desc(int index, char *buf, int buf_size);
+/* 该共振由哪两个突变触发，out[0] / out[1] 为突变 id。 */
+void ua_synergy_pair(int index, int out[2]);
+/* 该物种槽当前是否已激活这条共振。 */
+bool ua_synergy_active(const GameState *game, int species_slot, int index);
 
 /* ================= B 侧：环境 ================= */
 
@@ -147,3 +169,4 @@ void ua_register_font_strings(void);
 void ui_font_register(const char *utf8);
 
 #endif /* UI_ADAPTER_H */
+

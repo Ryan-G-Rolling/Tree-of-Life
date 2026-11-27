@@ -34,7 +34,8 @@ static int valid_flags(const GameState *game)
     if (!valid_bool(&run->mutation_offer.active)
         || !valid_bool(&run->adaptation_shield_used)
         || !valid_bool(&run->adaptation_shield_active)
-        || !valid_bool(&run->reward_claimed)) return 0;
+        || !valid_bool(&run->reward_claimed)
+        || !valid_bool(&run->buff_visible)) return 0;
     for (int i = 0; i < MAX_ACTIVE_SPECIES; ++i) {
         if (!valid_bool(&run->active_species[i].is_main_lineage)) return 0;
         for (int j = 0; j < MAX_MUTATIONS; ++j)
@@ -70,7 +71,22 @@ static int valid_game(const GameState *game)
         || run->max_biomass < run->biomass || run->era < 0
         || run->capacity_levels < 0
         || (CAPACITY_MAX_LEVEL >= 0 && run->capacity_levels > CAPACITY_MAX_LEVEL)
-        || run->reserve_levels < 0 || run->reserve_levels > RESERVE_MAX_LEVEL
+        || run->reserve_levels < 0
+        || (RESERVE_MAX_LEVEL >= 0 && run->reserve_levels > RESERVE_MAX_LEVEL)
+        || !valid_nonnegative(run->buff_spawn_timer)
+        || !valid_nonnegative(run->buff_active_time_left)
+        || !valid_nonnegative(run->buff_clock)
+        || !valid_nonnegative(run->buff_last_rare_time)
+        || !valid_nonnegative(run->buff_total_active_time)
+        || run->buff_collected < 0 || run->buff_rare_collected < 0
+        || run->buff_rare_collected > run->buff_collected
+        || run->buff_active_type < 0 || run->buff_active_type >= BUFF_TYPE_COUNT
+        || (run->buff_active_type == BUFF_INSTANT && run->buff_active_time_left > 0.0)
+        || run->buff_last_rare_time > run->buff_clock
+        || run->buff_total_active_time > run->buff_clock + 1e-6
+        || run->insight_levels < 0
+        || run->buff_visible_type < 0 || run->buff_visible_type >= BUFF_TYPE_COUNT
+        || run->buff_visible_icon < 0 || run->buff_visible_icon >= BUFF_ICON_COUNT
         || run->active_species_count < 1 || run->active_species_count > MAX_ACTIVE_SPECIES
         || run->current_environment_id < 0 || run->current_environment_id >= ENV_COUNT
         || run->next_environment_id < -1 || run->next_environment_id >= ENV_COUNT
@@ -168,3 +184,4 @@ done:
     fclose(file);
     return status;
 }
+

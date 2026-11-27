@@ -11,12 +11,13 @@
 
 #include "../data/balance.h"
 #include "legacy.h"
+#include "buffs.h"
 
 double economy_upgrade_cost(RunUpgradeType upgrade, int current_level)
 {
     double base, growth;
     if (current_level < 0) return INFINITY;
-    if (current_level >= RUN_UPGRADE_MAX_LEVEL) return INFINITY;
+    if (RUN_UPGRADE_MAX_LEVEL >= 0 && current_level >= RUN_UPGRADE_MAX_LEVEL) return INFINITY;
     switch (upgrade) {
     case UPGRADE_METABOLISM:
         base = RUN_UPGRADE_METABOLISM_BASE_COST;
@@ -50,14 +51,15 @@ double economy_run_multiplier(RunUpgradeType upgrade, int level)
 double economy_click_atp(const GameState *game)
 {
     if (!game) return 0.0;
-    /* 点击 = 基础值 × 单轮代谢等级 × 永久点击倍率 × 永久全产率倍率。
+    /* 点击 = 基础值 × 单轮代谢等级 × 永久点击倍率 × 永久全产率倍率 × 限时点击倍率。
        后两项直接取 B 的 legacy_click_multiplier / legacy_atp_multiplier，
        避免 A 再把 1.08 / 1.12 抄一遍。 */
     return BASE_CLICK_ATP
          * economy_run_multiplier(UPGRADE_METABOLISM,
                                   game->run.run_upgrade_levels[UPGRADE_METABOLISM])
          * legacy_click_multiplier(&game->legacy)
-         * legacy_atp_multiplier(&game->legacy);
+         * legacy_atp_multiplier(&game->legacy)
+         * buffs_click_multiplier(game);
 }
 
 int economy_biomass_milestone(double max_biomass)
@@ -65,3 +67,4 @@ int economy_biomass_milestone(double max_biomass)
     /* 里程碑口径只有 B 一份实现：run.max_biomass 派生，不缓存等级字段。 */
     return prestige_biomass_milestone_level(max_biomass);
 }
+

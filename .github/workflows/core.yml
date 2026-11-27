@@ -1,0 +1,24 @@
+name: Core and UI layout checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Core regression with strict warnings
+        run: make test WARN='-Wall -Wextra -Wpedantic -Werror'
+      - name: Memory and undefined behavior checks
+        run: make test-sanitize
+      - name: Fetch official raylib 5.5 declarations for UI checks
+        run: |
+          mkdir -p .local/deps/raylib/include
+          curl --fail --location --retry 3 https://raw.githubusercontent.com/raysan5/raylib/5.5/src/raylib.h -o .local/deps/raylib/include/raylib.h
+      - name: Compile UI and exercise production layouts
+        run: |
+          gcc -std=c11 -Wall -Wextra -Wpedantic -Werror -Wno-unused-parameter -Iinclude -Idata -I.local/deps/raylib/include -fsyntax-only src/ui.c src/screens.c src/ui_adapter.c src/input.c src/main.c src/render.c src/atmosphere.c src/tex.c src/embedded.c src/codex.c
+          make test-layout INC='-Iinclude -Idata -I.local/deps/raylib/include'
+          make build/sanitize/test_ui_layout.exe INC='-Iinclude -Idata -I.local/deps/raylib/include'
+          build/sanitize/test_ui_layout.exe

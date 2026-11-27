@@ -34,17 +34,17 @@ static const EnvironmentDef k_environments[ENV_COUNT] = {
     { "常态海洋", "稳定的水体，没有任何选择压力。",
       TRAIT_NONE, 0, 0.0, 0.0, 0, false, false },
     { "全球变暖", "温度上升，耐热物种维持产出。",
-      TRAIT_HEAT, 2, 45.0, 0.013, 0, false, true },
+      TRAIT_HEAT, 2, 45.0, 0.0130, 0, false, true },
     { "全球变冷", "温度下降，耐寒物种维持产出。",
-      TRAIT_COLD, 2, 45.0, 0.0135, 0, false, true },
+      TRAIT_COLD, 2, 45.0, 0.0122, 0, false, true },
     { "微光期", "光线衰减，光合谱系产出下降。",
-      TRAIT_LOW_LIGHT, 2, 50.0, 0.013, 0, false, true },
+      TRAIT_LOW_LIGHT, 2, 50.0, 0.0115, 0, false, true },
     { "氧气上升", "氧气涌入水体，有氧谱系受益。",
-      TRAIT_OXYGEN, 1, 45.0, 0.015, 0, false, true },
+      TRAIT_OXYGEN, 1, 45.0, 0.0124, 0, false, true },
     { "毒素爆发", "毒素扩散，耐毒物种存活。",
-      TRAIT_TOXIN, 2, 40.0, 0.0145, 0, false, true },
+      TRAIT_TOXIN, 2, 40.0, 0.0148, 0, false, true },
     { "陨石撞击", "天空燃烧，所有谱系同时损失种群。",
-      TRAIT_HIGHEST, 3, 30.0, 0.0245, SPECIATION_METEOR_MIN_STAGE, true, true },
+      TRAIT_HIGHEST, 3, 30.0, 0.0170, SPECIATION_METEOR_MIN_STAGE, true, true },
     /* 第四轮：正面 / 中性随机事件，damage = 0 且不计入危机统计 */
     { "养分上涌", "富养洋流在一段时间内滋养所有谱系。",
       TRAIT_NONE, 0, 40.0, 0.0, 0, false, false },
@@ -61,7 +61,7 @@ static const EnvironmentDef k_environments[ENV_COUNT] = {
       TRAIT_HEAT, 0, 50.0, 0.0, 0, false, false },
     /* 第七轮：阶段 5 之后的工业污染危机 */
     { "工业雾霾", "膨胀的技术圈用颗粒物窒息水体。",
-      TRAIT_TOXIN, 3, 45.0, 0.026, 5, false, true },
+      TRAIT_TOXIN, 3, 45.0, 0.0155, 5, false, true },
 };
 
 static bool valid_environment(int environment_id)
@@ -156,6 +156,10 @@ double environment_multiplier_for_slot(const GameState *game, int species_slot)
     } else if (multiplier > 1.0) {
         multiplier = 1.0 + (multiplier - 1.0) * legacy_positive_multiplier_scale(&game->legacy);
     }
+    /* v8 P0-16：Meteor 的威慑改为事件期间全面减产，而非一次性人口抽签 */
+    if (environment_id == ENV_METEOR_IMPACT) {
+        multiplier *= METEOR_PRODUCTION_SCALE;
+    }
     return multiplier;
 }
 
@@ -175,18 +179,23 @@ static double main_lineage_population(const GameState *game)
 
 /* 单个随机数抽取，排除上一个事件与阶段未解锁的事件。
  * 第三轮：危机轮转——优先抽取本纪元尚未通过的危机类型，
- * 避免同一类型反复出现导致危机种类 C 长期停在 5。 */
+ * 避免同一类型反复出现导致危机种类 C 长期停在 5。
+ * v9 P0-19：危机池按纪元轮换（每纪元 4 类），全清率因此从 2% 回到可追求区间。 */
 static int pick_next_environment(const GameState *game, int exclude_id, int pending_survived_id,
                                  unsigned int *rng_state)
 {
     int candidates[ENV_COUNT];
     int count = 0;
+    unsigned int crisis_mask = era_crisis_mask(game->run.era);
     int stage = evolution_main_stage(game);
     for (int id = 1; id < ENV_COUNT; ++id) {
         if (id == exclude_id) {
             continue;
         }
         if (k_environments[id].min_stage > stage) {
+            continue;
+        }
+        if (k_environments[id].crisis && !(crisis_mask & (1u << id))) {
             continue;
         }
         candidates[count++] = id;
@@ -218,7 +227,13 @@ static int pick_next_environment(const GameState *game, int exclude_id, int pend
     if (unpassed_count > 0) {
         return unpassed[roll % (unsigned int)unpassed_count];
     }
-    return candidates[roll % (unsigned int)count];
+    /* v9 P0-19：本纪元的 4 类危机全部通过后不再重复抽同类危机。
+     * 旧逻辑会一直从“全部候选”里重抽，单局危机次数被拉到 9–10 次，
+     * 每次 50–70% 的通过率连乘后“全清”只剩 0.5–4%。 */
+    if (boon_count > 0) {
+        return boons[roll % (unsigned int)boon_count];
+    }
+    return ENV_NORMAL_OCEAN;
 }
 
 void environment_init_run(GameState *game)
@@ -251,9 +266,11 @@ EnvironmentStep environment_calculate_step(const GameState *game, double dt)
             step.event_ended = true;
             step.ended_environment_id = current;
             if (environment_is_crisis(current)) {
-                /* 第十二轮：通过线按纪元区分，避免开局就被 0.70 打穿低尾 */
-                double pass_ratio = game->run.era <= 1 ? CRISIS_PASS_RATIO_ERA1
-                                                       : CRISIS_PASS_POPULATION_RATIO;
+                /* 第十二轮：通过线按纪元区分；v7：纪元 3 收紧到 0.85 */
+                double pass_ratio = game->run.era <= 1
+                                        ? CRISIS_PASS_RATIO_ERA1
+                                        : (game->run.era == 2 ? CRISIS_PASS_POPULATION_RATIO
+                                                              : CRISIS_PASS_RATIO_ERA3);
                 double threshold =
                     fmax(MIN_ACTIVE_POPULATION,
                          game->run.crisis_start_population * pass_ratio);
@@ -308,11 +325,7 @@ EnvironmentStep environment_calculate_step(const GameState *game, double dt)
             if (ratio > INSTANT_LOSS_MAX) {
                 ratio = INSTANT_LOSS_MAX;
             }
-            double reserve_scale = 1.0 - RESERVE_REDUCTION_PER_LEVEL *
-                                             (double)game->run.reserve_levels;
-            if (reserve_scale < 0.5) {
-                reserve_scale = 0.5;
-            }
+            double reserve_scale = reserve_damage_scale(game->run.reserve_levels);
             step.instant_population_loss_ratio = ratio * reserve_scale;
         }
     } else {
@@ -355,8 +368,15 @@ void environment_apply_step(GameState *game, const EnvironmentStep *step)
                 run->active_species[i].population = population;
             }
         }
-        /* 最低人口从即时损失后的值开始记录 */
-        run->crisis_min_population = main_lineage_population(game);
+        /* 最低人口从即时损失后的值开始记录。
+         * 第十五轮修复（v7 P0-1）：一次性损失型危机（Meteor）的判定基准
+         * 也改为“损失后的人口”，否则阶段 ≥6 时 0.35+0.05×stage 的损失
+         * 会让“最低人口 ≥ 起始×0.70”恒不成立，事件数学上不可通过。 */
+        double baseline = main_lineage_population(game);
+        run->crisis_min_population = baseline;
+        if (step->instant_population_loss_ratio > 0.0) {
+            run->crisis_start_population = baseline;
+        }
     } else {
         run->environment_time_left = step->environment_time_left;
         run->event_interval_left = step->event_interval_left;

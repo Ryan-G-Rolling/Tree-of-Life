@@ -17,6 +17,7 @@
 #include "ui_internal.h"
 #include "ui_adapter.h"
 #include "ui_glyphs.h"
+#include "embedded.h"
 
 /* ================= 调色板 =================
  * 唯一允许出现颜色字面量的地方。界面代码只许引用 COL_* 名字。
@@ -231,7 +232,16 @@ void ui_font_init(void)
     ua_register_font_strings();
     register_ui_strings();
 
-    g_font = LoadFontEx("assets/fonts/ui_zh.ttf", UI_FONT_BASE_SIZE, g_cp, g_cp_count);
+    /* 单文件版把字体编进 exe：LoadFontFromMemory 拿到的是一块只读数据，
+     * 码点表仍然由 ui_font_register 动态攒（与文件版完全一致）。
+     * 普通构建 emb_get() 恒 false，走原来的 LoadFontEx(路径)。 */
+    const unsigned char *emb = NULL;
+    int emb_size = 0;
+    if (emb_get(EMB_FONT, &emb, &emb_size)) {
+        g_font = LoadFontFromMemory(".ttf", emb, emb_size, UI_FONT_BASE_SIZE, g_cp, g_cp_count);
+    } else {
+        g_font = LoadFontEx("assets/fonts/ui_zh.ttf", UI_FONT_BASE_SIZE, g_cp, g_cp_count);
+    }
     if (g_font.texture.id == 0) {
         g_font = GetFontDefault();
         g_font_ready = false;
@@ -418,6 +428,27 @@ void ui_glow(Vector2 c, float radius, Color col, float alpha)
         DrawCircleV(c, radius * k, Fade(col, alpha * 0.10f));
     }
     EndBlendMode();
+}
+
+/* ---------------- 逻辑坐标裁剪 ----------------
+ * 生物图（细胞/组织/行星/奇点）的鞭毛、环轨、喷流会伸到"本体半径"之外，
+ * 只调小半径挡不住全部，必须再加一层硬裁剪，图像才保证落在指定画框内。
+ * scissor 参数是渲染目标像素，逻辑坐标要乘超采样倍数（与星图连线同一套换算）。
+ * raylib 的 scissor 没有栈，begin/end 不能嵌套。 */
+void ui_clip_begin(Rectangle r)
+{
+    int ss = ui_canvas_ss();
+    if (ss < 1) ss = 1;
+    int x = (int)(r.x * (float)ss);
+    int y = (int)(r.y * (float)ss);
+    int w = (int)(r.width * (float)ss + 0.5f);
+    int h = (int)(r.height * (float)ss + 0.5f);
+    BeginScissorMode(x, y, w, h);
+}
+
+void ui_clip_end(void)
+{
+    EndScissorMode();
 }
 
 void ui_bar(Rectangle r, float t, Color fill, Color back)

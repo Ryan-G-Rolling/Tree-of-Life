@@ -16,10 +16,12 @@
  */
 #include <math.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "raylib.h"
 #include "atmosphere.h"
 #include "ui_internal.h"
+#include "embedded.h"
 
 #define ATM_TAU (2.0f * PI)
 
@@ -90,8 +92,18 @@ static bool nebula_ready(void)
 {
     if (g_nebula_tried) return g_nebula.id != 0;
     g_nebula_tried = true;
-    if (!FileExists(NEBULA_PATH)) return false;
-    g_nebula = LoadTexture(NEBULA_PATH);
+    /* 内嵌版直接从内存解码；普通构建仍读文件，改图即可看到效果 */
+    const unsigned char *emb = NULL;
+    int emb_size = 0;
+    if (emb_get(EMB_NEBULA, &emb, &emb_size)) {
+        Image img = LoadImageFromMemory(".png", emb, emb_size);
+        if (!IsImageValid(img)) return false;
+        g_nebula = LoadTextureFromImage(img);
+        UnloadImage(img);
+    } else {
+        if (!FileExists(NEBULA_PATH)) return false;
+        g_nebula = LoadTexture(NEBULA_PATH);
+    }
     if (g_nebula.id == 0 || g_nebula.width <= 0) {
         g_nebula = (Texture2D){ 0 };
         return false;

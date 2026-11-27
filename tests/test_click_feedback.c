@@ -6,13 +6,19 @@
 #include "game.h"
 #include "ui.h"
 #include "ui_internal.h"
+#include "buffs.h"
 
-static void check_click(int run_level, int legacy_level)
+static void check_click(int run_level, int legacy_level, bool boosted)
 {
     GameState game;
     game_init(&game);
     game.run.run_upgrade_levels[UPGRADE_METABOLISM] = run_level;
     game.legacy.levels[LEGACY_METABOLISM] = legacy_level;
+    if (boosted) {
+        game.run.buff_visible = true;
+        game.run.buff_visible_type = BUFF_CLICK;
+        assert(game_apply_action(&game, (GameAction){ .type = ACTION_COLLECT_BUFF }).code == ACTION_OK);
+    }
     memset(&g_ui, 0, sizeof g_ui);
     GameAction click = { ACTION_CLICK_ATP, 0, 0, 0 };
     for (int i = 0; i < 5; ++i) {
@@ -31,10 +37,12 @@ static void check_click(int run_level, int legacy_level)
 
 int main(void)
 {
-    check_click(0, 0);
-    check_click(3, 0);
-    check_click(0, 4);
-    check_click(7, 8);
-    puts("Click feedback: 20 clicks across base/run/legacy/combined bonuses match actual ATP gains");
+    check_click(0, 0, false);
+    check_click(3, 0, false);
+    check_click(0, 4, false);
+    check_click(7, 8, false);
+    check_click(7, 8, true);
+    puts("Click feedback: 25 clicks including an active buff match actual ATP gains");
     return 0;
 }
+
