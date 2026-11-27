@@ -27,7 +27,10 @@ OBSERVED = os.path.join(HERE, "observed.csv")
 B2 = "batch2_scan_round15.csv"
 B3 = "batch3_scan_round15.csv"
 B3X = "batch3_explore_round15.csv"
-CRISIS_IDS = {1, 2, 3, 4, 5, 6, 13}
+# v10 P0-26：危机扩到 11 类（新增 14 酸雨 / 15 辐射尘暴 / 16 海洋酸化 / 17 火山冬天）。
+# 旧口径只统计 1–6、13，纪元 2 的池 {6,13,14,15} 与纪元 3 的池 {1,5,16,17}
+# 会被漏掉一半样本，逐类型通过率与“全清率”都失真。
+CRISIS_IDS = {1, 2, 3, 4, 5, 6, 13, 14, 15, 16, 17}
 
 
 def rows(name, prefix):

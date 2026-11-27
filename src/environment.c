@@ -62,14 +62,21 @@ static const EnvironmentDef k_environments[ENV_COUNT] = {
       TRAIT_COLD, 0, 40.0, 0.0, 0, false, false },
     { "长夏", "持续高温重赏耐热专精。",
       TRAIT_HEAT, 0, 50.0, 0.0, 0, false, false },
-    /* 第七轮：阶段 5 之后的工业污染危机 */
+    /* 第七轮：阶段 5 之后的工业污染危机
+     * v10 收口：1.55% → 1.25%/s。纪元 2 的池只有 {6,13,14,15}，而 13 的通过率
+     * 只有 32%，把纪元 2 的全清率压到 18% 以下（验收 18–45%）。 */
     { "工业雾霾", "膨胀的技术圈用颗粒物窒息水体。",
-      TRAIT_TOXIN, 3, 45.0, 0.0155, 5, false, true },
+      TRAIT_TOXIN, 3, 45.0, 0.0125, 5, false, true },
     /* v10 P0-26：纪元 3 的新危机类型，此前从未在任何纪元出现 */
     { "酸雨沉降", "水体酸化，耐毒谱系在腐蚀中维持产出。",
       TRAIT_TOXIN, 2, 45.0, 0.0070, 0, false, true },
     { "辐射尘暴", "电离辐射穿透水体，只有最全面的适应能保全种群。",
       TRAIT_HIGHEST, 3, 30.0, 0.0160, 5, false, true },
+    /* v10 收口：补到 11 类危机，单局覆盖才有机会达到 10 类 */
+    { "海洋酸化", "碳酸盐饱和线下坠，钙化谱系在酸化水体中艰难维持。",
+      TRAIT_TOXIN, 2, 45.0, 0.0105, 3, false, true },
+    { "火山冬天", "火山灰遮蔽阳光，耐寒与低光适应的谱系才能延续。",
+      TRAIT_COLD, 2, 45.0, 0.0115, 3, false, true },
 };
 
 static bool valid_environment(int environment_id)

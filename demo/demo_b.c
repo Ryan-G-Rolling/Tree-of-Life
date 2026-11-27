@@ -105,8 +105,11 @@ static double target_atp_reserve(void)
 }
 
 /* v10 P0-22：生物量同样需要“门票预留”。时间本位下分化门票 = 45 s 生物量产率，
- * 若基因组 / 容量（也吃生物量）每步都把它扫光，主线永远凑不齐门票。 */
-static double speciation_biomass_reserve(void)
+ * 若基因组 / 容量（也吃生物量）每步都把它扫光，主线永远凑不齐门票。
+ * v10 收口：整张门票全冻结时，生物量差额永远攒不出来，容量在阶段 12/13 一局只能买 1 级；
+ * 但把预留降到 0.5 会让容量在纪元 1 就把开局拖慢一倍（实测首分化 150 → 274 s）。
+ * 折中：基因组建保留整张票，容量只保留 30%——容量吃的是 ATP 为主，生物量份额很小。 */
+static double speciation_biomass_reserve_for(double factor)
 {
     int slot = evolution_main_slot(&g);
     if (slot < 0) {
@@ -116,7 +119,12 @@ static double speciation_biomass_reserve(void)
     if (target < 0 || species_phase(target) <= evolution_main_stage(&g)) {
         return 0.0;
     }
-    return evolution_speciation_cost(&g, target) * 1.2;
+    return evolution_speciation_cost(&g, target) * factor;
+}
+
+static double speciation_biomass_reserve(void)
+{
+    return speciation_biomass_reserve_for(1.2);
 }
 
 static void mark_purchase(void)
@@ -262,8 +270,8 @@ static void try_upgrade_type(int type)
         return;
     }
     if (type == UPGRADE_GENOME) {
-        if (g.run.biomass >= cost * 1.15 &&
-            g.run.biomass - cost * 1.15 >= speciation_biomass_reserve()) {
+        if (g.run.biomass >= cost * 1.02 &&
+            g.run.biomass - cost * 1.02 >= speciation_biomass_reserve()) {
             g.run.biomass -= cost;
             ++g.run.run_upgrade_levels[type];
             mark_purchase();
@@ -271,7 +279,10 @@ static void try_upgrade_type(int type)
         }
         return;
     }
-    if (g.run.atp < cost * 1.15 + target_atp_reserve()) {
+    /* v10 收口：购买门槛 1.15 → 1.02。原来的 15% 余量会让钱包常驻约 1.15 倍单级价格，
+     * 纪元 3 结算时未花比例被抬到 11%（验收 ≤10%）。按“够钱就买”即可，
+     * 价格本身是时间本位，不会因此变贵。 */
+    if (g.run.atp < cost * 1.02 + target_atp_reserve()) {
         return;
     }
     double atp_before = g.run.atp;
@@ -291,7 +302,7 @@ static void try_reserve_step(void)
         return;
     }
     double cost = evolution_reserve_cost(&g);
-    if (g.run.atp < cost * 1.15) {
+    if (g.run.atp < cost * 1.02) {
         return;
     }
     double atp_before = g.run.atp;
@@ -312,10 +323,14 @@ static void try_capacity_step(void)
     if (atp_cost <= 0.0 && biomass_cost <= 0.0) {
         return;
     }
-    if (atp_cost > 0.0 && g.run.atp < atp_cost * 1.15) {
+    if (atp_cost > 0.0 && g.run.atp < atp_cost * 1.02) {
         return;
     }
-    if (biomass_cost > 0.0 && g.run.biomass < biomass_cost * 1.15 + speciation_biomass_reserve()) {
+    /* v10 收口：只有纪元 3 放开容量预留（门票最大、容量最容易饿死）；
+     * 纪元 1/2 仍冻结整张门票，否则容量在阶段 6 之后抢走生物量，阶段 8 抵达率从 98% 掉到 27%。 */
+    double capacity_reserve = g.run.era >= 3 ? 0.55 : 1.20;
+    if (biomass_cost > 0.0 && g.run.biomass < biomass_cost * 1.02 +
+                                                   speciation_biomass_reserve_for(capacity_reserve)) {
         return;
     }
     double atp_before = g.run.atp;
@@ -328,6 +343,7 @@ static void try_capacity_step(void)
 
 static void try_buy_upgrades(void)
 {
+    double before = g_last_purchase_time;
     switch (g_buy_turn % 5) {
     case 0: try_upgrade_type(UPGRADE_METABOLISM); break;
     case 1: try_upgrade_type(UPGRADE_REPRODUCTION); break;
@@ -336,6 +352,18 @@ static void try_buy_upgrades(void)
     default: try_capacity_step(); break;
     }
     ++g_buy_turn;
+    /* v10 收口：轮转没花出去、而钱包已鼓到 4 倍单级价格时，直接买代谢。
+     * 时间本位下每级价格 = N 秒产率，钱包在两次购买之间自然会堆到 1–2 倍价格；
+     * 若某个出口已满级（容量/储备），那一轮就白转，ATP 一路闲置到纪元结束
+     * （实测纪元 3 未花比例 11.3%，超过 10% 验收线）。这条兜底只在高水位触发，
+     * 不改变前中期节奏。 */
+    if (g_last_purchase_time == before) {
+        double cost = upgrade_cost(UPGRADE_METABOLISM,
+                                   g.run.run_upgrade_levels[UPGRADE_METABOLISM]);
+        if (isfinite(cost) && g.run.atp >= cost * 4.0 + target_atp_reserve()) {
+            try_upgrade_type(UPGRADE_METABOLISM);
+        }
+    }
 }
 
 /* 第三轮：显式分化计划。
@@ -846,6 +874,7 @@ static EnvironmentStep simulate_step(double dt)
     g.run.biomass += biomass * dt;
     g.run.dna += dna * dt;
     g.run.knowledge += knowledge * dt;
+    g.run.elapsed_time += dt; /* 与 game.c 固定步一致：DNA 起手斜坡依赖这个时钟 */
     if (g.run.biomass > g.run.max_biomass) {
         g.run.max_biomass = g.run.biomass;
     }
@@ -1186,6 +1215,16 @@ static EraSummary simulate_era(int steps)
     summary.ep = reward.total_points;
     prestige_run_stats(&g, &summary.stages, &summary.mutations, &summary.species,
                        &summary.crises);
+    if (g_quiet) {
+        int slot = evolution_main_slot(&g);
+        if (slot >= 0) {
+            SpeciesRates r = evolution_calculate_species_rates(&g, slot);
+            printf("INC,%d,%d,%.4g,%.4g,%.4g,%.0f,%.0f,%.0f\n", g_batch_index, g.run.era,
+                   r.atp_per_second, r.biomass_per_second, r.dna_per_second,
+                   g.run.active_species[slot].population, r.final_population_cap,
+                   r.atp_per_second * 600.0);
+        }
+    }
     summary.max_biomass = g.run.max_biomass;
     summary.first_speciation = g_first_speciation;
     summary.first_speciation_instant = g_first_speciation_instant;

@@ -19,7 +19,7 @@
  * 第十五轮：一次扩到 186 物种 / 204 突变，结构上限抬到 256 */
 #define MAX_SPECIES 256
 #define MAX_MUTATIONS 256
-#define MAX_ENVIRONMENTS 16
+#define MAX_ENVIRONMENTS 24
 #define MAX_MUTATION_CHOICES 4
 
 /* ---- 02 §5.1 物种编号（Member B 数据表 / Member C 显示） ---- */
@@ -480,6 +480,9 @@ typedef enum {
     /* v10 P0-26：纪元 3 的新危机类型（此前从未在任何纪元出现） */
     ENV_ACID_RAIN,
     ENV_RADIATION_FALLOUT,
+    /* v10 收口：把危机类型扩到 11 类，单局才可能见到 ≥10 类 */
+    ENV_OCEAN_ACIDIFICATION,
+    ENV_VOLCANIC_WINTER,
     ENV_COUNT
 } EnvironmentId;
 

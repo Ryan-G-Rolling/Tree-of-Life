@@ -931,8 +931,11 @@ double evolution_mutation_atp_cost(const GameState *game, int mutation_id)
     double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
     evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
     double cost = atp_rate * MUTATION_ATP_SECONDS;
-    if (cost < MUTATION_ATP_COST_MIN) {
-        cost = MUTATION_ATP_COST_MIN;
+    /* v10：地板必须是“随收入缩放”的相对值。固定的 1e7 在收入压缩后等于
+     * 永远买不起的门票（实测纪元 2 所有 run 卡在阶段 8）。这里改成至少 3 秒产率。 */
+    double floor_cost = atp_rate * 3.0;
+    if (cost < floor_cost) {
+        cost = floor_cost;
     }
     return ceil(cost);
 }
@@ -1101,16 +1104,27 @@ int evolution_era_stage_cap(const GameState *game)
 
 double evolution_speciation_cost(const GameState *game, int target_species_id)
 {
-    /* v10 P0-22：分化门票改时间本位——N × 1.08^阶段 秒的主谱系生物量产率。
-     * 阶段 13 再 ×1.6（P0-24 hard wall）。base_speciation_cost ×0.45 为常数地板。 */
-    double base = species_base_speciation_cost(target_species_id) * SPECIATION_FLOOR_SCALE;
+    int phase = species_phase(target_species_id);
+    /* v10：地板也随阶段压缩；阶段 ≤1 用更大的地板，把“首分化”拉到 150–210 s，
+     * 同时不拖慢阶段 2 之后的时间本位节奏。 */
+    double floor_mult = phase <= 1 ? SPECIATION_EARLY_FLOOR_SCALE : SPECIATION_FLOOR_SCALE;
+    double base = species_base_speciation_cost(target_species_id) * floor_mult *
+                  pow(PHASE_RATE_COMPRESSION, (double)phase);
     double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
     evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
-    int phase = species_phase(target_species_id);
-    double seconds = SPECIATION_TICKET_SECONDS
-                   * pow(SPECIATION_TICKET_PHASE_GROWTH, (double)phase);
+    double seconds = SPECIATION_TICKET_SECONDS;
+    for (int p = 0; p < phase; ++p) {
+        /* v10：阶段 8 之后改用更陡的增长——早期要给“8 个阶段”留时间，
+         * 后期要让阶段 12/13 真正稀缺（实测旧曲线 era3 有 35% 冲到 13）。 */
+        seconds *= p < 8 ? SPECIATION_TICKET_PHASE_GROWTH
+                         : SPECIATION_TICKET_LATE_GROWTH;
+    }
     if (phase >= SPECIATION_HARD_WALL_PHASE) {
         seconds *= SPECIATION_HARD_WALL_MULT;
+    }
+    /* v10 收口：阶段 12 单独溢价——让 11→12 也成为一次取舍（验收 55–80% 抵达率） */
+    if (phase == 12) {
+        seconds *= SPECIATION_PHASE12_MULT;
     }
     double ticket = seconds * biomass_rate;
     double cost = ticket > base ? ticket : base;
@@ -1831,8 +1845,11 @@ double evolution_sub_upgrade_cost(const GameState *game, const SubUpgradeDef *de
     double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
     evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
     double cost = knowledge_rate * SUB_UPGRADE_KNOWLEDGE_SECONDS;
-    if (cost < def->base_knowledge_cost) {
-        cost = def->base_knowledge_cost;
+    /* v10：地板随阶段压缩，否则压缩后中高阶段的子升级永远买不起 */
+    double floor_cost = def->base_knowledge_cost *
+                        pow(PHASE_RATE_COMPRESSION, (double)species_phase(def->species_id));
+    if (cost < floor_cost) {
+        cost = floor_cost;
     }
     return ceil(cost);
 }
@@ -1877,7 +1894,9 @@ double evolution_knowledge_per_second(const GameState *game)
 /* 第十六轮：洞见——无上限知识升级，价格指数增长，每级 +2% 全产率 */
 double evolution_insight_cost(const GameState *game)
 {
-    return INSIGHT_BASE_COST * pow(INSIGHT_COST_GROWTH, (double)game->run.insight_levels);
+    /* v10：洞见地板按“首个产出理念的阶段（6）”压缩，否则压缩后永远买不起 */
+    double base = INSIGHT_BASE_COST * pow(PHASE_RATE_COMPRESSION, 6.0);
+    return base * pow(INSIGHT_COST_GROWTH, (double)game->run.insight_levels);
 }
 
 int evolution_insight_level(const GameState *game)
@@ -2057,24 +2076,32 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
 
     rates.environment_multiplier = environment;
     rates.synergy_active = diversity > 1.0;
+    /* v10：每阶段收入压缩。价格按产率计价，所以压缩不改变节奏，
+     * 只把后期 ATP / 生物量 / 理念的绝对量级收进验收带宽。DNA 不压缩。 */
+    double phase_compress = pow(PHASE_RATE_COMPRESSION, (double)species_phase(species->species_id));
     /* 第九轮：子升级乘算该物种全部产率；阶段 >= 6 的物种产出理念 */
     double sub = evolution_sub_upgrade_multiplier(game, species_slot);
     rates.atp_per_second = def->base_atp * population_scale * run_metabolism *
                            (1.0 + mutation_atp) * environment * permanent_atp * diversity *
-                           production * eco_atp * sub * insight_buff;
+                           production * eco_atp * sub * insight_buff * phase_compress;
     rates.biomass_per_second = def->base_biomass * population_scale * run_reproduction *
                                (1.0 + mutation_biomass) * environment * permanent_biomass *
-                               diversity * production * eco_biomass * sub * insight_buff;
+                               diversity * production * eco_biomass * sub * insight_buff *
+                               phase_compress;
     double knowledge_scale = pow(population_scale, KNOWLEDGE_POPULATION_EXPONENT);
     /* 第十轮：阶段 0–1 的 DNA 产出 ×1.5，缓解开局饥饿 */
     double early_dna = species_phase(species->species_id) <= EARLY_DNA_MAX_PHASE ? EARLY_DNA_BONUS
                                                                                : 1.0;
-    rates.dna_per_second = def->base_dna * dna_scale * DNA_INCOME_SCALE * run_genome *
+    /* v10：DNA 起手斜坡。首突变验收要 35–60 s，但纪元 1 要跑到阶段 8 又需要
+     * 足够的 DNA 总量；用 0→120 s 的斜坡同时满足两者（0.45× 起，120 s 后满额）。 */
+    double dna_ramp = DNA_RAMP_START +
+                      (1.0 - DNA_RAMP_START) * fmin(1.0, run->elapsed_time / DNA_RAMP_SECONDS);
+    rates.dna_per_second = def->base_dna * dna_scale * DNA_INCOME_SCALE * dna_ramp * run_genome *
                            (1.0 + mutation_dna) * environment * permanent_dna * diversity *
                            production * eco_dna * sub * early_dna * insight_buff;
     rates.knowledge_per_second = def->base_knowledge * knowledge_scale * run_genome *
                                  (1.0 + mutation_knowledge) * environment * production *
-                                 diversity * sub * insight_buff;
+                                 diversity * sub * insight_buff * phase_compress;
 
     double cap = def->base_cap * (1.0 + mutation_cap) * legacy_cap_multiplier(&game->legacy) *
                  syn_cap * key_cap;

@@ -62,6 +62,37 @@ static void reset_game(GameState *game, int species_id)
     game->run.next_environment_id = -1;
 }
 
+/* v10：产率/价格的公共缩放因子——阶段压缩与 DNA 起手斜坡。
+ * 测试断言统一从这里取，避免每次调平衡都要重抄一遍常数。 */
+static double test_phase_compress(int phase)
+{
+    return pow(PHASE_RATE_COMPRESSION, (double)phase);
+}
+
+static double test_dna_ramp(const GameState *game)
+{
+    double t = game->run.elapsed_time;
+    double r = t / DNA_RAMP_SECONDS;
+    if (r > 1.0) {
+        r = 1.0;
+    }
+    return DNA_RAMP_START + (1.0 - DNA_RAMP_START) * r;
+}
+
+/* 子升级价格：max(知识产率 × 秒数, 该物种的压缩地板)，向上取整 */
+static double test_sub_upgrade_cost(GameState *game, const SubUpgradeDef *def)
+{
+    double atp = 0.0, biomass = 0.0, knowledge = 0.0;
+    evolution_price_rates(game, &atp, &biomass, &knowledge);
+    double floor_cost = def->base_knowledge_cost *
+                        test_phase_compress(species_phase(def->species_id));
+    double cost = knowledge * SUB_UPGRADE_KNOWLEDGE_SECONDS;
+    if (cost < floor_cost) {
+        cost = floor_cost;
+    }
+    return ceil(cost);
+}
+
 static bool offer_contains(const MutationOfferState *offer, int mutation_id)
 {
     for (int i = 0; i < offer->choice_count; ++i) {
@@ -332,19 +363,31 @@ static void test_speciation(void)
     game.run.biomass = next_cost;
     CHECK(evolution_validate_speciation(&game, 0, SPECIES_ALGAL_EUKARYOTE) == ACTION_OK);
 
-    /* 门票公式：max(16 × 1.06^phase 秒生物量, base × SPECIATION_FLOOR_SCALE) × (1-discount) */
+    /* 门票公式（与 evolution_speciation_cost 同构）：
+     * max(N × Π增长 秒生物量, base × 地板系数 × 压缩^phase) × (1-discount) */
     double atp_r = 0.0, biomass_r = 0.0, knowledge_r = 0.0;
     evolution_price_rates(&game, &atp_r, &biomass_r, &knowledge_r);
-    double raw_ticket = SPECIATION_TICKET_SECONDS *
-                        pow(SPECIATION_TICKET_PHASE_GROWTH, (double)species_phase(SPECIES_ALGAL_EUKARYOTE)) *
-                        biomass_r;
-    double base_floor = species_base_speciation_cost(SPECIES_ALGAL_EUKARYOTE) * SPECIATION_FLOOR_SCALE;
-    CHECK_NEAR(next_cost, floor(fmax(raw_ticket, base_floor)), 1.0);
+    int phase = species_phase(SPECIES_ALGAL_EUKARYOTE);
+    double floor_mult = phase <= 1 ? SPECIATION_EARLY_FLOOR_SCALE : SPECIATION_FLOOR_SCALE;
+    double base_floor = species_base_speciation_cost(SPECIES_ALGAL_EUKARYOTE) * floor_mult *
+                        pow(PHASE_RATE_COMPRESSION, (double)phase);
+    double seconds = SPECIATION_TICKET_SECONDS;
+    for (int p = 0; p < phase; ++p) {
+        seconds *= p < 8 ? SPECIATION_TICKET_PHASE_GROWTH : SPECIATION_TICKET_LATE_GROWTH;
+    }
+    if (phase >= SPECIATION_HARD_WALL_PHASE) {
+        seconds *= SPECIATION_HARD_WALL_MULT;
+    }
+    if (phase == 12) {
+        seconds *= SPECIATION_PHASE12_MULT;
+    }
+    double expected_ticket = floor(fmax(seconds * biomass_r, base_floor));
+    CHECK_NEAR(next_cost, expected_ticket, 1.0);
 
     /* Diversification Lv.4 降低分化成本 15% */
     game.legacy.levels[LEGACY_DIVERSIFICATION] = 4;
     CHECK_NEAR(evolution_speciation_cost(&game, SPECIES_ALGAL_EUKARYOTE),
-               floor(fmax(raw_ticket, base_floor) * 0.85), 1.0);
+               floor(expected_ticket * 0.85), 1.0);
     game.legacy.levels[LEGACY_DIVERSIFICATION] = 0;
 
     /* 保留亲本：后代 60%，亲本 40%，且亲本不再是主谱系 */
@@ -426,8 +469,9 @@ static void test_rates(void)
     SpeciesRates rates = evolution_calculate_species_rates(&game, 0);
     CHECK_NEAR(rates.atp_per_second, 0.80, 0.0001);
     CHECK_NEAR(rates.biomass_per_second, 0.25, 0.0001);
-    /* 第十轮：阶段 0–1 的 DNA 产出 ×1.5；v10 全局 DNA 收入 ×2 */
-    CHECK_NEAR(rates.dna_per_second, 0.12 * DNA_INCOME_SCALE, 0.0001);
+    /* 第十轮：阶段 0–1 的 DNA 产出有早期加成；v10 全局 DNA 收入 ×2 且有起手斜坡 */
+    CHECK_NEAR(rates.dna_per_second,
+               0.08 * EARLY_DNA_BONUS * DNA_INCOME_SCALE * test_dna_ramp(&game), 0.0001);
     CHECK_NEAR(rates.final_population_cap, 80.0, 0.0001);
     CHECK_NEAR(rates.environment_multiplier, 1.0, 0.0001);
     CHECK(!rates.synergy_active);
@@ -932,8 +976,12 @@ static void test_two_species_flow(void)
     CHECK(branch_rates.synergy_active);
     CHECK(main_rates.atp_per_second > 0.0);
     CHECK(branch_rates.atp_per_second > 0.0);
-    CHECK_NEAR(main_rates.atp_per_second, 1.30 * 2.0 * 1.10, 0.0001);
-    CHECK_NEAR(branch_rates.atp_per_second, 0.80 * 2.0 * 1.10, 0.0001);
+    CHECK_NEAR(main_rates.atp_per_second,
+               1.30 * 2.0 * 1.10 * test_phase_compress(species_phase(SPECIES_CYANOBACTERIUM)),
+               0.0001);
+    CHECK_NEAR(branch_rates.atp_per_second,
+               0.80 * 2.0 * 1.10 * test_phase_compress(species_phase(SPECIES_PROTOCELL)),
+               0.0001);
 
     /* 额外分支不推进时代：主谱系仍是阶段 1 */
     CHECK(evolution_main_stage(&game) == 1);
@@ -1159,12 +1207,14 @@ static void test_keystone(void)
     /* 藻类真核：ATP +8% */
     reset_game(&game, SPECIES_ALGAL_EUKARYOTE);
     rates = evolution_calculate_species_rates(&game, 0);
-    CHECK_NEAR(rates.atp_per_second, 2.00 * 1.08, 0.0001);
+    CHECK_NEAR(rates.atp_per_second,
+               2.00 * 1.08 * test_phase_compress(species_phase(SPECIES_ALGAL_EUKARYOTE)), 0.0001);
 
     /* 原生捕食者：DNA +10% */
     reset_game(&game, SPECIES_PROTOZOAN);
     rates = evolution_calculate_species_rates(&game, 0);
-    CHECK_NEAR(rates.dna_per_second, 0.20 * 1.10 * DNA_INCOME_SCALE, 0.0001);
+    CHECK_NEAR(rates.dna_per_second,
+               0.20 * 1.10 * DNA_INCOME_SCALE * test_dna_ramp(&game), 0.0001);
 
     /* 多细胞群落：上限 +10%，增长 +5% */
     reset_game(&game, SPECIES_MULTICELLULAR_COLONY);
@@ -1175,12 +1225,16 @@ static void test_keystone(void)
     reset_game(&game, SPECIES_CYANOBACTERIUM);
     game.run.current_environment_id = ENV_LOW_LIGHT_PERIOD;
     rates = evolution_calculate_species_rates(&game, 0);
-    CHECK_NEAR(rates.atp_per_second, 1.30 * 0.24 * 1.15, 0.0001);
+    CHECK_NEAR(rates.atp_per_second,
+               1.30 * 0.24 * 1.15 * test_phase_compress(species_phase(SPECIES_CYANOBACTERIUM)),
+               0.0001);
 
     reset_game(&game, SPECIES_CHEMOLITHOTROPH);
     game.run.current_environment_id = ENV_TOXIC_BLOOM;
     rates = evolution_calculate_species_rates(&game, 0);
-    CHECK_NEAR(rates.atp_per_second, 1.10 * 0.34 * 1.15, 0.0001);
+    CHECK_NEAR(rates.atp_per_second,
+               1.10 * 0.34 * 1.15 * test_phase_compress(species_phase(SPECIES_CHEMOLITHOTROPH)),
+               0.0001);
 }
 
 static void test_knowledge_and_sub_upgrades(void)
@@ -1193,12 +1247,13 @@ static void test_knowledge_and_sub_upgrades(void)
 
     reset_game(&game, SPECIES_SAPIENT_LIFE); /* 阶段 6，base_knowledge 0.30 */
     rates = evolution_calculate_species_rates(&game, 0);
-    CHECK_NEAR(rates.knowledge_per_second, 0.30, 0.0001); /* 种群 10 -> 规模 1 */
+    CHECK_NEAR(rates.knowledge_per_second, 0.30 * test_phase_compress(6), 0.0001);
+    CHECK_NEAR(evolution_knowledge_per_second(&game), 0.30 * test_phase_compress(6), 0.0001);
 
     game.run.active_species[0].population = 1000.0; /* 规模 100 -> sqrt = 10 */
     rates = evolution_calculate_species_rates(&game, 0);
-    CHECK_NEAR(rates.knowledge_per_second, 3.0, 0.0001);
-    CHECK_NEAR(evolution_knowledge_per_second(&game), 3.0, 0.0001);
+    CHECK_NEAR(rates.knowledge_per_second, 3.0 * test_phase_compress(6), 0.0001);
+    CHECK_NEAR(evolution_knowledge_per_second(&game), 3.0 * test_phase_compress(6), 0.0001);
 
     /* 子升级表：6 个高阶物种各 3 层。v10 P0-22 改时间本位——
      * 价格 = max(地板价, 50 s 知识产率)；本局知识产率 3.0/s → 150 < 地板价，
@@ -1208,23 +1263,27 @@ static void test_knowledge_and_sub_upgrades(void)
     CHECK(first != 0);
     CHECK(first->species_id == SPECIES_SAPIENT_LIFE);
     CHECK(first->tier == 0);
-    CHECK_NEAR(evolution_sub_upgrade_cost(&game, first), 300.0, 0.001);
+    CHECK_NEAR(evolution_sub_upgrade_cost(&game, first), test_sub_upgrade_cost(&game, first),
+               0.001);
     const SubUpgradeDef *second = evolution_sub_upgrade_get(1);
-    CHECK_NEAR(evolution_sub_upgrade_cost(&game, second), 300.0, 0.001);
+    CHECK_NEAR(evolution_sub_upgrade_cost(&game, second), test_sub_upgrade_cost(&game, second),
+               0.001);
     const SubUpgradeDef *last = evolution_sub_upgrade_get(14);
     CHECK(last->species_id == SPECIES_SINGULARITY);
     CHECK(last->tier == 2);
-    CHECK_NEAR(evolution_sub_upgrade_cost(&game, last), 4800.0, 0.001);
+    CHECK_NEAR(evolution_sub_upgrade_cost(&game, last), test_sub_upgrade_cost(&game, last), 0.001);
     /* 第十二轮：阶段 11 追加 3 层，地板价 9600 */
     const SubUpgradeDef *omega = evolution_sub_upgrade_get(17);
     CHECK(omega->species_id == SPECIES_TRANSCENDENCE);
     CHECK(omega->tier == 2);
-    CHECK_NEAR(evolution_sub_upgrade_cost(&game, omega), 9600.0, 0.001);
+    CHECK_NEAR(evolution_sub_upgrade_cost(&game, omega), test_sub_upgrade_cost(&game, omega),
+               0.001);
     /* 第十三轮：两条侧支各 3 层，最后一条为 Stellar Logistics（地板价 2400） */
     const SubUpgradeDef *stellar = evolution_sub_upgrade_get(23);
     CHECK(stellar->species_id == SPECIES_ORBITAL_SWARM);
     CHECK(stellar->tier == 2);
-    CHECK_NEAR(evolution_sub_upgrade_cost(&game, stellar), 2400.0, 0.001);
+    CHECK_NEAR(evolution_sub_upgrade_cost(&game, stellar), test_sub_upgrade_cost(&game, stellar),
+               0.001);
     CHECK(evolution_sub_upgrade_get(30) == 0);
 
     /* 低阶物种没有子升级 */
@@ -1234,27 +1293,29 @@ static void test_knowledge_and_sub_upgrades(void)
 
     /* 理念不足 -> 拒绝且不扣资源 */
     reset_game(&game, SPECIES_SAPIENT_LIFE);
-    game.run.knowledge = 299.0;
+    double cost1 = test_sub_upgrade_cost(&game, first);
+    game.run.knowledge = cost1 - 1.0;
     CHECK(evolution_sub_upgrade_next(&game, 0) == first);
     CHECK(evolution_apply_sub_upgrade(&game, 0) == ACTION_NOT_ENOUGH_KNOWLEDGE);
-    CHECK_NEAR(game.run.knowledge, 299.0, 0.001);
+    CHECK_NEAR(game.run.knowledge, cost1 - 1.0, 0.001);
     CHECK(evolution_sub_upgrade_level(&game, 0) == 0);
 
     /* 购买后逐层推进，乘数生效 */
-    game.run.knowledge = 300.0;
+    game.run.knowledge = cost1;
     CHECK(evolution_apply_sub_upgrade(&game, 0) == ACTION_OK);
     CHECK_NEAR(game.run.knowledge, 0.0, 0.001);
     CHECK(evolution_sub_upgrade_level(&game, 0) == 1);
     CHECK(evolution_sub_upgrade_next(&game, 0) == second);
     CHECK_NEAR(evolution_sub_upgrade_multiplier(&game, 0), 1.35, 0.0001);
 
-    /* 乘数同时作用于 ATP 与理念（智慧生命基石 ATP +15%） */
+    /* 乘数同时作用于 ATP 与理念（智慧生命基石 ATP +15%）；阶段 6 需乘压缩因子 */
     rates = evolution_calculate_species_rates(&game, 0);
-    CHECK_NEAR(rates.atp_per_second, 5.20 * 1.15 * 1.35, 0.0001);
-    CHECK_NEAR(rates.knowledge_per_second, 0.30 * 1.35, 0.0001);
+    CHECK_NEAR(rates.atp_per_second, 5.20 * 1.15 * 1.35 * test_phase_compress(6), 0.0001);
+    CHECK_NEAR(rates.knowledge_per_second, 0.30 * 1.35 * test_phase_compress(6), 0.0001);
 
-    /* 乘数同时作用于三种产率（DNA 不享受阶段 0–1 加成，阶段 6 无加成） */
-    CHECK_NEAR(rates.dna_per_second, 0.70 * 1.35 * DNA_INCOME_SCALE, 0.0001);
+    /* 乘数同时作用于三种产率（DNA 不享受阶段 0–1 加成，阶段 6 无加成，但有起手斜坡） */
+    CHECK_NEAR(rates.dna_per_second,
+               0.70 * 1.35 * DNA_INCOME_SCALE * test_dna_ramp(&game), 0.0001);
 
     /* 买满 3 层后拒绝；总乘数 1.35^3 */
     game.run.knowledge = 20000.0;
@@ -1386,17 +1447,19 @@ static void test_buffs_and_insight(void)
     }
     CHECK(late_rare);
 
-    /* 洞见：价格指数增长，每级 +2% 产率，知识不足时拒绝 */
+    /* 洞见：价格指数增长，每级 +2% 产率，知识不足时拒绝。
+     * v10：基价再乘阶段 6 的压缩因子（与子升级地板同一套缩放）。 */
     reset_game(&game, SPECIES_SAPIENT_LIFE);
-    CHECK_NEAR(evolution_insight_cost(&game), INSIGHT_BASE_COST, 1e-6);
-    game.run.knowledge = INSIGHT_BASE_COST - 1.0;
+    double insight0 = INSIGHT_BASE_COST * pow(PHASE_RATE_COMPRESSION, 6.0);
+    CHECK_NEAR(evolution_insight_cost(&game), insight0, 1e-6);
+    game.run.knowledge = insight0 - 1.0;
     CHECK(evolution_apply_insight(&game) == ACTION_NOT_ENOUGH_KNOWLEDGE);
     CHECK(game.run.insight_levels == 0);
-    game.run.knowledge = INSIGHT_BASE_COST;
+    game.run.knowledge = insight0;
     CHECK(evolution_apply_insight(&game) == ACTION_OK);
     CHECK(game.run.insight_levels == 1);
     CHECK_NEAR(game.run.knowledge, 0.0, 1e-6);
-    CHECK_NEAR(evolution_insight_cost(&game), INSIGHT_BASE_COST * INSIGHT_COST_GROWTH, 1e-6);
+    CHECK_NEAR(evolution_insight_cost(&game), insight0 * INSIGHT_COST_GROWTH, 1e-6);
     CHECK_NEAR(evolution_insight_multiplier(&game), 1.0 + INSIGHT_BONUS_PER_LEVEL, 1e-9);
 
     SpeciesRates with_insight = evolution_calculate_species_rates(&game, 0);
@@ -1511,10 +1574,11 @@ static void test_round10_economy(void)
     /* 早期 DNA 加成只作用于阶段 0–1 */
     reset_game(&game, SPECIES_CYANOBACTERIUM); /* 阶段 1 */
     SpeciesRates rates = evolution_calculate_species_rates(&game, 0);
-    CHECK_NEAR(rates.dna_per_second, 0.10 * 1.5 * DNA_INCOME_SCALE, 0.0001);
+    CHECK_NEAR(rates.dna_per_second,
+               0.10 * EARLY_DNA_BONUS * DNA_INCOME_SCALE * test_dna_ramp(&game), 0.0001);
     reset_game(&game, SPECIES_ALGAL_EUKARYOTE); /* 阶段 2 */
     rates = evolution_calculate_species_rates(&game, 0);
-    CHECK_NEAR(rates.dna_per_second, 0.16 * DNA_INCOME_SCALE, 0.0001);
+    CHECK_NEAR(rates.dna_per_second, 0.16 * DNA_INCOME_SCALE * test_dna_ramp(&game), 0.0001);
 }
 
 /* 可达性不动点：只依赖数据表，枚举“理论上是否存在一条合法路径”。
@@ -1945,20 +2009,20 @@ static void test_round15_content(void)
         CHECK(mutation_per_stage[stage] >= 10);
     }
 
-    /* 高阶突变收 ATP（45 s 产率，1e7 地板；v10 删除 5e8 上限），低阶不收 */
+    /* 高阶突变收 ATP（N 秒产率；v10 起地板改为 3 秒产率，不再有 1e7 绝对值），低阶不收 */
     GameState atp_game;
     reset_game(&atp_game, SPECIES_PROTOCELL);
     CHECK_NEAR(evolution_mutation_atp_cost(&atp_game, MUTATION_CELL_MEMBRANE), 0.0, 1e-9);
     double atp_low = evolution_mutation_atp_cost(&atp_game, MUTATION_ION_DRIVE);
     double atp_high = evolution_mutation_atp_cost(&atp_game, MUTATION_ENTROPY_REVERSAL);
-    CHECK(atp_low >= MUTATION_ATP_COST_MIN);
-    CHECK(atp_high >= MUTATION_ATP_COST_MIN);
-    /* 公式核对：45 s × 定价产率，不足 1e7 时取地板 */
+    CHECK(atp_low > 0.0);
+    CHECK(atp_high > 0.0);
+    /* 公式核对：N 秒 × 定价产率，且不低于 3 秒产率的地板 */
     double pr_atp = 0.0, pr_biomass = 0.0, pr_knowledge = 0.0;
     evolution_price_rates(&atp_game, &pr_atp, &pr_biomass, &pr_knowledge);
     double expected_ticket = pr_atp * MUTATION_ATP_SECONDS;
-    if (expected_ticket < MUTATION_ATP_COST_MIN) {
-        expected_ticket = MUTATION_ATP_COST_MIN;
+    if (expected_ticket < pr_atp * 3.0) {
+        expected_ticket = pr_atp * 3.0;
     }
     CHECK_NEAR(evolution_mutation_atp_cost(&atp_game, MUTATION_ION_DRIVE),
                ceil(expected_ticket), 1.0);
