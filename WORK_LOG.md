@@ -565,3 +565,4 @@ G3 末/中 = 0.872/0.837 = **1.042** PASS；G4 物种中位 **17**（P10 17 / P9
 
 - **未完成**：P1-13 `src/screens.c` 拆分仍按 v19 记录保留为未做；本轮未重跑 1000 种子生产批次，
   验收数据沿用现有 `tools/reports/batch*_round15.csv`。
+- **同步结果**：本轮提交 `cf02a5a` 已 push 到 `origin/main`（`b8c9d5e..cf02a5a`）。
