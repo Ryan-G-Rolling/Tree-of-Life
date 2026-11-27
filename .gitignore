@@ -35,3 +35,6 @@ assets/fonts/
 # 系统文件
 Thumbs.db
 desktop.ini
+
+# 智能体工作区数据（不参与交付）
+.workbuddy/
