@@ -38,6 +38,7 @@ void ua_total_rates(const GameState *game, double out[3]);
 
 /* 点击一次能获得多少 ATP（用于按钮上的预期数值提示）。 */
 double ua_click_atp(const GameState *game);
+double ua_insight_cost(const GameState *game);
 
 /* ================= B 侧：物种 ================= */
 
@@ -59,7 +60,7 @@ const char *ua_fitness_breakdown(const GameState *game, int species_slot, char *
 
 /* ================= B 侧：分化 ================= */
 
-/* 当前主谱系可选的下一物种列表（写入 out，返回个数）。 */
+/* 当前主谱系可选的下一物种列表；返回已写入个数（<= max_out）。 */
 int ua_speciation_children(const GameState *game, int *out, int max_out);
 
 /* 物种的亲本列表：只读分化表，写入 out 并返回个数（<= max_out）。
@@ -157,3 +158,4 @@ void ua_register_font_strings(void);
 void ui_font_register(const char *utf8);
 
 #endif /* UI_ADAPTER_H */
+

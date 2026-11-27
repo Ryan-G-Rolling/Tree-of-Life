@@ -158,6 +158,8 @@ static bool action_needs_game(UiButtonId id)
     case UI_BTN_CONFIRM_END_ERA:
     case UI_BTN_BUY_LEGACY:
     case UI_BTN_START_NEW_RUN:
+    case UI_BTN_COLLECT_BUFF:
+    case UI_BTN_BUY_INSIGHT:
         return true;
     default:
         return false;
@@ -168,6 +170,8 @@ static void fill_action(const UiButton *b, GameAction *out)
 {
     memset(out, 0, sizeof(*out));
     switch (b->id) {
+    case UI_BTN_COLLECT_BUFF:     out->type = ACTION_COLLECT_BUFF; break;
+    case UI_BTN_BUY_INSIGHT:      out->type = ACTION_BUY_INSIGHT; break;
     case UI_BTN_CLICK:            out->type = ACTION_CLICK_ATP; break;
     case UI_BTN_UPGRADE:          out->type = ACTION_BUY_RUN_UPGRADE; out->target_id = b->target_id; break;
     case UI_BTN_OPEN_MUTATION:    out->type = ACTION_GENERATE_MUTATION_OFFER; out->target_species_slot = b->target_id; break;
@@ -192,12 +196,20 @@ static void handle_local_button(const UiButton *b, const GameState *game)
             break;
         }
         g_ui.overlay = UI_OVL_SPECIATION;
+        g_ui.speciation_page = 0;
+        int children[SPECIES_COUNT];
+        int n = ua_speciation_children(game, children, SPECIES_COUNT);
+        for (int i = 0; i < n; ++i)
+            if (children[i] == b->target_id) g_ui.speciation_page = i / UI_SPECIATION_PAGE_SIZE;
         g_ui.ovl_t = 0.0f;
         g_ui.keep_parent = (game->legacy.levels[LEGACY_DIVERSIFICATION] >= 2) ? 1 : 0;
         break;
     }
     case UI_BTN_TOGGLE_KEEP_PARENT:
         g_ui.keep_parent = g_ui.keep_parent ? 0 : 1;
+        break;
+    case UI_BTN_SPECIATION_PAGE:
+        g_ui.speciation_page = b->option;
         break;
     case UI_BTN_OPEN_CODEX:
         g_ui.overlay = UI_OVL_CODEX;
@@ -533,6 +545,14 @@ bool ui_update(const GameState *game, GameAction *pending_action)
             g_ui.ovl_t = 0.0f;
             if (pending_action) { pending_action->type = ACTION_GENERATE_MUTATION_OFFER; has_action = true; }
         }
+        if (pending_action && input_key_pressed(KEY_SEVEN)) {
+            pending_action->type = ACTION_BUY_INSIGHT;
+            has_action = true;
+        }
+        if (pending_action && input_key_pressed(KEY_B)) {
+            pending_action->type = ACTION_COLLECT_BUFF;
+            has_action = true;
+        }
         if (input_key_pressed(KEY_E)) {
             if (pending_action) { pending_action->type = ACTION_OPEN_END_ERA; has_action = true; }
         }
@@ -580,6 +600,12 @@ void ui_notify_result(const GameState *game, GameAction action, ActionResult res
         }
         case ACTION_BUY_RUN_UPGRADE:
             toast("升级完成", false, 1.4f);
+            break;
+        case ACTION_COLLECT_BUFF:
+            toast("已领取随机奖励", false, 2.0f);
+            break;
+        case ACTION_BUY_INSIGHT:
+            toast("洞见升级完成，全产率提升", false, 2.0f);
             break;
         case ACTION_GENERATE_MUTATION_OFFER:
             toast("候选已生成：本次选择的候选不会刷新", false, 2.4f);
@@ -834,3 +860,4 @@ void ui_debug_capture(const GameState *game, const char *path)
     ExportImage(image, path);
     UnloadImage(image);
 }
+

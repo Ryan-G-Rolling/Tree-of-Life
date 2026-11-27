@@ -11,6 +11,7 @@
 #include "environment.h"
 #include "evolution.h"
 #include "legacy.h"
+#include "buffs.h"
 
 /* Rendering time is transient; only completed 0.1 s steps enter the save. */
 static double step_remainder = 0.0;
@@ -44,6 +45,7 @@ static void reset_run(GameState *game, unsigned int seed)
     if (era > 0) game->run.dna = LEGACY_STARTING_DNA;
     game->run.max_biomass = game->run.biomass;
     environment_init_run(game);
+    buffs_init_run(game);
     game->legacy.codex_species[0] = true;
     game->phase = PHASE_RUNNING;
     game_reset_timing();
@@ -121,6 +123,7 @@ static bool fixed_step(GameState *game)
         || environment.instant_population_loss_ratio < 0.0
         || environment.instant_population_loss_ratio > 1.0) return false;
     environment_apply_step(&next, &environment);
+    buffs_update(&next, FIXED_STEP_SECONDS);
     *game = next;
     return true;
 }
@@ -147,6 +150,16 @@ ActionResult game_apply_action(GameState *game, GameAction action)
     ActionResult answer = result(ACTION_OK, 0.0, action.target_id);
 
     switch (action.type) {
+    case ACTION_COLLECT_BUFF:
+    case ACTION_BUY_INSIGHT: {
+        if (game->phase != PHASE_RUNNING) return result(ACTION_INVALID_PHASE, 0.0, -1);
+        ActionCode code = action.type == ACTION_COLLECT_BUFF
+                        ? buffs_collect(&next) : evolution_apply_insight(&next);
+        if (code != ACTION_OK) return result(code, 0.0, -1);
+        answer.amount_spent = action.type == ACTION_BUY_INSIGHT
+                            ? game->run.knowledge - next.run.knowledge : 0.0;
+        break;
+    }
     case ACTION_CLICK_ATP:
         if (game->phase != PHASE_RUNNING) return result(ACTION_INVALID_PHASE, 0.0, -1);
         next.run.atp += economy_click_atp(game);
@@ -248,3 +261,4 @@ ActionResult game_apply_action(GameState *game, GameAction action)
     *game = next;
     return answer;
 }
+

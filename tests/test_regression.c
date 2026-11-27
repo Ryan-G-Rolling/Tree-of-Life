@@ -9,10 +9,11 @@
 #include "legacy.h"
 #include "save.h"
 #include "balance.h"
+#include "buffs.h"
 static ActionResult act(GameState *g,ActionType type,int id,int option) {
     return game_apply_action(g,(GameAction){type,0,id,option});
 }
-static void seed(GameState *g,unsigned int rng) { game_init(g);g->run.rng_state=rng;environment_init_run(g); }
+static void seed(GameState *g,unsigned int rng) { game_init(g);g->run.rng_state=rng;environment_init_run(g);buffs_init_run(g); }
 static void test_actions_and_save(void) {
     GameState g;seed(&g,77);
     assert(g.run.era==1 && g.run.next_environment_id>0);
@@ -96,7 +97,7 @@ static void test_natural_playthrough(void) {
                 if(act(&g,ACTION_BUY_RUN_UPGRADE,u,0).code==ACTION_OK)buys++;
         }
         if(!g.run.mutation_offer.active)act(&g,ACTION_GENERATE_MUTATION_OFFER,0,0);
-        int children[8],n=species_children(g.run.active_species[0].species_id,children,8);
+        int children[SPECIES_COUNT],n=species_children(g.run.active_species[0].species_id,children,SPECIES_COUNT);
         int selected=-1;
         /* Buy offered prerequisites first, then any affordable candidate. */
         for(int i=0;i<g.run.mutation_offer.choice_count;i++) {
@@ -120,3 +121,4 @@ static void test_natural_playthrough(void) {
     printf("Natural 60-minute run: stage %d, %d mutations, %d speciations, %d upgrades, reward %d EP\n",evolution_main_stage(&g),mutations,splits,buys,r.total_points);
 }
 int main(void) { test_actions_and_save();test_crisis_and_chunks();test_natural_playthrough();puts("All real A+B integration checks passed");return 0; }
+

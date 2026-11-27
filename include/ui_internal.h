@@ -70,6 +70,9 @@ typedef enum {
     UI_BTN_CODEX_TAB,           /* option = 0 物种 / 1 突变 / 2 记录 */
     UI_BTN_STORE_TAB,           /* 主界面商店页签：option = 0 机能 / 1 分化 */
     UI_BTN_INFO_TAB,            /* 情报面板页签：option = 0 下一步 / 1 产出 / 2 纪录 */
+    UI_BTN_SPECIATION_PAGE,
+    UI_BTN_COLLECT_BUFF,
+    UI_BTN_BUY_INSIGHT,
     UI_BTN_COUNT
 } UiButtonId;
 
@@ -86,7 +89,8 @@ typedef struct {
     float hover;
 } UiButton;
 
-#define MAX_UI_BUTTONS 32
+#define MAX_UI_BUTTONS (MAX_SPECIES + 64)
+#define UI_SPECIATION_PAGE_SIZE 4
 
 typedef struct {
     UiButton items[MAX_UI_BUTTONS];
@@ -125,6 +129,7 @@ typedef struct {
     int store_tab;    /* 主界面商店：0 机能升级 / 1 分支分化 */
     int info_tab;     /* 主界面情报面板：0 下一步 / 1 产出 / 2 纪录 */
     int tree_sel;     /* 进化树选中的物种，-1 表示跟随主谱系 */
+    int speciation_page;
 
     /* 产出曲线：三条资源各自 72 点环形缓冲（每 0.25s 采一次 = 18 秒窗口）。
      * 只用于画面，不参与任何数值计算。 */
@@ -314,3 +319,4 @@ void ui_debug_capture(const GameState *game, const char *path);
 bool ui_debug_map_button(int id, int target, int option, GameAction *out);
 
 #endif /* UI_INTERNAL_H */
+

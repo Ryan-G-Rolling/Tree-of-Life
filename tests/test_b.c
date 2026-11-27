@@ -1753,7 +1753,7 @@ static void test_round13_content_and_fuzz(void)
                 int count = species_children(fuzz.run.active_species[0].species_id, children,
                                              SPECIES_COUNT);
                 for (int c = 0; c < count; ++c) {
-                    int target = children[((int)roll + c) % count];
+                    int target = children[(roll % (unsigned int)count + (unsigned int)c) % (unsigned int)count];
                     if (evolution_validate_speciation(&fuzz, 0, target) == ACTION_OK) {
                         evolution_apply_speciation(&fuzz, 0, target, 0);
                         break;
@@ -2050,3 +2050,4 @@ int main(int argc, char **argv)
     }
     return g_failures == 0 ? 0 : 1;
 }
+

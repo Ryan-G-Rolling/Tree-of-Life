@@ -9,6 +9,8 @@
 #include "buffs.h"
 #include "balance.h"
 #include "evolution.h"
+#include <limits.h>
+#include <math.h>
 
 static double spawn_interval(RunState *run)
 {
@@ -68,7 +70,7 @@ void buffs_init_run(GameState *game)
 
 void buffs_update(GameState *game, double dt)
 {
-    if (!game || game->phase != PHASE_RUNNING || dt <= 0.0) {
+    if (!game || game->phase != PHASE_RUNNING || !isfinite(dt) || dt <= 0.0) {
         return;
     }
     RunState *run = &game->run;
@@ -106,12 +108,16 @@ ActionCode buffs_collect(GameState *game)
     if (game->phase != PHASE_RUNNING) {
         return ACTION_INVALID_PHASE;
     }
-    RunState *run = &game->run;
+    RunState pending = game->run;
+    RunState *run = &pending;
     if (!run->buff_visible) {
         return ACTION_INVALID_TARGET;
     }
 
     int type = run->buff_visible_type;
+    if (type < 0 || type >= BUFF_TYPE_COUNT) return ACTION_INVALID_TARGET;
+    if (run->buff_collected == INT_MAX || run->buff_rare_collected == INT_MAX)
+        return ACTION_REQUIREMENT_NOT_MET;
     if (type == BUFF_INSTANT) {
         double atp_rate = 0.0;
         double biomass_rate = 0.0;
@@ -128,6 +134,10 @@ ActionCode buffs_collect(GameState *game)
         run->biomass += biomass_rate * BUFF_INSTANT_BIOMASS_SECONDS;
         run->dna += dna_rate * BUFF_INSTANT_DNA_SECONDS;
         run->knowledge += knowledge_rate * BUFF_INSTANT_KNOWLEDGE_SECONDS;
+        if (!isfinite(run->atp) || !isfinite(run->biomass)
+            || !isfinite(run->dna) || !isfinite(run->knowledge))
+            return ACTION_REQUIREMENT_NOT_MET;
+        if (run->biomass > run->max_biomass) run->max_biomass = run->biomass;
     } else {
         /* 新限时增益覆盖旧增益，避免叠乘失控 */
         run->buff_active_type = type;
@@ -143,6 +153,7 @@ ActionCode buffs_collect(GameState *game)
         ++run->buff_rare_collected;
     }
     run->buff_spawn_timer = spawn_interval(run);
+    game->run = pending;
     return ACTION_OK;
 }
 
@@ -179,15 +190,15 @@ const char *buffs_type_name(int buff_type)
 {
     switch (buff_type) {
     case BUFF_PRODUCTION:
-        return "Resource Bloom";
+        return "资源涌流";
     case BUFF_PRODUCTION_STRONG:
-        return "Hyper Bloom";
+        return "强效涌流";
     case BUFF_CLICK:
-        return "Click Surge";
+        return "点击强化";
     case BUFF_INSTANT:
-        return "Nutrient Cache";
+        return "资源补给";
     default:
-        return "None";
+        return "无";
     }
 }
 
@@ -195,14 +206,15 @@ const char *buffs_icon_name(int icon)
 {
     switch (icon) {
     case BUFF_ICON_CELL:
-        return "Cell";
+        return "光球";
     case BUFF_ICON_DNA:
-        return "Glowing DNA";
+        return "光链";
     case BUFF_ICON_VESICLE:
-        return "Vesicle";
+        return "气泡";
     case BUFF_ICON_SPORE:
-        return "Spore";
+        return "星点";
     default:
-        return "Cell";
+        return "光球";
     }
 }
+

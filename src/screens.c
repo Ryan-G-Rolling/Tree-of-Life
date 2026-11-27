@@ -19,6 +19,7 @@
 #include "ui_internal.h"
 #include "ui_adapter.h"
 #include "atmosphere.h"
+#include "buffs.h"
 
 /* ================= 通用小工具 ================= */
 
@@ -2090,8 +2091,8 @@ static void info_content_next(const GameState *game, Rectangle r)
     float y = r.y + 38.0f;
     float x = r.x + S_PAD;
 
-    int children[4];
-    int n = ua_speciation_children(game, children, 4);
+    int children[SPECIES_COUNT];
+    int n = ua_speciation_children(game, children, SPECIES_COUNT);
     int ready = -1;
     for (int i = 0; i < n; ++i) {
         if (ua_speciation_check(game, children[i]) == ACTION_OK) { ready = children[i]; break; }
@@ -2367,7 +2368,7 @@ static void draw_shop_upgrade(const GameState *game, int type, Rectangle r)
     }
 
     /* 快捷键角标 */
-    char key[8];
+    char key[16];
     snprintf(key, sizeof(key), "%d", type + 1);
     Rectangle kb = { tile.x + tile.width - 18.0f, tile.y + tile.height - 18.0f, 18.0f, 18.0f };
     ui_panel(kb, 5.0f, Fade(COL_BG_DEEP, 0.85f), Fade(COL_LINE, 1.0f));
@@ -2418,48 +2419,6 @@ static void draw_shop_branch(const GameState *game, int child, Rectangle r)
                   ok && afford ? COL_TEXT : COL_FAINT);
 }
 
-static void draw_shop_footer(const GameState *game, Rectangle r)
-{
-    int counts[5];
-    ua_era_breakdown(game, counts);
-    char line[96];
-    snprintf(line, sizeof(line), "阶段 %d · 突变 %d · 物种 %d · 危机 %d",
-             counts[0], counts[1], counts[2], counts[3]);
-    ui_text(line, r.x + 4.0f, r.y + 8.0f, F_CAPTION, COL_FAINT);
-
-    EraReward reward;
-    ua_era_reward(game, &reward);
-    char ep[32];
-    snprintf(ep, sizeof(ep), "结算 %d EP", reward.total_points);
-    ui_text_right(ep, r.x + r.width - 4.0f, r.y + 6.0f, F_BODY, COL_EP);
-
-    /* 纪元进度条：五项得分各占多少，一眼看出下一分从哪来 */
-    {
-        int counts[5];
-        ua_era_breakdown(game, counts);
-        double pts[5] = { 2.0 * counts[0], counts[1] / 3.0, counts[2] / 2.0,
-                          (double)(counts[3] > 3 ? 3 : counts[3]), (double)counts[4] };
-        double total = 0.0;
-        for (int i = 0; i < 5; ++i) total += pts[i];
-
-        Rectangle bar = { r.x + 4.0f, r.y + 26.0f, r.width - 8.0f, 3.0f };
-        ui_panel(bar, 1.5f, COL_BAR_TRACK, BLANK);
-        if (total <= 0.0) {
-            ui_panel(bar, 1.5f, COL_BAR_TRACK, BLANK);
-        } else {
-            float x = bar.x;
-            Color cs[5] = { COL_ACCENT, COL_DNA, COL_TEAL, COL_BAD, COL_EP };
-            for (int i = 0; i < 5; ++i) {
-                if (pts[i] <= 0.0) continue;
-                float w = (float)(bar.width * pts[i] / total);
-                if (w < 1.0f) w = 1.0f;
-                ui_panel((Rectangle){ x, bar.y, w, bar.height }, 1.5f, cs[i], BLANK);
-                x += w;
-            }
-        }
-    }
-}
-
 static void draw_shop(const GameState *game)
 {
     UIState *S = &g_ui;
@@ -2480,8 +2439,8 @@ static void draw_shop(const GameState *game)
     draw_shop_tab(S, 1, "分化", (Rectangle){ r.x + S_PAD + 161.0f, r.y + 42.0f, 153.0f, 34.0f },
                   S->store_tab == 1);
 
-    int children[4];
-    int n = ua_speciation_children(game, children, 4);
+    int children[SPECIES_COUNT];
+    int n = ua_speciation_children(game, children, SPECIES_COUNT);
     for (int i = 0; i < 3; ++i) {
         Rectangle row = { r.x + S_PAD, r.y + 88.0f + (float)i * 148.0f, 320.0f, 140.0f };
         if (S->store_tab == 0) {
@@ -2506,7 +2465,7 @@ static void draw_shop(const GameState *game)
         }
     }
 
-    draw_shop_footer(game, (Rectangle){ r.x + S_PAD, r.y + 524.0f, 320.0f, 30.0f });
+    /* 洞见购买按钮由 draw_main 使用同一布局矩形绘制。 */
 }
 
 /* ================= 底部动作条 ================= */
@@ -2654,12 +2613,9 @@ static void draw_bottom_bar(const GameState *game)
 
 static void build_main(UiLayout *L, const GameState *game, const UIState *S)
 {
-    bool can_speciate = false;
-    int children[5];
-    int child_n = ua_speciation_children(game, children, 4);
-    for (int i = 0; i < child_n; ++i) {
-        if (ua_speciation_check(game, children[i]) == ACTION_OK) { can_speciate = true; break; }
-    }
+    int children[SPECIES_COUNT];
+    int child_n = ua_speciation_children(game, children, SPECIES_COUNT);
+    bool can_speciate = child_n > 0;
 
     /* 底栏动作先入表：btn_find(id, -1) 取第一个同 id 按钮 */
     btn_add(L, UI_BTN_OPEN_MUTATION, (Rectangle){ 16.0f, 660.0f, 200.0f, 48.0f }, 0, 0, true);
@@ -2685,8 +2641,8 @@ static void build_main(UiLayout *L, const GameState *game, const UIState *S)
     }
 
     if (S->store_tab == 1) {
-        int ch[4];
-        int n = ua_speciation_children(game, ch, 4);
+        int ch[SPECIES_COUNT];
+        int n = ua_speciation_children(game, ch, SPECIES_COUNT);
         for (int i = 0; i < n && i < 3; ++i) {
             btn_add(L, UI_BTN_OPEN_SPECIATION,
                     (Rectangle){ 928.0f, 172.0f + (float)i * 148.0f, 320.0f, 140.0f },
@@ -2703,6 +2659,12 @@ static void build_main(UiLayout *L, const GameState *game, const UIState *S)
         }
     }
 
+    double insight_cost = ua_insight_cost(game);
+    btn_add(L, UI_BTN_BUY_INSIGHT, (Rectangle){ 928.0f, 612.0f, 320.0f, 28.0f },
+            0, 0, isfinite(insight_cost) && game->run.knowledge >= insight_cost);
+    if (game->run.buff_visible)
+        btn_add(L, UI_BTN_COLLECT_BUFF, (Rectangle){ 24.0f, 446.0f, 340.0f, 40.0f }, 0, 0, true);
+
     /* 顶栏三入口：进化树 / 突变 / 图鉴。总宽 230 = 74×3 + 4×2，右缘对齐 1258。
      * 74 宽放不下 16px 的三字标签，draw_top_button 会自动降到 F_CAPTION。 */
     btn_add(L, UI_BTN_OPEN_TREE,     (Rectangle){ 1028.0f, 14.0f, 74.0f, 48.0f }, 0, 0, true);
@@ -2718,7 +2680,6 @@ static void build_main(UiLayout *L, const GameState *game, const UIState *S)
 static void draw_main(const GameState *game, const UIState *state, const ActionResult *last)
 {
     (void)last;
-    (void)state;
 
     draw_top_bar(game);
     draw_dish(game);
@@ -2729,6 +2690,24 @@ static void draw_main(const GameState *game, const UIState *state, const ActionR
     draw_info_panel(game);
     draw_shop(game);
     draw_bottom_bar(game);
+    UiButton *insight = btn_find(state, UI_BTN_BUY_INSIGHT, -1);
+    if (insight) {
+        char cost[32], label[96];
+        ui_fmt_num(ua_insight_cost(game), cost, sizeof cost);
+        snprintf(label, sizeof label, "洞见 Lv.%d · %s 理念 [7]", game->run.insight_levels, cost);
+        ui_btn_draw(insight, label, NULL, is_hot(state, insight));
+    }
+    UiButton *reward = btn_find(state, UI_BTN_COLLECT_BUFF, -1);
+    if (reward) {
+        char label[96];
+        snprintf(label, sizeof label, "领取奖励：%s [B]", buffs_type_name(game->run.buff_visible_type));
+        ui_btn_draw(reward, label, NULL, is_hot(state, reward));
+    } else if (game->run.buff_active_time_left > 0.0) {
+        char label[96];
+        snprintf(label, sizeof label, "%s · 剩余 %.0f 秒", buffs_type_name(game->run.buff_active_type),
+                 game->run.buff_active_time_left);
+        ui_text_center(label, 194.0f, 458.0f, F_BODY, COL_ACCENT);
+    }
 }
 
 /* ================= End of Era ================= */
@@ -3013,14 +2992,20 @@ static Rectangle mutation_panel_rect(const GameState *game)
     return (Rectangle){ 320.0f, (UI_H - h) * 0.5f, 640.0f, h };
 }
 
+/* Four rows per page keep every expanded route on the logical canvas. */
 static Rectangle speciation_panel_rect(const GameState *game)
 {
-    int children[4];
-    int n = ua_speciation_children(game, children, 4);
-    if (n < 1) n = 1;
-    float h = 92.0f + n * 102.0f + 64.0f;
-    if (h < 320.0f) h = 320.0f;
-    return (Rectangle){ 300.0f, (UI_H - h) * 0.5f, 680.0f, h };
+    (void)game;
+    return (Rectangle){ 300.0f, 52.0f, 680.0f, 616.0f };
+}
+
+static int speciation_page_start(const UIState *state, int total)
+{
+    int last = total > 0 ? (total - 1) / UI_SPECIATION_PAGE_SIZE : 0;
+    int page = state->speciation_page;
+    if (page < 0) page = 0;
+    if (page > last) page = last;
+    return page * UI_SPECIATION_PAGE_SIZE;
 }
 
 static Rectangle codex_panel_rect(int tab, int achievement_count)
@@ -3068,16 +3053,23 @@ static void build_overlay(UiLayout *L, const GameState *game, const UIState *S)
     }
     case UI_OVL_SPECIATION: {
         Rectangle panel = speciation_panel_rect(game);
-        int children[4];
-        int n = ua_speciation_children(game, children, 4);
-        for (int i = 0; i < n; ++i) {
+        int children[SPECIES_COUNT];
+        int n = ua_speciation_children(game, children, SPECIES_COUNT);
+        int first = speciation_page_start(S, n);
+        for (int i = first; i < n && i < first + UI_SPECIATION_PAGE_SIZE; ++i) {
             bool ok = ua_speciation_check(game, children[i]) == ACTION_OK
                    && game->run.biomass >= ua_speciation_cost(game, children[i]);
             btn_add(L, UI_BTN_SPECIATE,
-                    (Rectangle){ panel.x + 24.0f, panel.y + 84.0f + (float)i * 102.0f,
+                    (Rectangle){ panel.x + 24.0f, panel.y + 84.0f + (float)(i - first) * 102.0f,
                                  panel.width - 48.0f, 94.0f },
                     children[i], S->keep_parent, ok);
         }
+        btn_add(L, UI_BTN_SPECIATION_PAGE,
+                (Rectangle){ panel.x + 24.0f, panel.y + panel.height - 104.0f, 110.0f, 32.0f },
+                0, first / UI_SPECIATION_PAGE_SIZE - 1, first > 0);
+        btn_add(L, UI_BTN_SPECIATION_PAGE,
+                (Rectangle){ panel.x + panel.width - 134.0f, panel.y + panel.height - 104.0f, 110.0f, 32.0f },
+                1, first / UI_SPECIATION_PAGE_SIZE + 1, first + UI_SPECIATION_PAGE_SIZE < n);
         btn_add(L, UI_BTN_TOGGLE_KEEP_PARENT,
                 (Rectangle){ panel.x + 24.0f, panel.y + panel.height - 56.0f, 340.0f, 40.0f },
                 0, 0, true);
@@ -3294,8 +3286,8 @@ static void draw_speciation_overlay(const GameState *game, const UIState *S)
     snprintf(bio, sizeof(bio), "生物量 %s", num);
     ui_text_right(bio, panel.x + panel.width - 24.0f, panel.y + 24.0f, F_LABEL, COL_BIOMASS);
 
-    int children[4];
-    int n = ua_speciation_children(game, children, 4);
+    int children[SPECIES_COUNT];
+    int n = ua_speciation_children(game, children, SPECIES_COUNT);
 
     if (n <= 0) {
         ui_text_center("当前阶段没有可用的分化方向", panel.x + panel.width * 0.5f,
@@ -3304,8 +3296,9 @@ static void draw_speciation_overlay(const GameState *game, const UIState *S)
                        panel.y + 176.0f, F_CAPTION, COL_FAINT);
     }
 
-    for (int i = 0; i < n; ++i) {
-        Rectangle r = { panel.x + 24.0f, panel.y + 84.0f + (float)i * 102.0f,
+    int first = speciation_page_start(S, n);
+    for (int i = first; i < n && i < first + UI_SPECIATION_PAGE_SIZE; ++i) {
+        Rectangle r = { panel.x + 24.0f, panel.y + 84.0f + (float)(i - first) * 102.0f,
                         panel.width - 48.0f, 94.0f };
         UiButton *b = btn_find(S, UI_BTN_SPECIATE, children[i]);
         bool hot = is_hot(S, b);
@@ -3348,6 +3341,16 @@ static void draw_speciation_overlay(const GameState *game, const UIState *S)
             ui_text_right("可立即分化", r.x + r.width - 18.0f, r.y + 42.0f, F_CAPTION, COL_GOOD);
         }
     }
+
+    UiButton *prev = btn_find(S, UI_BTN_SPECIATION_PAGE, 0);
+    UiButton *next = btn_find(S, UI_BTN_SPECIATION_PAGE, 1);
+    if (prev) ui_btn_draw(prev, "上一页", NULL, is_hot(S, prev));
+    if (next) ui_btn_draw(next, "下一页", NULL, is_hot(S, next));
+    char page[64];
+    snprintf(page, sizeof(page), "%d / %d 页 · %d 条路线", first / UI_SPECIATION_PAGE_SIZE + 1,
+             n > 0 ? (n + UI_SPECIATION_PAGE_SIZE - 1) / UI_SPECIATION_PAGE_SIZE : 1, n);
+    ui_text_center(page, panel.x + panel.width * 0.5f, panel.y + panel.height - 96.0f,
+                   F_BODY, COL_DIM);
 
     UiButton *keep = btn_find(S, UI_BTN_TOGGLE_KEEP_PARENT, -1);
     if (keep) {
@@ -4170,3 +4173,4 @@ void screens_draw(const GameState *game, const UIState *state, const ActionResul
     }
     draw_overlay(game, state);
 }
+

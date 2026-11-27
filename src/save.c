@@ -34,7 +34,8 @@ static int valid_flags(const GameState *game)
     if (!valid_bool(&run->mutation_offer.active)
         || !valid_bool(&run->adaptation_shield_used)
         || !valid_bool(&run->adaptation_shield_active)
-        || !valid_bool(&run->reward_claimed)) return 0;
+        || !valid_bool(&run->reward_claimed)
+        || !valid_bool(&run->buff_visible)) return 0;
     for (int i = 0; i < MAX_ACTIVE_SPECIES; ++i) {
         if (!valid_bool(&run->active_species[i].is_main_lineage)) return 0;
         for (int j = 0; j < MAX_MUTATIONS; ++j)
@@ -78,6 +79,11 @@ static int valid_game(const GameState *game)
         || !valid_nonnegative(run->buff_last_rare_time)
         || !valid_nonnegative(run->buff_total_active_time)
         || run->buff_collected < 0 || run->buff_rare_collected < 0
+        || run->buff_rare_collected > run->buff_collected
+        || run->buff_active_type < 0 || run->buff_active_type >= BUFF_TYPE_COUNT
+        || (run->buff_active_type == BUFF_INSTANT && run->buff_active_time_left > 0.0)
+        || run->buff_last_rare_time > run->buff_clock
+        || run->buff_total_active_time > run->buff_clock + 1e-6
         || run->insight_levels < 0
         || run->buff_visible_type < 0 || run->buff_visible_type >= BUFF_TYPE_COUNT
         || run->buff_visible_icon < 0 || run->buff_visible_icon >= BUFF_ICON_COUNT
@@ -178,3 +184,4 @@ done:
     fclose(file);
     return status;
 }
+

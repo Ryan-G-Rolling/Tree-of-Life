@@ -112,6 +112,7 @@ void evolution_synergy_bonuses(const GameState *game, int species_slot, double *
                                int *trait_bonus);
 
 /* ---------------- 进化树 ---------------- */
+/* 返回子代总数，最多写入 max_ids 项；遍历完整列表时用 SPECIES_COUNT 容量。 */
 int species_children(int parent_id, int *out_ids, int max_ids);
 int species_min_child_cost(int parent_id);
 bool species_has_parent(int target_species_id, int parent_id);
@@ -198,3 +199,4 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
 int evolution_slot_trait_total(const GameState *game, int species_slot, EnvironmentTrait trait);
 
 #endif
+

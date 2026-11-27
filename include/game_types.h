@@ -512,7 +512,9 @@ typedef enum {
     ACTION_START_NEW_RUN,
     ACTION_BUY_SUB_UPGRADE,
     ACTION_BUY_CAPACITY,
-    ACTION_BUY_RESERVE
+    ACTION_BUY_RESERVE,
+    ACTION_COLLECT_BUFF,
+    ACTION_BUY_INSIGHT
 } ActionType;
 
 /* ---- 第十六轮：随机增益因子（页面飘浮的可点击细胞 / DNA） ---- */
@@ -681,3 +683,4 @@ typedef struct {
 } EnvironmentStep;
 
 #endif
+

@@ -21,6 +21,11 @@
 
 /* ================= A 侧：经济与单轮升级 ================= */
 
+double ua_insight_cost(const GameState *game)
+{
+    return evolution_insight_cost(game);
+}
+
 double ua_run_upgrade_cost(const GameState *game, RunUpgradeType type)
 {
     if (!game) return 0.0;
@@ -158,7 +163,8 @@ int ua_speciation_children(const GameState *game, int *out, int max_out)
     if (!game || !out || max_out <= 0) return 0;
     if (game->run.active_species_count <= 0) return 0;
     int parent = game->run.active_species[0].species_id;
-    return species_children(parent, out, max_out);
+    int total = species_children(parent, out, max_out);
+    return total < max_out ? total : max_out;
 }
 
 int ua_species_parents(int species_id, int *out, int max_out)
@@ -534,3 +540,4 @@ void ua_register_font_strings(void)
         ui_font_register(ua_achievement_desc(i));
     }
 }
+

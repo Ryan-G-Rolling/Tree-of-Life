@@ -13,6 +13,7 @@
 #include "balance.h"
 
 #include <math.h>
+#include <limits.h>
 #include <string.h>
 
 /* 字段顺序：name, description, dna, atp%, biomass%, dna%, cap%, growth%,
@@ -1838,10 +1839,16 @@ double evolution_insight_multiplier(const GameState *game)
 
 ActionCode evolution_apply_insight(GameState *game)
 {
+    if (!game) return ACTION_INVALID_TARGET;
     if (game->phase != PHASE_RUNNING) {
         return ACTION_INVALID_PHASE;
     }
     double cost = evolution_insight_cost(game);
+    if (game->run.insight_levels < 0 || game->run.insight_levels == INT_MAX
+        || !isfinite(cost) || !isfinite(evolution_insight_multiplier(game) * (1.0 + INSIGHT_BONUS_PER_LEVEL))) {
+        return ACTION_LEVEL_MAXED;
+    }
+    if (!isfinite(game->run.knowledge)) return ACTION_REQUIREMENT_NOT_MET;
     if (game->run.knowledge < cost) {
         return ACTION_NOT_ENOUGH_KNOWLEDGE;
     }
@@ -2048,3 +2055,4 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
     rates.population_delta_per_second = positive_growth - event_loss;
     return rates;
 }
+
