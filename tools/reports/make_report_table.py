@@ -200,8 +200,8 @@ def meteor_min(type1, type2, type3):
 
 NON_BALANCE_KEYS = {
     "compile", "selftest_failures", "content_playable", "save_bytes", "coverage_run",
-    "species_median", "species_p10", "species_p90", "mutations_struct_max",
-    "sink_ratio", "mutations_median", "mutations_p90",
+    "species_median", "species_p10", "species_p90", "gate_mutations",
+    "sink_ratio", "sink_late_ratio", "mutations_median", "mutations_p90",
     # 结构项：上界就是硬顶/零容忍，实测必然贴边，不算“目标贴实测”
     "reserve_max_era3", "low_tail", "ep3_gt_ep2",
     # v9 P2：台账口径项，不是平衡目标
@@ -289,49 +289,43 @@ def build_metrics():
     mut_p90 = mut_values[min(int(0.90 * len(mut_values)), len(mut_values) - 1)] if mut_values else 0
     atp_med = statistics.median(int(r[22]) for r in b3) if (b3 and len(b3[0]) > 22) else 0
 
-    # v16 G2：结构上限——只用「票价表 + 纪元 3 收入」，与 bot 策略无关。
-    # 单张票价 = 10 s × 1.12^i（data/balance.h 的 E1/E2），用纪元末产率折算成秒数预算
-    # T = 纪元 3 总收入 / 纪元末 ATP 产率；取满足 Σ 10·1.12^i ≤ T 的最大张数。
-    def ticket_seconds(k):
-        return 10.0 * (1.12 ** k - 1.0) / 0.12
+    # v19 G2：门票卡口径（demo_b 的 GATEMUT 行），与 1.12^k 的定价对象一致。
+    gate_vals = sorted(int(r[2]) for r in rows(B3, "GATEMUT,"))
+    gate_med = statistics.median(gate_vals) if gate_vals else 0
+    gate_p10 = gate_vals[min(int(0.10 * len(gate_vals)), len(gate_vals) - 1)] if gate_vals else 0
+    gate_p90 = gate_vals[min(int(0.90 * len(gate_vals)), len(gate_vals) - 1)] if gate_vals else 0
 
-    def struct_max(income, rate):
-        if rate <= 0 or income <= 0:
-            return 0
-        budget = income / rate
-        k = 0
-        while ticket_seconds(k + 1) <= budget and k < 200:
-            k += 1
-        return k
+    # v19 G3：三段窗口支出率（前 20% / 中 60% / 后 20%），判据是「末段 ≥ 0.8× 中段」。
+    win_early, win_mid, win_late = [], [], []
+    for r in rows(B3, "SINKWIN,"):
+        i0, s0, i1, s1, i2, s2 = (float(x) for x in r[2:8])
+        if i0 > 0:
+            win_early.append(s0 / i0)
+        if i1 > 0:
+            win_mid.append(s1 / i1)
+        if i2 > 0:
+            win_late.append(s2 / i2)
+    mid_rate = statistics.median(win_mid) if win_mid else 0.0
+    late_rate = statistics.median(win_late) if win_late else 0.0
+    late_ratio = late_rate / mid_rate if mid_rate > 0 else 0.0
 
-    rate3 = {}
-    for r in rows(B3, "INC,"):
-        if int(r[2]) == 3:
-            rate3[int(r[1])] = float(r[3])
-    spent3, bal3 = {}, {}
-    for r in rows(B3, "ATPSUM,"):
-        if int(r[2]) == 3:
-            spent3[int(r[1])] = float(r[3])
-            bal3[int(r[1])] = float(r[4])
-    struct_vals, sink_vals = [], []
-    for index, rate in rate3.items():
-        if index not in spent3:
-            continue
-        income = spent3[index] + bal3[index]
-        sink_vals.append(spent3[index] / income if income > 0 else 0.0)
-        struct_vals.append(struct_max(income, rate))
-    struct_vals.sort()
-    struct_med = statistics.median(struct_vals) if struct_vals else 0
-    struct_p10 = struct_vals[min(int(0.10 * len(struct_vals)), len(struct_vals) - 1)] if struct_vals else 0
-    struct_p90 = struct_vals[min(int(0.90 * len(struct_vals)), len(struct_vals) - 1)] if struct_vals else 0
+    # 记录项：全局支出/收入（被前期抬高，只记录，不作门槛）
+    spent3 = {int(r[1]): float(r[3]) for r in rows(B3, "ATPSUM,") if int(r[2]) == 3}
+    bal3 = {int(r[1]): float(r[4]) for r in rows(B3, "ATPSUM,") if int(r[2]) == 3}
+    sink_vals = [spent3[i] / (spent3[i] + bal3[i]) for i in spent3 if spent3[i] + bal3[i] > 0]
     sink_med = statistics.median(sink_vals) if sink_vals else 0.0
 
     # v16 记录项：饱和度时间（覆盖率在 species_seeds 之后计算）
+    # SATFULL,index,cap_level,cap_hit,cap_time,res_level,res_time（v19 D10 起多一列触顶标志）
     sat = rows(B3, "SATFULL,")
-    cap_full = [float(r[3]) for r in sat if float(r[3]) > 0]
-    res_full = [float(r[5]) for r in sat if float(r[5]) > 0]
+    cap_levels = [int(float(r[2])) for r in sat]
+    cap_hits = [int(r[3]) for r in sat]
+    cap_full = [float(r[4]) for r in sat if float(r[4]) > 0]
+    res_full = [float(r[6]) for r in sat if float(r[6]) > 0]
     cap_full_med = statistics.median(cap_full) if cap_full else 0.0
     res_full_med = statistics.median(res_full) if res_full else 0.0
+    cap_level_med = statistics.median(cap_levels) if cap_levels else 0
+    cap_hit_pct = 100.0 * sum(cap_hits) / len(cap_hits) if cap_hits else 0.0
 
     species_seeds = set()
     for name in (B2, B3, B3X):
@@ -426,18 +420,29 @@ def build_metrics():
                            "BSPEC 1/2/3"),
         "species_p10": (float(spc_p10), f"P10 {spc_p10:.0f} 个", "BSPEC 10 分位"),
         "species_p90": (float(spc_p90), f"P90 {spc_p90:.0f} 个", "BSPEC 90 分位"),
-        "mutations_struct_max": (
-            float(struct_med),
-            f"中位 {struct_med:.0f} 张（P10 {struct_p10:.0f} / P90 {struct_p90:.0f}）",
-            "票价表 + 纪元 3 收入/末端产率"),
+        "gate_mutations": (float(gate_med),
+                           f"中位 {gate_med:.0f} 张（P10 {gate_p10:.0f} / P90 {gate_p90:.0f}）",
+                           "GATEMUT"),
         # 记录项（不作门槛，只打印）：bot 实买 / 覆盖率 / 饱和时间
         "bot_mutations": (float(mut_med), f"中位 {mut_med:.0f} 张（P90 {mut_p90:.0f}）", "BATCH3 第 8 列"),
         "coverage_species": (float(coverage_species), f"{coverage_species}/264 物种", "BSPEC/COVER_S"),
-        "saturate_cap": (float(cap_full_med), f"容量满级 {cap_full_med:.0f} s", "SATFULL"),
-        "saturate_reserve": (float(res_full_med), f"储备满级 {res_full_med:.0f} s", "SATFULL"),
+        "saturate_cap": (float(cap_level_med),
+                         f"结束时 {cap_level_med:.0f} 级，触顶 26 级占 {cap_hit_pct:.1f}%"
+                         + (f"，满级时间 {cap_full_med:.0f} s" if cap_full else ""),
+                         "SATFULL"),
+        "saturate_reserve": (float(res_full_med),
+                             f"满级时间 {res_full_med:.0f} s（{res_full_med / 600:.2f}×T）",
+                             "SATFULL"),
+        "win_early": (float(statistics.median(win_early) if win_early else 0.0),
+                      f"{statistics.median(win_early) if win_early else 0:.3f}", "SINKWIN 前 20%"),
+        "win_mid": (float(mid_rate), f"{mid_rate:.3f}", "SINKWIN 中 60%"),
+        "win_late": (float(late_rate), f"{late_rate:.3f}", "SINKWIN 后 20%"),
+        "sink_late_ratio": (float(late_ratio),
+                            f"{late_rate:.3f} / {mid_rate:.3f} = {late_ratio:.3f}",
+                            "SINKWIN 三段"),
         "sink_ratio": (float(sink_med),
                        f"中位 {sink_med * 100:.1f}%（未花 {100 - sink_med * 100:.1f}%）",
-                       "ATPSUM 支出/收入"),
+                       "ATPSUM 支出/收入（记录）"),
         "mutations_median": (float(mut_med),
                              f"中位 {mut_med:.0f} 张"
                              + (f"（其中 ATP 门票 {atp_med:.0f} 张）" if b3 and len(b3[0]) > 22 else ""),
@@ -560,9 +565,12 @@ def main():
 
     # v16：记录项只打印，不作门槛
     print("\n记录项（不作门槛）：")
+    if "win_early" in metrics:
+        print(f"  三段支出率：前 20% {metrics['win_early'][1]} / 中 60% {metrics['win_mid'][1]} / "
+              f"后 20% {metrics['win_late'][1]}（后段参考线 0.40）")
     for key, label in (("bot_mutations", "bot 实买突变（含属性卡）"),
                        ("coverage_species", "1000 局物种覆盖"),
-                       ("saturate_cap", "容量满级时间"),
+                       ("saturate_cap", "容量级数 / 满级时间"),
                        ("saturate_reserve", "储备满级时间")):
         if key in metrics:
             print(f"  {label}: {metrics[key][1]}")

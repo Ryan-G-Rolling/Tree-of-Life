@@ -66,6 +66,11 @@ static int g_batch_index = 0;
 static bool g_no_stat = false;
 #define BOT_STAT_MUTATION_LIMIT 16   /* v16 F2：超过 16 张就停手，防止又滑回扫货 */
 static double g_cap_full_time = -1.0;
+/* v19 D5：按纪元时长切三段（前 20% / 中 60% / 后 20%），各自累计 支出 与 收入。
+ * 全局“支出/收入”会被前期抬高，后期“花不动”反而看不出来。 */
+static double g_era_length = 600.0;
+static double g_win_income[3];
+static double g_win_spent[3];
 static double g_reserve_full_time = -1.0;
 static double g_first_mutation = -1.0;
 static int g_last_stage = -1;
@@ -864,6 +869,8 @@ static void try_insight(void)
 
 static EnvironmentStep simulate_step(double dt)
 {
+    /* v19 D5：本步开始时记一次收入基线，步末按窗口累计（点击收入也算在内） */
+    double income_at_step_start = g_atp_income;
     SpeciesRates rates[MAX_ACTIVE_SPECIES];
     double populations[MAX_ACTIVE_SPECIES];
     double atp = 0.0;
@@ -931,6 +938,7 @@ static EnvironmentStep simulate_step(double dt)
     }
 
     /* 门票优先，其余出口按轮转均分（见 try_buy_upgrades） */
+    double atp_spent_before = g_atp_spent;
     try_mutations();
     try_speciation();
     try_buy_upgrades();
@@ -938,6 +946,17 @@ static EnvironmentStep simulate_step(double dt)
      * （实测洞见长期 Lv.0，而目标是每纪元 6–14 级）。 */
     try_insight();
     try_sub_upgrades();
+
+    {
+        int window = 0;
+        if (g_time > g_era_length * 0.8) {
+            window = 2;
+        } else if (g_time > g_era_length * 0.2) {
+            window = 1;
+        }
+        g_win_income[window] += g_atp_income - income_at_step_start;
+        g_win_spent[window] += g_atp_spent - atp_spent_before;
+    }
 
     EnvironmentStep step = environment_calculate_step(&g, dt);
     environment_apply_step(&g, &step);
@@ -1188,7 +1207,8 @@ typedef struct {
     int ep;
     int stages;
     int mutations;
-    int atp_mutations; /* v14 硬门槛 2：收 ATP 门票的突变张数（阶段 >= MUTATION_ATP_MIN_PHASE） */
+    int atp_mutations;    /* 收 ATP 门票的突变张数（F1 之后等于全部已购） */
+    int gate_mutations;   /* v19 D1：门票卡口径的已购张数，G2 用它 */
     int species;
     int crises;
     double max_biomass;
@@ -1213,6 +1233,8 @@ typedef struct {
     int reserve_levels;
     double capacity_full_time;
     double reserve_full_time;
+    double win_income[3];
+    double win_spent[3];
     int upgrade_buys;
 } EraSummary;
 
@@ -1237,6 +1259,11 @@ static EraSummary simulate_era(int steps)
     g_crisis_logged = 0;
     g_cap_full_time = -1.0;
     g_reserve_full_time = -1.0;
+    g_era_length = (double)steps * FIXED_STEP_SECONDS;
+    for (int i = 0; i < 3; ++i) {
+        g_win_income[i] = 0.0;
+        g_win_spent[i] = 0.0;
+    }
     double atp_start = g.run.atp;
     for (int step = 1; step <= steps; ++step) {
         g_era = g.run.era;
@@ -1271,6 +1298,7 @@ static EraSummary simulate_era(int steps)
      * （10 s × 1.12^k）只对这批卡生效，硬门槛 2 必须按这个口径验收，
      * 否则低阶免费突变会把张数灌到三位数。 */
     summary.atp_mutations = 0;
+    summary.gate_mutations = evolution_gate_mutations_owned(&g);
     for (int slot = 0; slot < g.run.active_species_count; ++slot) {
         for (int id = 0; id < MUTATION_COUNT; ++id) {
             if (!g.run.active_species[slot].mutations[id]) continue;
@@ -1302,6 +1330,10 @@ static EraSummary simulate_era(int steps)
     summary.reserve_levels = g.run.reserve_levels;
     summary.capacity_full_time = g_cap_full_time;
     summary.reserve_full_time = g_reserve_full_time;
+    for (int i = 0; i < 3; ++i) {
+        summary.win_income[i] = g_win_income[i];
+        summary.win_spent[i] = g_win_spent[i];
+    }
     summary.first_mutation = g_first_mutation;
     summary.atp_residual = atp_start + g_atp_income - g_atp_spent - g.run.atp;
     summary.atp_spent = g_atp_spent;
@@ -1427,8 +1459,13 @@ static void run_batch3(int count, int steps)
                era1.sub_upgrades, era2.sub_upgrades, era3.sub_upgrades,
                era1.first_mutation, era2.first_mutation, era3.first_mutation,
                era3.atp_mutations);
-        printf("SATFULL,%d,%d,%.1f,%d,%.1f\n", index, era3.capacity_levels,
-               era3.capacity_full_time, era3.reserve_levels, era3.reserve_full_time);
+        printf("GATEMUT,%d,%d\n", index, era3.gate_mutations);
+        printf("SATFULL,%d,%d,%d,%.1f,%d,%.1f\n", index, era3.capacity_levels,
+               era3.capacity_levels >= CAPACITY_MAX_LEVEL ? 1 : 0, era3.capacity_full_time,
+               era3.reserve_levels, era3.reserve_full_time);
+        printf("SINKWIN,%d,%.0f,%.0f,%.0f,%.0f,%.0f,%.0f\n", index,
+               era3.win_income[0], era3.win_spent[0], era3.win_income[1], era3.win_spent[1],
+               era3.win_income[2], era3.win_spent[2]);
         printf("RAMPTIME,%d,1,%.1f,%d\n", index, era1.cap_reached_time,
                era1.first_speciation_instant);
         printf("RAMPTIME,%d,2,%.1f,%d\n", index, era2.cap_reached_time,

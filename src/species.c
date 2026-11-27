@@ -2977,13 +2977,23 @@ int evolution_speciation_offers(const GameState *game, int species_slot, int *ou
         if (!dup) pool[count++] = branches[i];
     }
 
+    /* v19 D6：方向池「未发现优先」——覆盖率只有 45/264 的直接原因是方向卡总是
+     * 从同一批已发现物种里挑。排序键最前加“未发现”，其余（阶段、轮转位移）不动。 */
+    int ordered[SPECIES_COUNT];
+    int ordered_n = 0;
+    for (int pass = 0; pass < 2; ++pass) {
+        for (int i = 0; i < count; ++i) {
+            int id = pool[(game->run.era * 3 + parent + i) % count];
+            bool seen = game->run.discovered_species[id] || game->legacy.codex_species[id];
+            if ((pass == 0) == seen) {
+                ordered[ordered_n++] = id;
+            }
+        }
+    }
     int total = 0;
     out_ids[total++] = main_child;
-    if (count > 0) {
-        int shift = (parent + game->run.era * 3) % count;
-        for (int i = 0; i < count && total < max_ids && total < 4; ++i) {
-            out_ids[total++] = pool[(shift + i) % count];
-        }
+    for (int i = 0; i < ordered_n && total < max_ids && total < 4; ++i) {
+        out_ids[total++] = ordered[i];
     }
     return total;
 }

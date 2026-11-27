@@ -166,6 +166,9 @@ bool evolution_mutation_is_required(int mutation_id);
 bool evolution_slot_owns_mutation(const GameState *game, int species_slot, int mutation_id);
 /* v16 F2：本纪元已购突变张数（三个槽位合计），自动策略用它做自限 */
 int evolution_mutations_owned(const GameState *game);
+/* v19 D1：门票卡口径。掩码覆盖数用于报告，已购张数用于突变票的 1.12^k 指数。 */
+int evolution_gate_mask_size(void);
+int evolution_gate_mutations_owned(const GameState *game);
 /* v14：物种离主链的层数（主线 0）。支线用它封顶，保证方向卡每局 4–7 次。 */
 int species_branch_depth(int species_id);
 double evolution_mutation_cost_for_slot(const GameState *game, int species_slot,

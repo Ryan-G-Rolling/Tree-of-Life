@@ -1292,8 +1292,10 @@ double evolution_mutation_atp_cost(const GameState *game, int mutation_id)
     evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
     /* v14 E1/E2：第 k+1 张 = 10 s × 1.12^k，k 为本纪元已购张数。
      * 等比数列自己收敛到 12–16 张（见 data/balance.h 注释），不需要实测调参。 */
+    /* v19 D1：k 只数门票卡。v16 用全部已购张数，买属性卡会把主链门票一起推贵，
+     * 结果 F2 恢复属性卡后阶段 12 抵达从 81% 掉到 37%。 */
     double cost = atp_rate * MUTATION_ATP_SECONDS *
-                  pow(MUTATION_TICKET_GROWTH, (double)run_mutations_owned(game));
+                  pow(MUTATION_TICKET_GROWTH, (double)evolution_gate_mutations_owned(game));
     /* v10：地板必须是“随收入缩放”的相对值。固定的 1e7 在收入压缩后等于
      * 永远买不起的门票（实测纪元 2 所有 run 卡在阶段 8）。这里改成至少 3 秒产率。 */
     double floor_cost = atp_rate * 3.0;
@@ -1587,26 +1589,82 @@ bool evolution_mutation_available(const GameState *game, int species_slot, int m
 /* 第十一轮：被任一物种的分化前置引用的突变视为“必需”。
  * 只有必需突变进入 1.46 成本链，可选突变独立定价，避免买一个可选就把整条链拖贵。
  * 第十五轮：公开只读查询，供演示策略区分“门票”和“纯属性突变”。 */
-bool evolution_mutation_is_required(int mutation_id)
+/* v19 D1：门票卡静态掩码。启动时遍历 264 个物种，把「被任一物种 required 引用」
+ * 的 mutation 置位，之后 is_required 与门票计数都走这张表，不再每次扫 264×4。
+ * 妥协说明：掩码用「任一物种 required」而不是「主链物种 required」——主链是运行时概念
+ * （is_main_lineage 挂在 slot 上），物种表里没有静态标记；而支线 required 由于共享基因组
+ * 本来就不需要购买，极少进入已购列表，对结果没有影响。 */
+static bool g_gate_mask[MUTATION_COUNT];
+static bool g_gate_mask_ready = false;
+
+static void build_gate_mask(void)
 {
-    int required[4];
+    if (g_gate_mask_ready) {
+        return;
+    }
     for (int species_id = 0; species_id < SPECIES_COUNT; ++species_id) {
+        int required[4];
         int count = species_required_mutations(species_id, required, 4);
         for (int i = 0; i < count; ++i) {
-            if (required[i] == mutation_id) {
-                return true;
+            if (required[i] >= 0 && required[i] < MUTATION_COUNT) {
+                g_gate_mask[required[i]] = true;
             }
         }
     }
-    return false;
+    g_gate_mask_ready = true;
+}
+
+bool evolution_mutation_is_required(int mutation_id)
+{
+    if (mutation_id < 0 || mutation_id >= MUTATION_COUNT) {
+        return false;
+    }
+    build_gate_mask();
+    return g_gate_mask[mutation_id];
+}
+
+int evolution_gate_mask_size(void)
+{
+    build_gate_mask();
+    int count = 0;
+    for (int id = 0; id < MUTATION_COUNT; ++id) {
+        if (g_gate_mask[id]) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+/* v19 D1：门票卡的已购张数（k）。run_mutations_owned 的语义不动（F2 自限与报告在用）。 */
+int evolution_gate_mutations_owned(const GameState *game)
+{
+    build_gate_mask();
+    /* 只数主谱系槽位：支线槽位在分化时会继承一份突变数组，逐槽相加会把同一张卡
+     * 数成两三张（实测 19 vs 主链 13），而门票链收敛的对象是“玩家已经买了多少张”。 */
+    int slot = evolution_main_slot(game);
+    if (slot < 0) {
+        return 0;
+    }
+    int owned = 0;
+    for (int id = 0; id < MUTATION_COUNT; ++id) {
+        if (game->run.active_species[slot].mutations[id] && g_gate_mask[id]) {
+            ++owned;
+        }
+    }
+    return owned;
 }
 
 /* 第十五轮：成本链只看“下一个物种还缺多少前置”。
  * 204 个突变里 130 个是侧支门票；若把它们都算进 owned 计数，
  * 买一个旁支就会把主线价格指数推高。改为按首个子物种的前置计数，
  * growth 最多 1.42^4，侧支不再污染主线定价。 */
+/* v19 D9：缓存 (物种, 已拥有前置位掩码) → 缺几张。
+ * 每条突变算价都会调它，而它每次都要 species_children 扫一遍分化规则表；
+ * F1 让候选池涨到 200+ 条后，这里成了探索模式的主要开销。键只有 264×16 种，安全。 */
 static int required_mutation_count(const SpeciesState *species)
 {
+    static int cache[SPECIES_COUNT][16];
+    static bool ready[SPECIES_COUNT];
     int children[SPECIES_COUNT];
     int child_count = species_children(species->species_id, children, SPECIES_COUNT);
     if (child_count <= 0) {
@@ -1614,13 +1672,25 @@ static int required_mutation_count(const SpeciesState *species)
     }
     int required[4];
     int required_count = species_required_mutations(children[0], required, 4);
-    int count = 0;
+    int mask = 0;
     for (int i = 0; i < required_count; ++i) {
         if (species->mutations[required[i]]) {
-            ++count;
+            mask |= 1 << i;
         }
     }
-    return count;
+    if (!ready[species->species_id]) {
+        for (int m = 0; m < 16; ++m) {
+            int count = 0;
+            for (int i = 0; i < required_count; ++i) {
+                if (m & (1 << i)) {
+                    ++count;
+                }
+            }
+            cache[species->species_id][m] = count;
+        }
+        ready[species->species_id] = true;
+    }
+    return cache[species->species_id][mask];
 }
 
 double evolution_mutation_cost_for_slot(const GameState *game, int species_slot, int mutation_id)
@@ -1849,11 +1919,8 @@ MutationOfferState evolution_generate_mutation_offer_rng(const GameState *game, 
     if (!affordable && chosen_n > 0) {
         int cheapest = -1;
         double cheapest_cost = 0.0;
-        /* v16 性能：F1（min_phase 8→0）让候选池从几十条涨到两百多条，
-         * 这里对整池逐条算价（每条又要扫一遍分化规则表），实测把探索模式拖慢 9 倍。
-         * 这只是“至少给一张买得起”的启发式，扫前 48 条足够，结果差异可忽略。 */
-        int scan = pool_n < 48 ? pool_n : 48;
-        for (int i = 0; i < scan; ++i) {
+        /* v19 D9：缓存了成本链与门票掩码后，全量扫描不再是瓶颈（v16 的 48 条截断已取消） */
+        for (int i = 0; i < pool_n; ++i) {
             if (used[pool[i]]) {
                 continue;
             }
@@ -2225,7 +2292,9 @@ double evolution_capacity_atp_cost(const GameState *game)
 {
     double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
     evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
-    double cost = atp_rate * CAPACITY_ATP_SECONDS;
+    /* v19 D4：容量上限 26 级 + 等比涨价，让这条出口撑到纪元后段（目标 ≥0.90T）。 */
+    double cost = atp_rate * CAPACITY_ATP_SECONDS *
+                  pow(CAPACITY_PRICE_GROWTH, (double)game->run.capacity_levels);
     if (cost < CAPACITY_COST_FLOOR) {
         cost = CAPACITY_COST_FLOOR;
     }
@@ -2272,7 +2341,10 @@ double evolution_reserve_cost(const GameState *game)
      * 每纪元 5–7 级，到 26 级触底需要跨纪元积累；RESERVE_COST_ATP 是地板。 */
     double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
     evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
-    double cost = atp_rate * RESERVE_ATP_SECONDS;
+    /* v19 D3：储备加等比涨价——不涨价的出口会在纪元中段就买满（实测 210 s ≈ 0.35T），
+     * 后半段 ATP 无处可花。减伤曲线 0.90^n 与 16 级上限一律不动。 */
+    double cost = atp_rate * RESERVE_ATP_SECONDS *
+                  pow(RESERVE_PRICE_GROWTH, (double)game->run.reserve_levels);
     if (cost < RESERVE_COST_ATP) {
         cost = RESERVE_COST_ATP;
     }

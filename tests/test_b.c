@@ -1519,13 +1519,14 @@ static void test_round10_economy(void)
     CHECK_NEAR(poor.run.biomass, 1e9, 1.0);
     CHECK(poor.run.capacity_levels == 3);
 
-    /* 时间本位：价格随产率缩放，与已购等级无关 */
+    /* 时间本位：价格随产率缩放；v19 D4 起 ATP 半边再按 CAPACITY_PRICE_GROWTH^级 等比涨价，
+     * 生物量半边不涨（两币的定价口径不同，这里只断言 ATP 半边）。 */
     reset_game(&game, SPECIES_PROTOCELL);
-    double cost0 = evolution_capacity_cost(&game);
+    double atp_cost0 = evolution_capacity_atp_cost(&game);
     game.run.capacity_levels = 5;
-    double cost5 = evolution_capacity_cost(&game);
-    CHECK(cost0 > 0.0);
-    CHECK_NEAR(cost5, cost0, 0.001);
+    double atp_cost5 = evolution_capacity_atp_cost(&game);
+    CHECK(atp_cost0 > 0.0);
+    CHECK_NEAR(atp_cost5, atp_cost0 * pow(CAPACITY_PRICE_GROWTH, 5.0), 2.0);
 
     /* 保底折扣：生物量达门槛且关键突变进入候选时，其中一张按 6 折计价 */
     int found_key_offer = 0;

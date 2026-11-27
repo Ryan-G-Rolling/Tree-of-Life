@@ -23,9 +23,9 @@ def capture(args):
 
 
 def main():
-    # v16 F1 之后候选池从几十条涨到两百多条，探索模式（每步都可能开一次候选）
-    # 慢了约 9 倍；探索只用于“覆盖率”这一记录项，采样 300 局足够，其余批次仍 1000。
-    explore_n = os.environ.get("TOL_EXPLORE_N", "300")
+    # v19 D9：候选池按 (物种, 已购前置位掩码) 缓存后，探索模式恢复到 v16 之前的量级，
+    # 覆盖率回到 1000 局口径（此前为了绕开 9 倍耗时降到 300，两套口径不可比）。
+    explore_n = os.environ.get("TOL_EXPLORE_N", "1000")
     jobs = [
         ("batch2_scan_round15.csv", ["--batch2", "1000"]),
         ("batch3_scan_round15.csv", ["--batch3", "1000"]),
