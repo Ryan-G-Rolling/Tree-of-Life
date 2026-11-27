@@ -222,6 +222,37 @@ static void fill_discoveries(GameState *g, int up_to)
     }
 }
 
+/* 早期：单槽 + 杆状菌。用来验证"生物图像不出画框"——
+ * 杆菌的胶囊体＋鞭毛是最容易顶出培养皿/展台的一种形态。 */
+static void fill_demo_early(GameState *g)
+{
+    memset(g, 0, sizeof(*g));
+    g->phase = PHASE_RUNNING;
+    g->run.era = 1;
+    g->run.atp = 1860.0;
+    g->run.biomass = 940.0;
+    g->run.dna = 320.0;
+    g->run.elapsed_time = 420.0;
+    g->run.max_biomass = 1400.0;
+    g->run.capacity_levels = 2;
+    g->run.run_upgrade_levels[UPGRADE_METABOLISM] = 2;
+    g->run.run_upgrade_levels[UPGRADE_REPRODUCTION] = 1;
+
+    g->run.current_environment_id = ENV_NORMAL_OCEAN;
+    g->run.next_environment_id = ENV_LOW_LIGHT_PERIOD;
+    g->run.event_interval_left = 30.0;
+
+    g->run.active_species_count = 1;
+    SpeciesState *main = &g->run.active_species[0];
+    main->species_id = SPECIES_CYANOBACTERIUM;
+    main->is_main_lineage = true;
+    main->population = 180.0;
+    set_mutation(main, MUTATION_CELL_MEMBRANE);
+    set_mutation(main, MUTATION_PHOTOSYNTHESIS);
+
+    fill_discoveries(g, 4);
+}
+
 /* 后期：技术圈 / 文明阶段的繁荣态（主界面、图鉴、进化树、结算、Legacy 用） */
 static void fill_demo_late(GameState *g)
 {
@@ -565,6 +596,33 @@ static void capture_screen(const GameState *base, const char *first_file)
     fill_demo_singularity(&game);
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_NONE);
     ui_debug_capture(&game, "shot_09_singularity.png");
+
+    /* 突变弹层的文案上限：后期突变的加成项最多，确认中文摘要不会顶到"点击选择" */
+#ifndef UI_MOCK
+    fill_demo_late(&game);
+    game.run.mutation_offer = evolution_generate_mutation_offer(&game, 0);
+    ui_debug_force(UI_SCREEN_MAIN, UI_OVL_MUTATION);
+    ui_debug_capture(&game, "shot_02b_mutation_late.png");
+    ui_debug_force(UI_SCREEN_MAIN, UI_OVL_NONE);
+#endif
+
+    /* 早期杆状菌：培养皿 + 展台里的生物都必须落在自己的画框内 */
+    fill_demo_early(&game);
+    ui_debug_force(UI_SCREEN_MAIN, UI_OVL_NONE);
+    ui_debug_capture(&game, "shot_10_early_rod.png");
+
+    /* 微光期：危机横幅 + 压暗的展台，同一只杆状菌不该压到横幅上 */
+    game.run.current_environment_id = ENV_LOW_LIGHT_PERIOD;
+    game.run.environment_time_left = 24.0;
+    game.run.event_interval_left = 0.0;
+    ui_debug_capture(&game, "shot_10b_lowlight.png");
+
+    /* 分化弹层：前置条件用中文突变名（"需要：脂质修复"） */
+    game.run.biomass = 4200.0;
+    fill_discoveries(&game, SPECIES_COUNT - 1);
+    ui_debug_force(UI_SCREEN_MAIN, UI_OVL_SPECIATION);
+    ui_debug_capture(&game, "shot_10c_speciation_zh.png");
+    ui_debug_force(UI_SCREEN_MAIN, UI_OVL_NONE);
 
     TraceLog(LOG_INFO, "shot capture done: 20 frames");
 }

@@ -145,6 +145,7 @@ enum {
     MORPH_TRANSCEND
 };
 
+/* 形态只由「阶段」决定类别；类内差异由 species_id 的种子决定。 */
 static int morph_class(int stage)
 {
     if (stage <= 0) return MORPH_COCCUS;
@@ -159,6 +160,45 @@ static int morph_class(int stage)
     if (stage == 9) return MORPH_SPACE;
     if (stage == 10) return MORPH_SINGULARITY;
     return MORPH_TRANSCEND;
+}
+
+/* 形态"本体"的外接半径（相对本体半径 r）。
+ * 各形态都会在 r 之外再伸出一圈实体：杆菌的荚膜、群体的出芽细胞、行星的环、
+ * 奇点的吸积盘……只按 r 排布会顶出画框（培养皿/展台/图鉴卡）。
+ * thin=true 时把鞭毛、星尘、喷流这类细线也算进来：培养皿是有玻璃壁的硬边界，
+ * 细线伸出去就等于画到皿外；展台/图鉴是矩形画框，细线到边被裁掉即可。 */
+static float morph_extent(int stage, bool thin)
+{
+    switch (morph_class(stage)) {
+    case MORPH_COCCUS:      return thin ? 1.30f : 1.18f;   /* 荚膜环 1.16 */
+    case MORPH_ROD:         return thin ? 2.28f : 1.48f;   /* 胶囊半长 1.46 + 鞭毛 */
+    case MORPH_EUKARYOTE:   return 1.05f;
+    case MORPH_COLONY:      return thin ? 1.30f : 1.24f;   /* 出芽细胞贴外缘 1.18 */
+    case MORPH_TISSUE:      return 1.00f;
+    case MORPH_SYMBIO:      return 1.00f;
+    case MORPH_NEURAL:      return thin ? 1.34f : 1.22f;   /* 轴突末梢的光点 */
+    case MORPH_TECHNO:      return thin ? 1.34f : 1.28f;
+    case MORPH_CIV:         return thin ? 1.38f : 1.32f;
+    case MORPH_SPACE:       return thin ? 1.62f : 1.55f;   /* 卫星轨道 1.42 + 半径 0.10 */
+    case MORPH_SINGULARITY: return thin ? 1.74f : 1.66f;   /* 吸积盘 1.05 × 1.56 + 喷流 */
+    default:                return thin ? 1.40f : 1.32f;
+    }
+}
+
+/* 把本体半径收缩到"整只生物刚好放进 limit 半径"。
+ * limit 是该容器允许的最大视觉半径（培养皿内圈 / 展台留白 / 图鉴画框）。 */
+static float organism_fit_ex(int stage, float r, float limit, bool thin)
+{
+    if (r <= 0.0f || limit <= 0.0f) return r;
+    float extent = morph_extent(stage, thin);
+    if (extent < 0.01f) extent = 1.0f;
+    float cap = limit / extent;
+    return r < cap ? r : cap;
+}
+
+static float organism_fit(int stage, float r, float limit)
+{
+    return organism_fit_ex(stage, r, limit, false);
 }
 
 /* 球体：三段渐变（受光/本体/暗面）+ 边缘反弹光 + 两层高光。
@@ -1096,6 +1136,28 @@ static void draw_organism(Vector2 c, float r, int species_id, int stage, Color a
     }
 }
 
+/* 画框内可用的最大本体半径：取圆心到四条边里最近的一条，再留 4px 余量。
+ * limit_out 回传该上限，给种群环留一圈"刚好套住生物"的半径用。 */
+static float organism_fit_in(Rectangle box, Vector2 c, int stage, float r, float *limit_out)
+{
+    float hx = fminf(c.x - box.x, box.x + box.width - c.x);
+    float hy = fminf(c.y - box.y, box.y + box.height - c.y);
+    float limit = fminf(hx, hy) - 4.0f;
+    if (limit_out) *limit_out = limit;
+    return organism_fit(stage, r, limit);
+}
+
+static void draw_organism_in(Rectangle box, Vector2 c, float r, int sid, int stage,
+                             Color accent, float t, bool lit, bool detail, float a)
+{
+    /* 先按形态外接半径收缩，再用 scissor 硬裁兜底：展台、图鉴大图、网格图标都走这里，
+     * 杆状的鞭毛、行星环、奇点喷流就不会画到标题或相邻面板上。 */
+    float used = organism_fit_in(box, c, stage, r, NULL);
+    ui_clip_begin(box);
+    draw_organism(c, used, sid, stage, accent, t, lit, detail, a);
+    ui_clip_end();
+}
+
 /* ================= 图标 =================
  * 一套程序化图标：货币 4 种、升级 3 种、动作 4 种、界面 3 种。
  * 线宽 ≥1，全部走跟随 zoom 的填充原语。 */
@@ -1803,11 +1865,16 @@ static void draw_dish(const GameState *game)
         DrawCircleV(p, 1.4f + 1.0f * hash01((unsigned int)i * 11u + 5u), Fade(accent, al));
     }
 
-    /* 活体 */
+    /* 活体：先按形态的外接半径收进皿内圈，再裁到皿的方框里兜底，
+     * 杆状/奇点这类"越界"的形态不会再把鞭毛、吸积盘画到皿外的面板上。 */
     if (game->run.active_species_count > 0) {
         float breathe = 1.0f + 0.02f * sinf(t * 1.5f);
         Vector2 oc = { c.x, c.y + 1.0f };
-        draw_organism(oc, 62.0f * breathe * (1.0f + 0.04f * S->punch), sid, stage, accent, t, true, true, 1.0f);
+        float org_r = organism_fit_ex(stage, 62.0f * breathe * (1.0f + 0.04f * S->punch),
+                                      R * 0.92f, true);
+        ui_clip_begin((Rectangle){ c.x - R * 0.96f, c.y - R * 0.96f, R * 1.92f, R * 1.92f });
+        draw_organism(oc, org_r, sid, stage, accent, t, true, true, 1.0f);
+        ui_clip_end();
     }
 
     /* 物种名 / 提示 */
@@ -2060,6 +2127,10 @@ static void draw_stage(const GameState *game)
     if (nsp > 3) nsp = 3;
     float cy = r.y + 116.0f;
 
+    /* 生物画框：上让开"生命体展台"标题、下让开物种名与种群行。
+     * 所有展台里的生物都画在这个框里，形态再张扬也不会盖到标题或压到下方的面板。 */
+    Rectangle art = { r.x + 8.0f, r.y + 32.0f, r.width - 16.0f, 194.0f };
+
     if (nsp <= 1) {
         float cx = r.x + r.width * 0.5f;
         float radius = 96.0f;
@@ -2068,12 +2139,17 @@ static void draw_stage(const GameState *game)
         ua_species_rates(game, 0, &rates);
 
         ui_glow((Vector2){ cx, cy }, radius * 1.5f, ui_color_mix(accent, (Color){ 70, 140, 210, 255 }, 0.72f), 0.11f);
-        draw_organism((Vector2){ cx, cy }, radius, game->run.active_species[0].species_id,
-                      ua_species_stage(game->run.active_species[0].species_id), accent,
-                      S->time, true, true, 1.0f);
+        int st0 = ua_species_stage(game->run.active_species[0].species_id);
+        float limit0 = 0.0f;
+        float used = organism_fit_in(art, (Vector2){ cx, cy }, st0, radius, &limit0);
         float pop = rates.final_population_cap > 0.0
                   ? (float)(game->run.active_species[0].population / rates.final_population_cap) : 0.0f;
-        draw_pop_arc((Vector2){ cx, cy }, radius + 14.0f, pop, accent);
+        /* 环套在生物外面：外接半径 +10，最多到画框留白，避免切线穿过本体 */
+        draw_pop_arc((Vector2){ cx, cy },
+                     fminf(used * morph_extent(st0, false) + 10.0f, limit0 + 4.0f), pop, accent);
+        draw_organism_in(art, (Vector2){ cx, cy }, radius,
+                         game->run.active_species[0].species_id, st0, accent,
+                         S->time, true, true, 1.0f);
 
         ui_text_center_strong(ua_species_name(game->run.active_species[0].species_id), cx,
                               r.y + 228.0f, F_LABEL, COL_TEXT);
@@ -2090,12 +2166,16 @@ static void draw_stage(const GameState *game)
         ua_species_rates(game, 0, &rates);
 
         ui_glow((Vector2){ cx, cy }, radius * 1.5f, ui_color_mix(accent, (Color){ 70, 140, 210, 255 }, 0.72f), 0.10f);
-        draw_organism((Vector2){ cx, cy }, radius, game->run.active_species[0].species_id,
-                      ua_species_stage(game->run.active_species[0].species_id), accent,
-                      S->time, true, true, 1.0f);
+        int st0 = ua_species_stage(game->run.active_species[0].species_id);
+        float limit0 = 0.0f;
+        float used = organism_fit_in(art, (Vector2){ cx, cy }, st0, radius, &limit0);
         float pop = rates.final_population_cap > 0.0
                   ? (float)(game->run.active_species[0].population / rates.final_population_cap) : 0.0f;
-        draw_pop_arc((Vector2){ cx, cy }, radius + 13.0f, pop, accent);
+        draw_pop_arc((Vector2){ cx, cy },
+                     fminf(used * morph_extent(st0, false) + 10.0f, limit0 + 4.0f), pop, accent);
+        draw_organism_in(art, (Vector2){ cx, cy }, radius,
+                         game->run.active_species[0].species_id, st0, accent,
+                         S->time, true, true, 1.0f);
 
         ui_text_center_strong(ua_species_name(game->run.active_species[0].species_id), cx,
                               r.y + 214.0f, F_LABEL, COL_TEXT);
@@ -2110,12 +2190,16 @@ static void draw_stage(const GameState *game)
         SpeciesRates r2;
         ua_species_rates(game, 1, &r2);
         ui_glow((Vector2){ cx2, cy }, 54.0f * 1.5f, ui_color_mix(accent2, (Color){ 70, 140, 210, 255 }, 0.72f), 0.09f);
-        draw_organism((Vector2){ cx2, cy }, 52.0f, game->run.active_species[1].species_id,
-                      ua_species_stage(game->run.active_species[1].species_id), accent2,
-                      S->time + 1.7f, true, true, 1.0f);
+        int st1 = ua_species_stage(game->run.active_species[1].species_id);
+        float limit1 = 0.0f;
+        float used2 = organism_fit_in(art, (Vector2){ cx2, cy }, st1, 52.0f, &limit1);
         float pop2 = r2.final_population_cap > 0.0
                    ? (float)(game->run.active_species[1].population / r2.final_population_cap) : 0.0f;
-        draw_pop_arc((Vector2){ cx2, cy }, 66.0f, pop2, accent2);
+        draw_pop_arc((Vector2){ cx2, cy },
+                     fminf(used2 * morph_extent(st1, false) + 10.0f, limit1 + 4.0f), pop2, accent2);
+        draw_organism_in(art, (Vector2){ cx2, cy }, 52.0f,
+                         game->run.active_species[1].species_id, st1, accent2,
+                         S->time + 1.7f, true, true, 1.0f);
 
         ui_text_center_strong(ua_species_name(game->run.active_species[1].species_id), cx2,
                               r.y + 194.0f, F_LABEL, COL_TEXT);
@@ -2144,12 +2228,16 @@ static void draw_stage(const GameState *game)
             SpeciesRates s0;
             ua_species_rates(game, 0, &s0);
             ui_glow((Vector2){ mx, cy }, R0 * 1.5f, ui_color_mix(a0, (Color){ 70, 140, 210, 255 }, 0.72f), 0.11f);
-            draw_organism((Vector2){ mx, cy }, R0, game->run.active_species[0].species_id,
-                          ua_species_stage(game->run.active_species[0].species_id), a0,
-                          S->time, true, true, 1.0f);
+            int st0 = ua_species_stage(game->run.active_species[0].species_id);
+            float limit0 = 0.0f;
+            float used0 = organism_fit_in(art, (Vector2){ mx, cy }, st0, R0, &limit0);
             float p0 = s0.final_population_cap > 0.0
                      ? (float)(game->run.active_species[0].population / s0.final_population_cap) : 0.0f;
-            draw_pop_arc((Vector2){ mx, cy }, R0 + 12.0f, p0, a0);
+            draw_pop_arc((Vector2){ mx, cy },
+                         fminf(used0 * morph_extent(st0, false) + 10.0f, limit0 + 4.0f), p0, a0);
+            draw_organism_in(art, (Vector2){ mx, cy }, R0,
+                             game->run.active_species[0].species_id, st0, a0,
+                             S->time, true, true, 1.0f);
 
             ui_text_center_strong(ua_species_name(game->run.active_species[0].species_id), mx,
                                   r.y + 226.0f, F_LABEL, COL_TEXT);
@@ -2167,12 +2255,16 @@ static void draw_stage(const GameState *game)
                 SpeciesRates sk;
                 ua_species_rates(game, k, &sk);
                 ui_glow((Vector2){ sx, sy }, R1 * 1.5f, ui_color_mix(ak, (Color){ 70, 140, 210, 255 }, 0.72f), 0.09f);
-                draw_organism((Vector2){ sx, sy }, R1, game->run.active_species[k].species_id,
-                              ua_species_stage(game->run.active_species[k].species_id), ak,
-                              S->time + (float)k * 1.3f, true, true, 1.0f);
+                int stk = ua_species_stage(game->run.active_species[k].species_id);
+                float limitk = 0.0f;
+                float usedk = organism_fit_in(art, (Vector2){ sx, sy }, stk, R1, &limitk);
                 float pk = sk.final_population_cap > 0.0
                          ? (float)(game->run.active_species[k].population / sk.final_population_cap) : 0.0f;
-                draw_pop_arc((Vector2){ sx, sy }, R1 + 10.0f, pk, ak);
+                draw_pop_arc((Vector2){ sx, sy },
+                             fminf(usedk * morph_extent(stk, false) + 10.0f, limitk + 4.0f), pk, ak);
+                draw_organism_in(art, (Vector2){ sx, sy }, R1,
+                                 game->run.active_species[k].species_id, stk, ak,
+                                 S->time + (float)k * 1.3f, true, true, 1.0f);
 
                 char pn[24], cn[24], sub[72];
                 ui_fmt_num(game->run.active_species[k].population, pn, (int)sizeof(pn));
@@ -2630,8 +2722,9 @@ static void draw_shop_branch(const GameState *game, int child, Rectangle r)
 
     Rectangle tile = { r.x + 12.0f, r.y + 10.0f, 48.0f, 48.0f };
     ui_panel(tile, 10.0f, ui_color_mix(COL_PANEL_HI, col, 0.10f), Fade(col, 0.30f));
-    draw_organism((Vector2){ tile.x + 24.0f, tile.y + 25.0f }, 18.0f, child, stage, col,
-                  S->time + (float)child * 0.3f, ok, ok, ok ? 1.0f : 0.65f);
+    draw_organism_in((Rectangle){ tile.x + 4.0f, tile.y + 4.0f, 40.0f, 40.0f },
+                     (Vector2){ tile.x + 24.0f, tile.y + 25.0f }, 18.0f, child, stage, col,
+                     S->time + (float)child * 0.3f, ok, ok, ok ? 1.0f : 0.65f);
 
     ui_text_strong(ua_species_name(child), r.x + 72.0f, r.y + 8.0f, F_LABEL, COL_TEXT);
 
@@ -4186,8 +4279,15 @@ static void draw_codex_overlay(const GameState *game, const UIState *S)
                      found ? Fade(accent, 0.35f + hover * 0.35f) : Fade(COL_LINE, 0.5f));
             Vector2 center = { r.x + 42.0f, r.y + 54.0f };
             if (S->codex_tab == CODEX_SPECIES) {
-                draw_organism(center, 25.0f, i, ua_species_stage(i), found ? accent : COL_GHOST,
-                              S->time + (float)i * 0.7f, found, found, 1.0f);
+                /* 图标区 72×72：卡片左侧留给名字/阶段，杆状与行星形态不能压到文字上 */
+                Rectangle icon = { r.x + 6.0f, r.y + 18.0f, 72.0f, 72.0f };
+                if (found) {
+                    draw_organism_in(icon, center, 25.0f, i, ua_species_stage(i), accent,
+                                     S->time + (float)i * 0.7f, true, true, 1.0f);
+                } else {
+                    draw_organism(center, 25.0f, i, ua_species_stage(i), COL_GHOST,
+                                  S->time + (float)i * 0.7f, false, false, 1.0f);
+                }
             } else if (found) {
                 draw_mutation_sigil(center, i, accent, ua_mutation_is_rare(i), S->time);
             } else {
@@ -4347,8 +4447,9 @@ static void draw_codex_detail(const GameState *game, const UIState *S)
     if (found) {
         ui_glow(center, 100.0f, accent, 0.25f);
         if (is_species)
-            draw_organism(center, 66.0f, S->codex_detail_id, ua_species_stage(S->codex_detail_id),
-                          ecology_color(S->codex_detail_id), S->time, true, true, 1.0f);
+            draw_organism_in(art, center, 66.0f, S->codex_detail_id,
+                             ua_species_stage(S->codex_detail_id),
+                             ecology_color(S->codex_detail_id), S->time, true, true, 1.0f);
         else
             draw_mutation_sigil_scaled(center, S->codex_detail_id, accent,
                                        ua_mutation_is_rare(S->codex_detail_id), S->time, 3.0f);

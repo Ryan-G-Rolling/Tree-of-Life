@@ -258,8 +258,10 @@ const char *ua_speciation_requirement(int target_species_id, char *buf, int buf_
     int muts[TRAIT_COUNT + 8];
     int n = species_required_mutations(target_species_id, muts, (int)(sizeof muts / sizeof muts[0]));
     for (int i = 0; i < n; ++i) {
+        /* 用图鉴里的中文名：B 的规则表是英文名，直接显示会在一句中文里夹一个英文词 */
+        const CodexEntry *entry = codex_entry(CODEX_MUTATION, muts[i]);
         const MutationDef *def = mutation_get(muts[i]);
-        const char *name = def ? def->name : "未知突变";
+        const char *name = entry ? entry->name : (def ? def->name : "未知突变");
         used += (size_t)snprintf(buf + used, (size_t)(buf_size - (int)used), "%s%s",
                                  need++ > 0 ? " + " : "", name);
     }
@@ -286,14 +288,67 @@ const char *ua_mutation_name(int mutation_id)
     return entry ? entry->name : "未知突变";
 }
 
+/* 追加一小段文案；snprintf 返回的是"本该写多长"，必须夹回缓冲区真实长度。 */
+static void text_append(char *buf, int size, size_t *used, const char *piece)
+{
+    if (!buf || size <= 1 || *used >= (size_t)size - 1) return;
+    int n = snprintf(buf + *used, (size_t)size - *used, "%s", piece);
+    if (n <= 0) return;
+    *used += (size_t)n;
+    if (*used > (size_t)size - 1) *used = (size_t)size - 1;
+}
+
 const char *ua_mutation_desc(int mutation_id, char *buf, int buf_size)
 {
     const MutationDef *def = mutation_get(mutation_id);
+    if (!buf || buf_size <= 0) return buf;
+    buf[0] = '\0';
     if (!def) {
         snprintf(buf, (size_t)buf_size, "-");
         return buf;
     }
-    snprintf(buf, (size_t)buf_size, "%s", def->description);
+
+    /* 规则表的 description 是英文（"A stage-0 adaptation that improves light capture."），
+     * 而且同一阶段的多条突变共用一句模板，既不是中文也没有区分度。
+     * 这里直接按 MutationDef 的真实数值生成中文摘要：玩家看到的就是这一条到底加什么。 */
+    size_t used = 0;
+    char piece[64];
+    snprintf(piece, sizeof(piece), "阶段 %d", def->min_phase);
+    text_append(buf, buf_size, &used, piece);
+
+    int shown = 0;
+    const struct { double v; const char *label; } gains[5] = {
+        { def->atp_bonus, "ATP" },
+        { def->biomass_bonus, "生物量" },
+        { def->dna_bonus, "DNA" },
+        { def->cap_bonus, "上限" },
+        { def->growth_bonus, "增速" },
+    };
+    for (int i = 0; i < 5; ++i) {
+        if (gains[i].v < 0.0005) continue;
+        snprintf(piece, sizeof(piece), " · %s +%d%%", gains[i].label,
+                 (int)(gains[i].v * 100.0 + 0.5));
+        text_append(buf, buf_size, &used, piece);
+        ++shown;
+    }
+
+    /* 抗性加的是"环境等级"，不是百分比 */
+    static const char *trait_zh[TRAIT_COUNT] = { "耐热", "耐寒", "耐暗", "耐氧", "耐毒" };
+    for (int t = 0; t < TRAIT_COUNT; ++t) {
+        if (def->trait_bonus[t] == 0) continue;
+        snprintf(piece, sizeof(piece), " · %s%+d", trait_zh[t], def->trait_bonus[t]);
+        text_append(buf, buf_size, &used, piece);
+        ++shown;
+    }
+
+    double kb = evolution_mutation_knowledge_bonus(mutation_id);
+    if (kb > 0.0005) {
+        snprintf(piece, sizeof(piece), " · 理念 +%d%%", (int)(kb * 100.0 + 0.5));
+        text_append(buf, buf_size, &used, piece);
+        ++shown;
+    }
+
+    if (shown == 0) text_append(buf, buf_size, &used, " · 无产出加成");
     return buf;
 }
 

@@ -129,3 +129,13 @@ A/B/C 可运行整合版已在此前完成，Git 基线为 `44e2c0d`；既有结
 - **图鉴筛选**：`codex_visible_list()` 让物种页只列「已发现 + 相邻（父/子）」并已发现优先（17 已发现 + 117 相邻 = 12 页，原 16 页全量），突变页只列已收录（23 / 204 收在 2 页）；计数分别显示 `已发现 17 / 186 · 相邻 117` 与 `已收录 23 / 204`。适配层补 `ua_max_species_stage` / `ua_species_child_list`。
 - **验证**：0 warning / 0 error；`make test` 26 组 92,578 项 + 36 项接线 + 集成 + 60 分钟回归 + gameplay（buff timing / insight / 回滚 / 读档延续）+ codex 全量通过；`make test-ui` 25 次点击（含激活增益）一致；`--shot --ss 3` 导出 21 张 3840×2160，字形 1290 个非 ASCII 字符（补 悟/拖/拽/滚/相）。`make dist` 单文件 23.02 MB，在空目录跑通并导出 21 张，已覆盖 `deliverables/TreeOfLife.exe` 与 `deliverables/screens/`。
 - **已知限制**：`make test-layout` 在 Windows MinGW 下因 PE 的 `--gc-sections` 无法剔除未引用的 `COL_*` / `ui_font_register` 而链接失败，Linux CI 走 ELF 不受影响；该目标未在本轮改动。
+
+## 2026-11-27 · C · 生物图像限定画框、突变文案中文化
+
+- **问题**：用户截图里一只阶段 1 杆菌几乎横穿整块展台，压到顶部「微光期」危机横幅上。原因是 12 类形态只在「本体半径 r」内排布时看着正常，实际每一类都会在 r 之外再伸出一圈：杆菌胶囊半长 1.46r 加鞭毛到 2.2r，行星环 1.34r，奇点吸积盘 1.66r。展台按 r=96 画，杆状菌真实高度到 280px，展台只有 284px。
+- **收缩**：`morph_extent(stage, thin)` 登记 12 类形态的外接系数（thin=true 时含鞭毛/星尘/喷流），`organism_fit_ex()` 按容器可用半径反算本体半径。培养皿用 thin（玻璃壁是硬边界），展台/图鉴/缩略图用实心系数（细线到画框边界被裁是自然的，算进去杆状菌会缩成一个点）。
+- **硬裁剪**：新增 `ui_clip_begin()/ui_clip_end()`（render.c，scissor 用渲染目标像素，逻辑坐标乘 `ui_canvas_ss()`，与星图连线同一套换算）。培养皿裁在皿的方框、展台裁在标题与物种名之间的 194px 画框、图鉴网格裁在 72×72 图标区、图鉴大图裁在 254px 画框、商店分化缩略图裁在 40×40 磁贴。`draw_organism_in()` 统一封装"先收缩再裁剪"，返回实际半径。
+- **种群环**：进度环原按固定 `radius+14` 画，收缩后会出现"环比生物大一圈"或切线穿过本体；改成按收缩后的半径 × 外接系数 +10、上限为画框留白，并移到生物之前绘制，环永远套在外面且不会压住本体。
+- **中文化**：`ua_speciation_requirement()` 改取图鉴的 204 条中文突变名（原来直接用 `MutationDef.name`，界面上出现「需要：Lipid Repair」「需要：RNA Proofreading」）。`ua_mutation_desc()` 不再返回 `MutationDef.description`（英文模板，且同阶段多条共用一句），改为按 atp/biomass/dna/cap/growth 加成、5 项抗性与理念加成现场拼中文摘要，例如「阶段 8 · ATP +25% · 生物量 +20% · 上限 +30% · 增速 +5% · 耐热 +2 · 耐氧 +2」，无加成时写「无产出加成」。
+- **截图与验证**：main.c 新增 `fill_demo_early()`（单槽杆状菌）与 4 张新图：`shot_10_early_rod`、`shot_10b_lowlight`（微光期）、`shot_10c_speciation_zh`（中文前置条件）、`shot_02b_mutation_late`（后期突变，验证最长中文摘要不顶到「点击选择」）。0 warning / 0 error；`make test` 26 组 92,578 项 + 36 项接线 + 集成 + 60 分钟回归 + gameplay + codex 全通过；`make test-ui` 25 次点击一致；字形集重生成 1291 字符；`--shot --ss 3` 导出 25 张 3840×2160，`make dist` 单文件 22 MB 在空目录跑通并导出 25 张，已覆盖 `deliverables/`。
+- **未改动**：`EP` / `Evolution Points` / `Legacy` 仍是设计文档里的专有名词（顶栏写作「EP 永久」），本轮只译突变名与前置条件，不改这些品牌词。

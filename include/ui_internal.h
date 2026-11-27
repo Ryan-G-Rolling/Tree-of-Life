@@ -276,6 +276,10 @@ void ui_text_shadow(const char *text, float x, float y, float size, Color color,
 void ui_text_strong(const char *text, float x, float y, float size, Color color);
 void ui_text_center_strong(const char *text, float cx, float y, float size, Color color);
 
+/* 逻辑坐标裁剪：后续绘制被限制在 r 内（不能嵌套） */
+void ui_clip_begin(Rectangle r);
+void ui_clip_end(void);
+
 void ui_panel(Rectangle r, float radius, Color fill, Color border);
 void ui_panel_soft(Rectangle r, float radius, Color fill);
 /* 面板外的一圈柔光（焦点/稀有/当前路径） */
