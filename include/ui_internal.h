@@ -41,7 +41,8 @@ typedef enum {
     UI_OVL_SPECIATION,
     UI_OVL_CODEX,
     UI_OVL_TREE,
-    UI_OVL_MUT_LIST     /* 突变图谱：本轮已获得的全部突变 + 已触发共振 */
+    UI_OVL_MUT_LIST,    /* 突变图谱：本轮已获得的全部突变 + 已触发共振 */
+    UI_OVL_CODEX_DETAIL
 } UiOverlay;
 
 /* ---------------- 按钮 ----------------
@@ -73,6 +74,9 @@ typedef enum {
     UI_BTN_SPECIATION_PAGE,
     UI_BTN_COLLECT_BUFF,
     UI_BTN_BUY_INSIGHT,
+    UI_BTN_CODEX_ENTRY,
+    UI_BTN_CODEX_PAGE,
+    UI_BTN_CODEX_BACK,
     UI_BTN_COUNT
 } UiButtonId;
 
@@ -91,6 +95,7 @@ typedef struct {
 
 #define MAX_UI_BUTTONS (MAX_SPECIES + 64)
 #define UI_SPECIATION_PAGE_SIZE 4
+#define UI_CODEX_PAGE_SIZE 12
 
 typedef struct {
     UiButton items[MAX_UI_BUTTONS];
@@ -130,6 +135,9 @@ typedef struct {
     int info_tab;     /* 主界面情报面板：0 下一步 / 1 产出 / 2 纪录 */
     int tree_sel;     /* 进化树选中的物种，-1 表示跟随主谱系 */
     int speciation_page;
+    int codex_page;
+    int codex_detail_id;
+    int codex_detail_kind; /* 0 species / 1 mutation; transient, never saved */
 
     /* 产出曲线：三条资源各自 72 点环形缓冲（每 0.25s 采一次 = 18 秒窗口）。
      * 只用于画面，不参与任何数值计算。 */
@@ -158,6 +166,9 @@ typedef struct {
 } UIState;
 
 extern UIState g_ui;
+/* Pure local navigation, also exercised by window-free integration tests. */
+void ui_handle_local_button(const UiButton *button, const GameState *game);
+void ui_dismiss_overlay(void);
 
 /* ---------------- 主题 ----------------
  * 深空底 + 金色品牌色 + 生物荧光语义色。

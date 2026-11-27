@@ -24,6 +24,7 @@
 #include "ui_adapter.h"
 #include "embedded.h"
 #include "atmosphere.h"
+#include "codex.h"
 
 UIState g_ui;
 
@@ -187,8 +188,9 @@ static void fill_action(const UiButton *b, GameAction *out)
 }
 
 /* 纯 UI 行为：只改 g_ui，不碰 GameState */
-static void handle_local_button(const UiButton *b, const GameState *game)
+void ui_handle_local_button(const UiButton *b, const GameState *game)
 {
+    if (!b || !game || !b->enabled) return;
     switch (b->id) {
     case UI_BTN_OPEN_SPECIATION: {
         if (!b->enabled) {
@@ -229,7 +231,31 @@ static void handle_local_button(const UiButton *b, const GameState *game)
         g_ui.tree_sel = (g_ui.tree_sel == b->target_id) ? -1 : b->target_id;
         break;
     case UI_BTN_CODEX_TAB:
+        if (b->option < 0 || b->option > 2) break;
         g_ui.codex_tab = b->option;
+        g_ui.codex_page = 0;
+        break;
+    case UI_BTN_CODEX_PAGE: {
+        int count = codex_count((CodexKind)g_ui.codex_tab);
+        int last = count > 0 ? (count - 1) / UI_CODEX_PAGE_SIZE : 0;
+        if (b->option >= 0 && b->option <= last) g_ui.codex_page = b->option;
+        break;
+    }
+    case UI_BTN_CODEX_ENTRY: {
+        const CodexEntry *entry = codex_entry((CodexKind)b->option, b->target_id);
+        if (!entry) break;
+        bool found = b->option == CODEX_SPECIES
+                   ? (game->legacy.codex_species[b->target_id] || game->run.discovered_species[b->target_id])
+                   : (game->legacy.codex_mutations[b->target_id] || game->run.discovered_mutations[b->target_id]);
+        if (!found) break;
+        g_ui.codex_detail_kind = b->option;
+        g_ui.codex_detail_id = b->target_id;
+        g_ui.overlay = UI_OVL_CODEX_DETAIL;
+        g_ui.ovl_t = 0.0f;
+        break;
+    }
+    case UI_BTN_CODEX_BACK:
+        g_ui.overlay = UI_OVL_CODEX;
         break;
     case UI_BTN_STORE_TAB:
         g_ui.store_tab = b->option;
@@ -239,7 +265,7 @@ static void handle_local_button(const UiButton *b, const GameState *game)
         break;
     case UI_BTN_CLOSE_OVERLAY:
     case UI_BTN_BACKDROP:
-        g_ui.overlay = UI_OVL_NONE;
+        ui_dismiss_overlay();
         break;
     default:
         break;
@@ -250,6 +276,12 @@ static void close_overlay_now(void)
 {
     g_ui.overlay = UI_OVL_NONE;
     g_ui.ovl_t = 0.0f;
+}
+
+void ui_dismiss_overlay(void)
+{
+    if (g_ui.overlay == UI_OVL_CODEX_DETAIL) g_ui.overlay = UI_OVL_CODEX;
+    else close_overlay_now();
 }
 
 /* ================= 点击粒子（爽感系统） ================= */
@@ -452,6 +484,7 @@ int ui_should_close(void)
 static void fire(int index, const GameState *game, GameAction *out, bool *has_action)
 {
     UiButton *b = &g_ui.layout.items[index];
+    if (b->id == UI_BTN_NONE) return;
     g_ui.pressed = index;
 
     if (action_needs_game(b->id)) {
@@ -462,7 +495,7 @@ static void fire(int index, const GameState *game, GameAction *out, bool *has_ac
             g_ui.ovl_t = 0.0f;
         }
     } else {
-        handle_local_button(b, game);
+        ui_handle_local_button(b, game);
     }
 
     if (b->id == UI_BTN_CLICK) click_feedback();
@@ -506,14 +539,18 @@ bool ui_update(const GameState *game, GameAction *pending_action)
             if (b->enabled) {
                 fire(g_ui.hot, game, pending_action, &has_action);
             } else {
-                toast("条件不足：资源不够或前置未满足", true, 2.0f);
+                if (b->id == UI_BTN_CODEX_ENTRY)
+                    toast("尚未发现该条目，继续探索后收录", false, 2.0f);
+                else if (b->id == UI_BTN_CODEX_PAGE)
+                    toast("已经到达这一侧的最后一页", false, 1.5f);
+                else toast("条件不足：资源不够或前置未满足", true, 2.0f);
             }
         }
     }
 
     /* 键盘快捷键 */
     if (g_ui.overlay != UI_OVL_NONE) {
-        if (input_key_pressed(KEY_ESCAPE)) close_overlay_now();
+        if (input_key_pressed(KEY_ESCAPE)) ui_dismiss_overlay();
     } else if (g_ui.screen == UI_SCREEN_MAIN) {
         if (input_key_pressed(KEY_SPACE)) {
             if (pending_action) { pending_action->type = ACTION_CLICK_ATP; has_action = true; }
@@ -574,7 +611,9 @@ bool ui_update(const GameState *game, GameAction *pending_action)
     }
 
     /* 鼠标指针 */
-    if (g_ui.hot >= 0 && g_ui.layout.items[g_ui.hot].enabled) SetMouseCursor(MOUSE_CURSOR_POINTING_HAND);
+    if (g_ui.hot >= 0 && g_ui.layout.items[g_ui.hot].enabled
+        && g_ui.layout.items[g_ui.hot].id != UI_BTN_NONE
+        && g_ui.layout.items[g_ui.hot].id != UI_BTN_BACKDROP) SetMouseCursor(MOUSE_CURSOR_POINTING_HAND);
     else SetMouseCursor(MOUSE_CURSOR_DEFAULT);
 
     g_ui.pressed = -1;

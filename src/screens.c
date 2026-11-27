@@ -20,6 +20,7 @@
 #include "ui_adapter.h"
 #include "atmosphere.h"
 #include "buffs.h"
+#include "codex.h"
 
 /* ================= 通用小工具 ================= */
 
@@ -3010,21 +3011,38 @@ static int speciation_page_start(const UIState *state, int total)
 
 static Rectangle codex_panel_rect(int tab, int achievement_count)
 {
-    float h = 560.0f;
-    if (tab == 0) {
-        int rows = (SPECIES_COUNT + 4) / 5;
-        h = 112.0f + (float)rows * 110.0f + 12.0f;
-    } else if (tab == 1) {
-        int rows = (MUTATION_COUNT + 4) / 5;
-        h = 112.0f + (float)rows * 66.0f + 12.0f;
-    } else {
-        int rows = achievement_count > 0 ? (achievement_count + 2) / 3 : 1;
-        /* 106 头部 + 成就网格 + 生涯统计块：成就改成三列，给下面的统计表腾地方 */
-        h = 116.0f + 104.0f + (float)rows * 70.0f + 126.0f + 16.0f;
-        if (h < 440.0f) h = 440.0f;
-    }
-    if (h > 604.0f) h = 604.0f;
-    return (Rectangle){ 60.0f, (UI_H - h) * 0.5f, 1160.0f, h };
+    (void)tab;
+    (void)achievement_count;
+    return (Rectangle){ 60.0f, 58.0f, 1160.0f, 604.0f };
+}
+
+static Rectangle codex_detail_rect(void)
+{
+    return (Rectangle){ 400.0f, 70.0f, 480.0f, 580.0f };
+}
+
+static int codex_page_first(const UIState *state)
+{
+    int count = codex_count((CodexKind)state->codex_tab);
+    int last = count > 0 ? (count - 1) / UI_CODEX_PAGE_SIZE : 0;
+    int page = state->codex_page;
+    if (page < 0) page = 0;
+    if (page > last) page = last;
+    return page * UI_CODEX_PAGE_SIZE;
+}
+
+static bool codex_found(const GameState *game, int kind, int id)
+{
+    if (!codex_entry((CodexKind)kind, id)) return false;
+    return kind == CODEX_SPECIES
+         ? (game->legacy.codex_species[id] || game->run.discovered_species[id])
+         : (game->legacy.codex_mutations[id] || game->run.discovered_mutations[id]);
+}
+
+static Rectangle codex_cell_rect(Rectangle panel, int slot)
+{
+    return (Rectangle){ panel.x + 24.0f + (float)(slot % 4) * 281.0f,
+                        panel.y + 112.0f + (float)(slot / 4) * 140.0f, 269.0f, 128.0f };
 }
 
 static void build_overlay(UiLayout *L, const GameState *game, const UIState *S)
@@ -3080,13 +3098,36 @@ static void build_overlay(UiLayout *L, const GameState *game, const UIState *S)
     }
     case UI_OVL_CODEX: {
         Rectangle panel = codex_panel_rect(S->codex_tab, ua_achievement_count());
+        btn_add(L, UI_BTN_NONE, panel, 0, 0, true);
         for (int i = 0; i < 3; ++i) {
             btn_add(L, UI_BTN_CODEX_TAB,
                     (Rectangle){ panel.x + 24.0f + (float)i * 110.0f, panel.y + 62.0f,
                                  102.0f, 32.0f }, i, i, true);
         }
+        int count = codex_count((CodexKind)S->codex_tab);
+        int first = codex_page_first(S);
+        for (int i = first; i < count && i < first + UI_CODEX_PAGE_SIZE; ++i) {
+            btn_add(L, UI_BTN_CODEX_ENTRY, codex_cell_rect(panel, i - first), i, S->codex_tab,
+                    codex_found(game, S->codex_tab, i));
+        }
+        if (count > 0) {
+            btn_add(L, UI_BTN_CODEX_PAGE,
+                    (Rectangle){ panel.x + 24.0f, panel.y + 552.0f, 110.0f, 32.0f },
+                    0, first / UI_CODEX_PAGE_SIZE - 1, first > 0);
+            btn_add(L, UI_BTN_CODEX_PAGE,
+                    (Rectangle){ panel.x + panel.width - 134.0f, panel.y + 552.0f, 110.0f, 32.0f },
+                    1, first / UI_CODEX_PAGE_SIZE + 1, first + UI_CODEX_PAGE_SIZE < count);
+        }
         btn_add(L, UI_BTN_CLOSE_OVERLAY,
                 (Rectangle){ panel.x + panel.width - 140.0f, panel.y + 16.0f, 116.0f, 36.0f },
+                0, 0, true);
+        break;
+    }
+    case UI_OVL_CODEX_DETAIL: {
+        Rectangle panel = codex_detail_rect();
+        btn_add(L, UI_BTN_NONE, panel, 0, 0, true);
+        btn_add(L, UI_BTN_CODEX_BACK,
+                (Rectangle){ panel.x + 140.0f, panel.y + panel.height - 58.0f, 200.0f, 36.0f },
                 0, 0, true);
         break;
     }
@@ -3128,12 +3169,12 @@ static void draw_overlay_backdrop(float alpha)
 
 /* 突变纹章：每个突变一个“基因花”。
    瓣数 / 环数 / 核形 / 色相 / 生长方向都由 mutation_id 派生，保证连排时不重样。 */
-static void draw_mutation_sigil(Vector2 c, int mutation_id, Color col, bool rare, float t)
+static void draw_mutation_sigil_scaled(Vector2 c, int mutation_id, Color col, bool rare, float t, float scale)
 {
     int arms = 3 + (mutation_id % 7);
     int rings = 1 + ((mutation_id / 2) % 3);
     int arch = mutation_id % 4;
-    float rr = rare ? 25.0f : 20.0f;
+    float rr = (rare ? 25.0f : 20.0f) * scale;
     float base = rare ? 1.0f : 0.82f;
     float rot = ((float)((mutation_id * 37) % 360)) * 0.01745f;
 
@@ -3202,6 +3243,11 @@ static void draw_mutation_sigil(Vector2 c, int mutation_id, Color col, bool rare
             DrawCircleV(p, 1.2f, Fade(COL_EP, base * 0.75f));
         }
     }
+}
+
+static void draw_mutation_sigil(Vector2 c, int mutation_id, Color col, bool rare, float t)
+{
+    draw_mutation_sigil_scaled(c, mutation_id, col, rare, t, 1.0f);
 }
 
 static void draw_mutation_overlay(const GameState *game, const UIState *S)
@@ -3389,63 +3435,51 @@ static void draw_codex_overlay(const GameState *game, const UIState *S)
     ui_divider(panel.x + 24.0f, panel.x + panel.width - 24.0f, panel.y + 104.0f,
                Fade(COL_LINE, 0.7f));
 
-    if (S->codex_tab == 0) {
+    if (S->codex_tab == 0 || S->codex_tab == 1) {
+        int count = codex_count((CodexKind)S->codex_tab);
+        int first = codex_page_first(S);
         int discovered = 0;
-        float cell_h = fminf(110.0f, (panel.height - 124.0f) / (float)((SPECIES_COUNT + 4) / 5));
-        for (int i = 0; i < SPECIES_COUNT; ++i) {
-            Rectangle r = { panel.x + 24.0f + (float)(i % 5) * 222.0f,
-                            panel.y + 112.0f + (float)(i / 5) * cell_h, 210.0f, cell_h - 10.0f };
-            bool found = game->legacy.codex_species[i] || game->run.discovered_species[i];
-            if (found) discovered++;
-            ui_panel(r, R_CARD, found ? COL_PANEL_HI : COL_SURFACE_OFF,
-                     found ? Fade(ecology_color(i), 0.35f) : Fade(COL_LINE, 0.5f));
-            if (found) {
-                draw_organism((Vector2){ r.x + 36.0f, r.y + 46.0f }, 19.0f, i,
-                              ua_species_stage(i), ecology_color(i),
-                              g_ui.time + (float)i * 0.7f, true, true, 1.0f);
-                ui_text_strong(ua_species_name(i), r.x + 68.0f, r.y + 22.0f, F_LABEL, COL_TEXT);
-                char meta[64];
-                snprintf(meta, sizeof(meta), "%s · 阶段 %d", ua_ecology_name(i),
-                         ua_species_stage(i));
-                ui_text(meta, r.x + 68.0f, r.y + 46.0f, F_CAPTION, COL_DIM);
+        for (int i = 0; i < count; ++i) discovered += codex_found(game, S->codex_tab, i);
+        for (int i = first; i < count && i < first + UI_CODEX_PAGE_SIZE; ++i) {
+            Rectangle r = codex_cell_rect(panel, i - first);
+            bool found = codex_found(game, S->codex_tab, i);
+            UiButton *button = btn_find(S, UI_BTN_CODEX_ENTRY, i);
+            float hover = btn_hover_step(button, is_hot(S, button));
+            Color accent = S->codex_tab == CODEX_SPECIES ? ecology_color(i) : COL_DNA;
+            ui_panel(r, R_CARD, found ? ui_color_mix(COL_PANEL_HI, COL_PANEL_HOT, hover) : COL_SURFACE_OFF,
+                     found ? Fade(accent, 0.35f + hover * 0.35f) : Fade(COL_LINE, 0.5f));
+            Vector2 center = { r.x + 42.0f, r.y + 54.0f };
+            if (S->codex_tab == CODEX_SPECIES) {
+                draw_organism(center, 25.0f, i, ua_species_stage(i), found ? accent : COL_GHOST,
+                              S->time + (float)i * 0.7f, found, found, 1.0f);
+            } else if (found) {
+                draw_mutation_sigil(center, i, accent, ua_mutation_is_rare(i), S->time);
             } else {
-                draw_organism((Vector2){ r.x + 36.0f, r.y + 46.0f }, 18.0f, i,
-                              ua_species_stage(i), COL_GHOST, 0.0f, false, false, 1.0f);
-                ui_text_center("?", r.x + 36.0f, r.y + 36.0f, F_TITLE, COL_FAINT);
-                ui_text("未发现", r.x + 68.0f, r.y + 40.0f, F_BODY, COL_FAINT);
+                ui_text_center("?", center.x, center.y - 10.0f, F_TITLE, COL_FAINT);
             }
+            const CodexEntry *entry = codex_entry((CodexKind)S->codex_tab, i);
+            ui_text_strong(found ? entry->name : "未发现", r.x + 80.0f, r.y + 24.0f, F_LABEL,
+                           found ? COL_TEXT : COL_FAINT);
+            char meta[80];
+            if (S->codex_tab == CODEX_SPECIES && found)
+                snprintf(meta, sizeof meta, "%s · 阶段 %d", ua_ecology_name(i), ua_species_stage(i));
+            else if (found)
+                snprintf(meta, sizeof meta, "%s · 第 %d 号", ua_mutation_is_rare(i) ? "稀有突变" : "突变", i + 1);
+            else snprintf(meta, sizeof meta, "探索后收录");
+            ui_text(meta, r.x + 80.0f, r.y + 52.0f, F_CAPTION, COL_DIM);
+            ui_text(found ? "点击查看卡片" : "尚未解锁", r.x + 20.0f, r.y + 100.0f,
+                    F_CAPTION, found ? accent : COL_FAINT);
         }
-        char cnt[64];
-        snprintf(cnt, sizeof(cnt), "已发现 %d / %d", discovered, SPECIES_COUNT);
-        ui_text_right(cnt, panel.x + panel.width - 24.0f, panel.y + 70.0f, F_BODY, COL_DIM);
-    } else if (S->codex_tab == 1) {
-        int discovered = 0;
-        float cell_h = fminf(66.0f, (panel.height - 124.0f) / (float)((MUTATION_COUNT + 4) / 5));
-        for (int i = 0; i < MUTATION_COUNT; ++i) {
-            Rectangle r = { panel.x + 24.0f + (float)(i % 5) * 222.0f,
-                            panel.y + 112.0f + (float)(i / 5) * cell_h, 210.0f, cell_h - 8.0f };
-            bool found = game->legacy.codex_mutations[i] || game->run.discovered_mutations[i];
-            if (found) discovered++;
-            ui_panel(r, R_CARD, found ? COL_PANEL_HI : COL_SURFACE_OFF,
-                     found ? Fade(COL_DNA, 0.30f) : Fade(COL_LINE, 0.5f));
-            if (found) {
-                draw_mutation_sigil((Vector2){ r.x + 22.0f, r.y + 29.0f }, i,
-                                    COL_DNA, ua_mutation_is_rare(i), g_ui.time);
-                ui_text(ua_mutation_name(i), r.x + 44.0f, r.y + 10.0f, F_BODY, COL_TEXT);
-                if (ua_mutation_is_rare(i)) {
-                    ui_text_right("稀有", r.x + r.width - 10.0f, r.y + 12.0f, F_CAPTION, COL_EP);
-                }
-                char meta[64];
-                snprintf(meta, sizeof(meta), "第 %d 号基因", i + 1);
-                ui_text(meta, r.x + 44.0f, r.y + 32.0f, F_CAPTION, COL_FAINT);
-            } else {
-                ui_text("? ? ?", r.x + 44.0f, r.y + 10.0f, F_BODY, COL_FAINT);
-                ui_text("尚未获得", r.x + 44.0f, r.y + 32.0f, F_CAPTION, COL_FAINT);
-            }
-        }
-        char cnt[64];
-        snprintf(cnt, sizeof(cnt), "已发现 %d / %d", discovered, MUTATION_COUNT);
-        ui_text_right(cnt, panel.x + panel.width - 24.0f, panel.y + 70.0f, F_BODY, COL_DIM);
+        char count_text[64], page_text[80];
+        snprintf(count_text, sizeof count_text, "已发现 %d / %d", discovered, count);
+        ui_text_right(count_text, panel.x + panel.width - 24.0f, panel.y + 70.0f, F_BODY, COL_DIM);
+        UiButton *prev = btn_find(S, UI_BTN_CODEX_PAGE, 0);
+        UiButton *next = btn_find(S, UI_BTN_CODEX_PAGE, 1);
+        if (prev) ui_btn_draw(prev, "上一页", NULL, is_hot(S, prev));
+        if (next) ui_btn_draw(next, "下一页", NULL, is_hot(S, next));
+        snprintf(page_text, sizeof page_text, "%d / %d 页 · 点击已收录条目查看故事",
+                 first / UI_CODEX_PAGE_SIZE + 1, (count + UI_CODEX_PAGE_SIZE - 1) / UI_CODEX_PAGE_SIZE);
+        ui_text_center(page_text, panel.x + panel.width * 0.5f, panel.y + 560.0f, F_BODY, COL_DIM);
     } else {
         const char *labels[3] = { "最高纪元", "最高 EP", "最高生物量" };
         double values[3] = { (double)game->legacy.best_era,
@@ -3524,6 +3558,66 @@ static void draw_codex_overlay(const GameState *game, const UIState *S)
             }
         }
     }
+}
+
+/* Wrap at UTF-8 boundaries and measured width; never truncate an approved quote. */
+static void draw_codex_quote(const char *quote, Rectangle area)
+{
+    char line[192] = { 0 };
+    int used = 0, row = 0;
+    for (const char *p = quote; *p;) {
+        int bytes = 1;
+        while (p[bytes] && ((unsigned char)p[bytes] & 0xC0u) == 0x80u) ++bytes;
+        char trial[192];
+        memcpy(trial, line, (size_t)used);
+        memcpy(trial + used, p, (size_t)bytes);
+        trial[used + bytes] = '\0';
+        if (used > 0 && ui_text_w(trial, F_TITLE) > area.width) {
+            ui_text_center_strong(line, area.x + area.width * 0.5f, area.y + row * 34.0f,
+                                  F_TITLE, COL_TEXT);
+            ++row;
+            used = 0;
+        }
+        memcpy(line + used, p, (size_t)bytes);
+        used += bytes;
+        line[used] = '\0';
+        p += bytes;
+    }
+    if (used) ui_text_center_strong(line, area.x + area.width * 0.5f, area.y + row * 34.0f,
+                                   F_TITLE, COL_TEXT);
+}
+
+static void draw_codex_detail(const GameState *game, const UIState *S)
+{
+    Rectangle panel = codex_detail_rect();
+    const CodexEntry *entry = codex_entry((CodexKind)S->codex_detail_kind, S->codex_detail_id);
+    bool found = entry && codex_found(game, S->codex_detail_kind, S->codex_detail_id);
+    bool is_species = S->codex_detail_kind == CODEX_SPECIES;
+    Color accent = is_species ? COL_TEAL : COL_DNA;
+    ui_halo(panel, R_PANEL, accent, 0.12f);
+    ui_panel(panel, R_PANEL, COL_PANEL, Fade(accent, 0.6f));
+    ui_text_strong(found ? entry->name : "未发现", panel.x + 24.0f, panel.y + 20.0f,
+                   F_TITLE, COL_TEXT);
+    Rectangle art = { panel.x + 20.0f, panel.y + 62.0f, panel.width - 40.0f, 254.0f };
+    ui_panel(art, R_CARD, COL_BG_DEEP, Fade(accent, 0.25f));
+    Vector2 center = { art.x + art.width * 0.5f, art.y + art.height * 0.5f };
+    if (found) {
+        ui_glow(center, 100.0f, accent, 0.25f);
+        if (is_species)
+            draw_organism(center, 66.0f, S->codex_detail_id, ua_species_stage(S->codex_detail_id),
+                          ecology_color(S->codex_detail_id), S->time, true, true, 1.0f);
+        else
+            draw_mutation_sigil_scaled(center, S->codex_detail_id, accent,
+                                       ua_mutation_is_rare(S->codex_detail_id), S->time, 3.0f);
+    } else ui_text_center("?", center.x, center.y - 25.0f, F_HERO, COL_FAINT);
+    ui_text_center(is_species ? "物种图鉴" : "突变图鉴", panel.x + panel.width * 0.5f,
+                   panel.y + 340.0f, F_CAPTION, accent);
+    draw_codex_quote(found ? entry->tagline : "继续探索，故事还在前面。",
+                     (Rectangle){ panel.x + 40.0f, panel.y + 376.0f, panel.width - 80.0f, 112.0f });
+    UiButton *back = btn_find(S, UI_BTN_CODEX_BACK, -1);
+    if (back) ui_btn_draw(back, "返回图鉴", NULL, is_hot(S, back));
+    ui_text_center("Esc 返回 · 保留当前页", panel.x + panel.width * 0.5f,
+                   panel.y + panel.height - 14.0f, F_CAPTION, COL_FAINT);
 }
 
 /* ---------------- 进化树（星图） ----------------
@@ -4140,6 +4234,7 @@ static void draw_overlay(const GameState *game, const UIState *S)
     case UI_OVL_MUTATION:   draw_mutation_overlay(game, S); break;
     case UI_OVL_SPECIATION: draw_speciation_overlay(game, S); break;
     case UI_OVL_CODEX:      draw_codex_overlay(game, S); break;
+    case UI_OVL_CODEX_DETAIL: draw_codex_detail(game, S); break;
     case UI_OVL_TREE:       draw_tree_overlay(game, S); break;
     case UI_OVL_MUT_LIST:   draw_mut_list_overlay(game, S); break;
     default: break;

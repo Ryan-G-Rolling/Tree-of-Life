@@ -18,6 +18,7 @@
 #include "environment.h"
 #include "evolution.h"
 #include "legacy.h"
+#include "codex.h"
 
 /* ================= A 侧：经济与单轮升级 ================= */
 
@@ -81,7 +82,8 @@ double ua_click_atp(const GameState *game)
 
 const char *ua_species_name(int species_id)
 {
-    return species_name(species_id);
+    const CodexEntry *entry = codex_entry(CODEX_SPECIES, species_id);
+    return entry ? entry->name : "未知物种";
 }
 
 const char *ua_ecology_name(int species_id)
@@ -230,8 +232,8 @@ const char *ua_speciation_requirement(int target_species_id, char *buf, int buf_
 
 const char *ua_mutation_name(int mutation_id)
 {
-    const MutationDef *def = mutation_get(mutation_id);
-    return def ? def->name : "未知突变";
+    const CodexEntry *entry = codex_entry(CODEX_MUTATION, mutation_id);
+    return entry ? entry->name : "未知突变";
 }
 
 const char *ua_mutation_desc(int mutation_id, char *buf, int buf_size)

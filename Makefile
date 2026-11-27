@@ -40,7 +40,7 @@ DIST_LDFLAGS = -static -static-libgcc
 CORE_SRC := src/game.c src/economy.c src/save.c \
             src/evolution.c src/species.c src/environment.c src/prestige.c src/legacy.c src/buffs.c
 UI_SRC   := src/main.c src/ui.c src/render.c src/screens.c src/input.c src/atmosphere.c src/tex.c \
-            src/ui_adapter.c src/embedded.c
+            src/ui_adapter.c src/embedded.c src/codex.c
 
 RULES_SRC   := src/evolution.c src/species.c src/environment.c src/prestige.c src/legacy.c src/buffs.c
 CONTROL_SRC := src/game.c src/economy.c src/save.c
@@ -96,18 +96,26 @@ build/test_regression.exe: tests/test_regression.c $(A_OBJ) $(B_OBJ)
 build/test_gameplay.exe: tests/test_gameplay.c $(A_OBJ) $(B_OBJ)
 	$(CC) $(TEST_FLAGS) $^ -lm -o $@
 
-test: build/test_b.exe build/test_integration.exe build/test_regression.exe build/test_gameplay.exe
+build/test_codex.exe: tests/test_codex.c src/codex.c $(HEADERS)
+	@$(call MKDIR_P,build)
+	$(CC) $(TEST_FLAGS) $(filter %.c,$^) -o $@
+
+test: build/test_b.exe build/test_integration.exe build/test_regression.exe build/test_gameplay.exe build/test_codex.exe
 	@echo "=== rules layer (member B) ==="
 	@build/test_b.exe
 	@echo "=== integration wiring (A + B) ==="
 	@build/test_integration.exe
 	@build/test_regression.exe
 	@build/test_gameplay.exe
+	@build/test_codex.exe
 
 # Separate binaries keep instrumented objects out of the release build.
 SAN_FLAGS := -std=c11 -Wall -Wextra -Wpedantic -Werror -O1 -g $(INC) \
              -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
-SAN_TESTS := test_b test_integration test_regression test_gameplay
+SAN_TESTS := test_b test_integration test_regression test_gameplay test_codex
+build/sanitize/test_codex.exe: tests/test_codex.c src/codex.c $(HEADERS)
+	@$(call MKDIR_P,build/sanitize)
+	$(CC) $(SAN_FLAGS) $(filter %.c,$^) -o $@
 build/sanitize/%.exe: tests/%.c $(CONTROL_SRC) $(RULES_SRC) $(HEADERS)
 	@$(call MKDIR_P,build/sanitize)
 	$(CC) $(SAN_FLAGS) $< $(CONTROL_SRC) $(RULES_SRC) -lm -o $@
@@ -118,6 +126,7 @@ test-sanitize: $(SAN_TESTS:%=build/sanitize/%.exe)
 	build/sanitize/test_integration.exe
 	build/sanitize/test_regression.exe
 	build/sanitize/test_gameplay.exe
+	build/sanitize/test_codex.exe
 
 build/demo_b.exe: demo/demo_b.c $(B_OBJ)
 	$(CC) $(TEST_FLAGS) $^ -lm -o $@
@@ -195,14 +204,14 @@ test-ui: build/test_click_feedback.exe
 
 # Only reachable production layout sections are linked; no drawing backend needed.
 .PHONY: test-layout
-build/test_ui_layout.exe: tests/test_ui_layout.c $(CORE_SRC) src/ui.c src/ui_adapter.c src/screens.c $(HEADERS)
+build/test_ui_layout.exe: tests/test_ui_layout.c $(CORE_SRC) src/ui.c src/ui_adapter.c src/screens.c src/codex.c $(HEADERS)
 	@$(call MKDIR_P,build)
 	$(CC) $(CFLAGS) -ffunction-sections -fdata-sections $(filter %.c,$^) \
 	      -Wl,--gc-sections -lm -o $@
 test-layout: build/test_ui_layout.exe
 	build/test_ui_layout.exe
 
-build/sanitize/test_ui_layout.exe: tests/test_ui_layout.c $(CORE_SRC) src/ui.c src/ui_adapter.c src/screens.c $(HEADERS)
+build/sanitize/test_ui_layout.exe: tests/test_ui_layout.c $(CORE_SRC) src/ui.c src/ui_adapter.c src/screens.c src/codex.c $(HEADERS)
 	@$(call MKDIR_P,build/sanitize)
 	$(CC) $(SAN_FLAGS) -Wno-unused-parameter -ffunction-sections -fdata-sections \
 	      $(filter %.c,$^) -Wl,--gc-sections -lm -o $@
