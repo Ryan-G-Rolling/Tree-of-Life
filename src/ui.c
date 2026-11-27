@@ -755,7 +755,14 @@ void ui_notify_result(const GameState *game, GameAction action, ActionResult res
     case ACTION_NOT_ENOUGH_EP:       toast("Evolution Points 不足", true, 1.8f); break;
     case ACTION_NOT_ENOUGH_KNOWLEDGE: toast("理念不足", true, 1.8f); break;
     case ACTION_REQUIREMENT_NOT_MET: toast("前置条件未满足", true, 2.2f); break;
-    case ACTION_LEVEL_MAXED:         toast("已经满级", true, 1.8f); break;
+    case ACTION_LEVEL_MAXED:
+        /* v10 P0-25：储备触底给一个明确结局，而不是一句泛泛的“满级” */
+        if (action.type == ACTION_BUY_RESERVE) {
+            toast("应急储备已触底：减伤 80%，无需再投入", true, 2.6f);
+        } else {
+            toast("已经满级", true, 1.8f);
+        }
+        break;
     case ACTION_ALREADY_CLAIMED:     toast("本轮奖励已经领取过", true, 2.2f); break;
     default:                         toast("操作未生效", true, 1.8f); break;
     }

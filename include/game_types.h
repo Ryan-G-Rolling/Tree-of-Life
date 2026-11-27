@@ -477,6 +477,9 @@ typedef enum {
     ENV_LONG_SUMMER,
     /* 第七轮：阶段 5 之后的工业污染危机 */
     ENV_INDUSTRIAL_SMOG,
+    /* v10 P0-26：纪元 3 的新危机类型（此前从未在任何纪元出现） */
+    ENV_ACID_RAIN,
+    ENV_RADIATION_FALLOUT,
     ENV_COUNT
 } EnvironmentId;
 
@@ -597,6 +600,10 @@ typedef struct {
     int buff_collected;            /* 本纪收集次数 */
     int buff_rare_collected;       /* 本纪稀有增益收集次数 */
     int insight_levels;            /* 洞见等级（无上限，每级 +2% 全产率） */
+
+    /* v10 P0-26：危机池 6 选 4 与逐类型台账（存档 v9 新增字段） */
+    unsigned int crisis_selection; /* 本纪元按 run 种子抽中的 4 类危机（环境 id 位掩码） */
+    unsigned int crisis_seen;      /* 本纪元出现过的危机类型（供“逐类型一条记录”口径） */
 } RunState;
 
 typedef struct {

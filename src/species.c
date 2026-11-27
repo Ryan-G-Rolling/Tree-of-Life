@@ -2075,6 +2075,48 @@ int species_main_child(int species_id)
     return -1;
 }
 
+/* v10 P1-11：主谱系阶段 ≥6 时的“2 选 1”支线候选。
+ * 候选 = 与主线后继同阶段、自身不是主线节点（无主线后继）、
+ * 也不在 parent 规则表子列表里的物种。只挑表里已有的物种，不改生态位数值；
+ * 突变前置、永久强化需求与门票照常检查。按 ID 升序，确定性、可复现。 */
+int species_branch_candidates(int parent_id, int *out_ids, int max_ids)
+{
+    int child = species_main_child(parent_id);
+    if (child < 0) {
+        return 0;
+    }
+    int phase = species_phase(child);
+    if (phase < BRANCH_SPECIATION_MIN_PHASE) {
+        return 0;
+    }
+    int children[MAX_SPECIES];
+    int child_count = species_children(parent_id, children, MAX_SPECIES);
+    int count = 0;
+    for (int id = 1; id < SPECIES_COUNT && count < max_ids; ++id) {
+        if (id == child || species_phase(id) != phase) {
+            continue;
+        }
+        if (species_main_child(id) >= 0) {
+            continue; /* 主线节点自身不作为支线候选 */
+        }
+        bool existing = false;
+        for (int i = 0; i < child_count; ++i) {
+            if (children[i] == id) {
+                existing = true;
+                break;
+            }
+        }
+        if (existing) {
+            continue;
+        }
+        if (out_ids) {
+            out_ids[count] = id;
+        }
+        ++count;
+    }
+    return count;
+}
+
 int species_children(int parent_id, int *out_ids, int max_ids)
 {
     int count = 0;

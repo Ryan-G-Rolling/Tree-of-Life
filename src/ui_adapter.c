@@ -64,7 +64,7 @@ double ua_buff_duration(int buff_type)
 double ua_run_upgrade_cost(const GameState *game, RunUpgradeType type)
 {
     if (!game) return 0.0;
-    double cost = economy_upgrade_cost(type, game->run.run_upgrade_levels[type]);
+    double cost = economy_upgrade_cost(game, type, game->run.run_upgrade_levels[type]);
     return cost; /* INFINITY 表示已满级，调用方用 isfinite 判断 */
 }
 
@@ -200,6 +200,19 @@ int ua_speciation_children(const GameState *game, int *out, int max_out)
     if (game->run.active_species_count <= 0) return 0;
     int parent = game->run.active_species[0].species_id;
     int total = species_children(parent, out, max_out);
+    /* v10 P1-11：主谱系阶段 ≥6 时并入“2 选 1”的同阶段支线候选，
+     * 让 171 个图鉴物种进玩法；校验仍走 evolution_validate_speciation。 */
+    if (game->run.active_species[0].is_main_lineage) {
+        int branches[SPECIES_COUNT];
+        int bn = species_branch_candidates(parent, branches, SPECIES_COUNT);
+        for (int i = 0; i < bn && total < max_out; ++i) {
+            bool dup = false;
+            for (int j = 0; j < total; ++j) {
+                if (out[j] == branches[i]) { dup = true; break; }
+            }
+            if (!dup) out[total++] = branches[i];
+        }
+    }
     return total < max_out ? total : max_out;
 }
 

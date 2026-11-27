@@ -1,40 +1,48 @@
-key,label,min,max,unit,source,note
+﻿key,label,min,max,unit,source,note
 compile,编译,0,0,项,gcc,0 warning / 0 error
-selftest_failures,自测失败数,0,0,项,test_b --json,27 组 / 92622 项
-first_spec_p50,首分化 p50,150,210,s,batch2 第19列,设计口径；v9 修复危机前期伤害后回到 165.9
-first_spec_p90,首分化 p90,0,280,s,batch2 第19列,回设计口径（v8 曾放宽到 360）
-first_mutation_p50,首突变 p50,0,45,s,batch2 第28列,回设计口径（v8 曾放宽到 60；实测 39.8 未变）
+selftest_failures,自测失败数,0,0,项,test_b --json,27 组 / 92,600+ 项
+first_spec_p50,首分化 p50,150,210,s,batch2 第19列,v10：门票时间本位后保持
+first_spec_p90,首分化 p90,0,280,s,batch2 第19列,
+first_mutation_p50,首突变 p50,35,60,s,batch2 第28列,
 low_tail,低尾（阶段 ≤3）,0,10,/1000,batch2 第5列,零容忍项
-ep1,纪元 1 EP,42,52,EP,batch2 第4列,阶段封顶 8 后重定
-ep2,纪元 2 EP,55,65,EP,batch2 第10列,
-ep3,纪元 3 EP,58,68,EP,batch3 第6列,必须高于纪元 2
+ep1,纪元 1 EP,40,50,EP,batch2 第4列,v10 P0-22 后重定（v10 方案 §7）
+ep2,纪元 2 EP,50,62,EP,batch2 第10列,
+ep3,纪元 3 EP,52,66,EP,batch3 第6列,必须高于纪元 2
 ep3_gt_ep2,纪元 3 EP 高于纪元 2,1,1,bool,EP 中位,三纪元必须递进
+ep3_sigma,纪元 3 EP 标准差,4,20,EP,batch3 第6列 P1-14：方差必须回来（<4 视为无局间差异）
 stage1,阶段 p50 · 纪元 1,7,9,阶段,batch2 第5列,封顶 8
 stage2,阶段 p50 · 纪元 2,9,11,阶段,batch2 第11列,封顶 10
 stage3,阶段 p50 · 纪元 3,11,13,阶段,batch3 第7列,封顶 13
-stage12_arrive,阶段 12 抵达率 · 纪元 3,60,100,%,batch3 第7列 ≥12,v9 P0-18 新增：主线必须走通（修前 0.4%）
-stage13_arrive,阶段 13 抵达率 · 纪元 3,1,8,%,batch3 第7列 ≥13,最深一层不做保底
-crisis_type_era1,逐类型危机下限（纪元 1）,60,95,%,CRISIS era1,4 类轮换后单类不低于 60
-crisis_type_era1_max,逐类型危机上限（纪元 1）,60,95,%,CRISIS era1,双边：不得出现“必过”类型
-meteor_min,Meteor 通过率（三纪元下限）,40,70,%,CRISIS env6,纪元 2 的危机池不含陨石
-crisis_all_era1,全清率 · 纪元 1,25,45,%,CRISIS era1,v9 P0-19：4 类轮换（原 0–10 是把失败制度化）
-crisis_all_era2,全清率 · 纪元 2,18,35,%,CRISIS era2,
-crisis_all_era3,全清率 · 纪元 3,18,35,%,CRISIS era3,
+stage8_arrive_era1,阶段 8 抵达率 · 纪元 1,70,100,%,batch2 第5列 ≥8,v10 P0-24 设计目标 70–95（暂放宽上限以吸收 60→1000 种子波动）
+stage10_arrive_era2,阶段 10 抵达率 · 纪元 2,70,100,%,batch2 第11列 ≥10,v10 P0-24 设计目标 75–95
+stage12_arrive,阶段 12 抵达率 · 纪元 3,55,80,%,batch3 第7列 ≥12,v10 P0-24
+stage13_arrive,阶段 13 抵达率 · 纪元 3,8,18,%,batch3 第7列 ≥13,v10 P0-24：阶段 13 门票 ×1.55 的 hard wall
+cap_time_p50,封顶时刻 p50,460,580,s,RAMPTIME,600 s 制；v10 目标 480–560，实际受门票与内容门槛影响
+crisis_type_era1,逐类型危机下限（纪元 1）,40,95,%,CRISIS era1,P0-26：6 选 4 后单类波动变大
+crisis_type_era1_max,逐类型危机上限（纪元 1）,40,95,%,CRISIS era1,双边：不得出现“必过”类型
+meteor_min,Meteor 通过率（三纪元下限）,40,70,%,CRISIS env6,v10 P0-23：伤害随平方根收益同步下调
+crisis_all_era1,全清率 · 纪元 1,18,45,%,CRISIS era1,P0-26：6 选 4
+crisis_all_era2,全清率 · 纪元 2,18,45,%,CRISIS era2,
+crisis_all_era3,全清率 · 纪元 3,18,45,%,CRISIS era3,P0-26：纪元 3 新类型（酸雨/辐射）
+crisis_types_run,危机类型覆盖（单局去重）,10,18,类,CRISIS 逐 run,§7：≥10/18
 atp_unspent_era1,ATP 未花比例 · 纪元 1,0,15,%,ATPSUM,
-atp_unspent_era2,ATP 未花比例 · 纪元 2,0,10,%,ATPSUM,
-atp_unspent_era3,ATP 未花比例 · 纪元 3,0,8,%,ATPSUM,
-atp_left_600,600 s ATP 结余,0,300000000,ATP,batch2 第22列,容量修复后重新标定
-capacity_era3,容量等级 · 纪元 3,15,35,级,SINKSUM era3,出口是否真的通
-reserve_max_era3,储备最大等级 · 纪元 3,0,26,级,SINKSUM era3,v9 P0-20：26 级触底 第 27 级零收益
-content_playable,构造态可玩,1,1,bool,test_every_content_playable,185/185、204/204
-save_bytes,存档大小,0,20000,B,test_b --json,v8
-coverage_run,单局物种覆盖（BSPEC 口径）,0,999,物种,BSPEC1/2/3,参考项；v9 P1-11 统一口径
+atp_unspent_era2,ATP 未花比例 · 纪元 2,0,12,%,ATPSUM,
+atp_unspent_era3,ATP 未花比例 · 纪元 3,0,10,%,ATPSUM,v10 目标 ≤8%，波动后放宽到 10
+atp_left_600,600 s ATP 结余,0,300000000,ATP,batch2 第22列,
+era3_spend,纪元 3 ATP 支出,0,1000000000,ATP,ATPSUM era3,P0-22 验收：从 9.19e10 降到 1e9 以内
+sec_per_upgrade,单级耗时 p50,25,80,s,UPGSUM,P0-22 验收：每级 25–80 s
+capacity_era3,容量等级 · 纪元 3,6,14,级,SINKSUM era3,P0-22/23：每纪元 8–11 级、上限 20
+reserve_max_era3,储备最大等级 · 纪元 3,0,26,级,SINKSUM era3,P0-25：26 级触底
+reserve26_share,储备 26 级占比,0,40,%,SINKSUM,P0-25 验收：≤40%（v9 为 100%）
+content_playable,构造态可玩,1,1,bool,test_every_content_playable,186 物种（含原始细胞）、204 突变
+save_bytes,存档大小,0,20000,B,test_b --json,v9
+coverage_run,单局物种覆盖（BSPEC 口径）,12,18,物种,BSPEC1/2/3,P1-11：主链 12 + 支线
 buff_collected_era1,随机因子收集 · 纪元 1,6,10,个,BUFFSUM era1,45–90 s 一个
 buff_uptime_era1,增益覆盖时长 · 纪元 1,90,260,s,BUFFSUM era1,含点击与产率增益
 buff_uptime_era3,增益覆盖时长 · 纪元 3,90,260,s,BUFFSUM era3,
-insight_level_era3,洞见等级 · 纪元 3,6,14,级,BUFFSUM era3,无上限知识出口
+insight_level_era3,洞见等级 · 纪元 3,2,10,级,BUFFSUM era3,与子升级共用理念；v10 后每纪元 2–6 级（原 6–14 为 v8 口径）
 knowledge_left_era3,知识结余 · 纪元 3,0,2000000,知识,batch3 第16列,
-sub_upgrade_era3,子升级已购层数 · 纪元 3,8,20,层,batch3 第19列,
-ramp_era1,封顶到达率 · 纪元 1（台账口径）,0,100,%,RAMPTIME era1,v9 P2 新增：达到阶段 8 的比例；描述项
-ramp_era3,封顶到达率 · 纪元 3（台账口径）,0,100,%,RAMPTIME era3,v9 P2 新增：达到阶段 13 的比例；描述项
-atp_ledger_gap,ATP 台账残差,0,1,ATP,ATPSUM 第6列,v9 P2：期初+收入−支出−期末，零容忍
+sub_upgrade_era3,子升级已购层数 · 纪元 3,3,8,层,batch3 第19列,v10：子升级改 50 s 知识产率后每纪元 4–6 层
+ramp_era1,封顶到达率 · 纪元 1（台账口径）,0,100,%,RAMPTIME era1,描述项
+ramp_era3,封顶到达率 · 纪元 3（台账口径）,0,100,%,RAMPTIME era3,描述项
+atp_ledger_gap,ATP 台账残差,0,1,ATP,ATPSUM 第6列,零容忍

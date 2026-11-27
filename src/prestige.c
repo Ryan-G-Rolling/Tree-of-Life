@@ -83,8 +83,12 @@ EraReward prestige_preview_reward(const GameState *game)
     prestige_run_stats(game, &stages, &mutations, &species, &crises);
 
     int crisis_points = crises > EP_CRISIS_CAP ? EP_CRISIS_CAP : crises;
+    crisis_points *= EP_POINTS_PER_CRISIS;
     reward.era_points = EP_PER_STAGE * stages;
     reward.mutation_points = mutations / EP_MUTATIONS_PER_POINT;
+    if (reward.mutation_points > EP_MUTATION_CAP) {
+        reward.mutation_points = EP_MUTATION_CAP;
+    }
     reward.species_points = species / EP_SPECIES_PER_POINT;
     reward.crisis_points = crisis_points;
     reward.biomass_points = prestige_biomass_milestone_level(game->run.max_biomass);

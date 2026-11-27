@@ -87,6 +87,7 @@ static int valid_game(const GameState *game)
         || run->insight_levels < 0
         || run->buff_visible_type < 0 || run->buff_visible_type >= BUFF_TYPE_COUNT
         || run->buff_visible_icon < 0 || run->buff_visible_icon >= BUFF_ICON_COUNT
+        || (run->crisis_selection & ~era_crisis_pool(run->era)) != 0u
         || run->active_species_count < 1 || run->active_species_count > MAX_ACTIVE_SPECIES
         || run->current_environment_id < 0 || run->current_environment_id >= ENV_COUNT
         || run->next_environment_id < -1 || run->next_environment_id >= ENV_COUNT

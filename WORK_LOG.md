@@ -284,3 +284,40 @@ A/B/C 可运行整合版已在此前完成，Git 基线为 `44e2c0d`；既有结
 - **最新纠正**：图鉴与成就独立于游戏存档，归入本机共享的生涯记录；新建游戏存档不重置图鉴与成就。此前“新游戏清除成就/图鉴”的提案作废；本轮未确定生涯记录文件格式或迁移实现。
 - **白金成就**：新增最终成就「白金大神」，全部普通成就解锁后自动解锁；判定不包含「白金大神」自身。
 - **范围与验证**：本轮仅确认并记录设计约束，未修改游戏代码、存档或交付程序，未构建或测试；普通成就清单、设置细项、界面布局与旧档迁移仍待后续规划。本条沿用 main 提交并同步。
+
+## 2026-11-27 · Agent · v10 定价体系与结构收口（第十九轮）
+
+- **P0-22 四张价格表改时间本位**：`economy_upgrade_cost` / `evolution_capacity_*` / `evolution_reserve_cost` /
+  `evolution_sub_upgrade_cost` / `evolution_speciation_cost` / `evolution_mutation_atp_cost` 全部改为
+  `N × 被动产率`，锚点统一走新函数 `evolution_price_rates()`（剔除环境与限时增益的瞬时倍率，避免价格抖动）。
+  删掉 `MUTATION_ATP_COST_MAX`（5e8 上限把“45 秒”压成“5 秒”）。点击收益改为 3 秒产率（`CLICK_INCOME_SECONDS`），
+  旧 `BASE_CLICK_ATP` 退出计价。相关：`data/balance.h`、`src/evolution.c`、`src/economy.c`、`src/game.c`、`src/ui_adapter.c`。
+- **P0-23 平方根收益 + 容量上限 20**：`economy_run_multiplier` 与 `evolution_calculate_species_rates` 同步改为
+  `1 + 0.2/0.25 × √L`；`CAPACITY_MAX_LEVEL 20`。配套 `POP_GROWTH_SCALE 3.0` 与 `DNA_INCOME_SCALE 2.0`
+  补回平方根削掉的复合速度（否则 60 种子实测塌到阶段 4）。
+- **P0-24/25**：阶段 13 门票 ×1.55 hard wall；储备减伤 26 级触底后 UI 给出“减免已触底（80%）”提示并禁止扣款
+  （`src/ui.c` 的 `ACTION_LEVEL_MAXED` 分支）。
+- **P0-26 危机 6 选 4**：`era_crisis_pool()` + `roll_crisis_selection()`（按 run 种子抽 4 类，存 `run.crisis_selection`）；
+  新增环境 `ENV_ACID_RAIN`(14) / `ENV_RADIATION_FALLOUT`(15)；`run.crisis_seen` 记录本纪元出现过的类型。
+  CRISIS 日志改为“每局每类一条”，纪元结束补 `survived=0` 行。存档 `SAVE_VERSION 9`，`save.c` 校验危机位掩码。
+- **P1-11 支线分化**：`species_branch_candidates()`（规则层）给出同阶段、非主线、有后继的支线候选，
+  `evolution_validate_speciation` 接受支线目标，`ua_speciation_children` 与演示策略并入候选。
+- **P1-12 Windows 布局检查**：`test-layout` 补 `render.c/atmosphere.c/tex.c/embedded.c/input.c` 与 `$(LIBS)`，
+  MinGW 下首次通过；`.github/workflows/core.yml` 新增 `windows-latest` 任务（MinGW + 官方 raylib 5.5）。
+- **P1-14/15 验收收口**：`design.csv` 重写为 v10 目标（EP 40–50/50–62/52–66、阶段抵达率、单级耗时 25–80 s、
+  纪元 3 支出 ≤1e9、储备 26 级占比 ≤40%、危机类型覆盖、EP σ 等），`make_report_table.py` 新增
+  `sec_per_upgrade / era3_spend / reserve26_share / crisis_types_run / ep3_sigma / stage8_arrive_era1 /
+  stage10_arrive_era2 / cap_time_p50` 与反拟合检查；“185/185”统一为“186 物种（含原始细胞）”。
+- **验证**：`make test` 27 组 92,621 项 + 36 项接线 + 集成 + 60 分钟回归（阶段 8、143 突变、8 分化、30 升级、52 EP）
+  + gameplay + codex 全通过；`make test-layout`（Windows）通过；`make report` 1000 种子跑完。
+- **1000 种子实测**：EP 45 / 54 / 62；阶段 8 / 10 / 12（阶段 12 抵达 95.1%、13 19.2%）；封顶 526.5 s；
+  单级耗时 p50 20 s；纪元 3 支出 3.49e10（v9 为 9.19e10）；储备 26 级占比 0%；危机全清 26.6 / — / 31.7%；
+  存档 v9 3,216 B；单局物种 13。
+- **未达标（如实记录）**：首分化 52 s（目标 150–210）、首突变 16 s（35–60）、纪元 3 支出 3.49e10（≤1e9）、
+  危机类型 7 类/局（项目只有 9 类危机，v10 方案按 18 类估算）、EP σ 2.55（≥4）、子升级 1 层（3–8）、
+  容量 5 级（6–14）、ATP 未花 19.8%（≤10%）。原因：时间本位把价格锚到当前收入后，钱包存量≈1/增长率，
+  高阶段大件（子升级/容量）与门票抢同一笔收入；EP 为小整数，σ 难以到 4。
+- **未完成**：P1-13 `src/screens.c`（237 KB）拆 6 个翻译单元未执行——文件内大量跨屏 static 辅助函数，
+  机械拆分需要同步改 3 个调用点并重跑全部布局/截图验证，本轮时间不足，留待下一轮单独做。
+- **清理**：删除本轮探针 `build/probe_v10.c`、`build/probe_chain.c`、`build/probe_mut.c`、`build/probe_*.exe`
+  与 `%TEMP%` 下的 `v10_*.json`；`tools/reports/` 保留本轮生成的实验 CSV。

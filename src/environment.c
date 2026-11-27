@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Member B · environment.c
  * 环境事件、适应度倍率、自然灾害与危机统计
  *
@@ -43,8 +43,11 @@ static const EnvironmentDef k_environments[ENV_COUNT] = {
       TRAIT_OXYGEN, 1, 45.0, 0.0124, 0, false, true },
     { "毒素爆发", "毒素扩散，耐毒物种存活。",
       TRAIT_TOXIN, 2, 40.0, 0.0148, 0, false, true },
+    /* v10 P0-23 配套：CRISIS_DAMAGE_MULTIPLIER=2.0，平方根后繁殖倍率从 ×4.2 降到 ×2.8，
+     * Meteor 的 1.7%/s（实际 3.4%/s）让适应谱系也必死（60 种子 0% 通过）。
+     * 降到 0.45%/s（实际 0.9%/s）后：适应良好（评分 ≥2）能顶住，未适应的仍被拖垮。 */
     { "陨石撞击", "天空燃烧，所有谱系同时损失种群。",
-      TRAIT_HIGHEST, 3, 30.0, 0.0170, SPECIATION_METEOR_MIN_STAGE, true, true },
+      TRAIT_HIGHEST, 3, 30.0, 0.0095, SPECIATION_METEOR_MIN_STAGE, true, true },
     /* 第四轮：正面 / 中性随机事件，damage = 0 且不计入危机统计 */
     { "养分上涌", "富养洋流在一段时间内滋养所有谱系。",
       TRAIT_NONE, 0, 40.0, 0.0, 0, false, false },
@@ -62,6 +65,11 @@ static const EnvironmentDef k_environments[ENV_COUNT] = {
     /* 第七轮：阶段 5 之后的工业污染危机 */
     { "工业雾霾", "膨胀的技术圈用颗粒物窒息水体。",
       TRAIT_TOXIN, 3, 45.0, 0.0155, 5, false, true },
+    /* v10 P0-26：纪元 3 的新危机类型，此前从未在任何纪元出现 */
+    { "酸雨沉降", "水体酸化，耐毒谱系在腐蚀中维持产出。",
+      TRAIT_TOXIN, 2, 45.0, 0.0070, 0, false, true },
+    { "辐射尘暴", "电离辐射穿透水体，只有最全面的适应能保全种群。",
+      TRAIT_HIGHEST, 3, 30.0, 0.0160, 5, false, true },
 };
 
 static bool valid_environment(int environment_id)
@@ -180,13 +188,15 @@ static double main_lineage_population(const GameState *game)
 /* 单个随机数抽取，排除上一个事件与阶段未解锁的事件。
  * 第三轮：危机轮转——优先抽取本纪元尚未通过的危机类型，
  * 避免同一类型反复出现导致危机种类 C 长期停在 5。
- * v9 P0-19：危机池按纪元轮换（每纪元 4 类），全清率因此从 2% 回到可追求区间。 */
+ * v9 P0-19：危机池按纪元轮换，全清率因此从 2% 回到可追求区间。
+ * v10 P0-26：每纪元 6 选 4——本局实际可抽的危机来自 run.crisis_selection
+ * （environment_init_run 按 run 种子抽定，同一局固定、跨局不同）。 */
 static int pick_next_environment(const GameState *game, int exclude_id, int pending_survived_id,
                                  unsigned int *rng_state)
 {
     int candidates[ENV_COUNT];
     int count = 0;
-    unsigned int crisis_mask = era_crisis_mask(game->run.era);
+    unsigned int crisis_mask = game->run.crisis_selection;
     int stage = evolution_main_stage(game);
     for (int id = 1; id < ENV_COUNT; ++id) {
         if (id == exclude_id) {
@@ -236,6 +246,37 @@ static int pick_next_environment(const GameState *game, int exclude_id, int pend
     return ENV_NORMAL_OCEAN;
 }
 
+/* v10 P0-26：从本纪元 6 类候选池按 run 种子抽 ERA_CRISIS_PER_ERA 类。
+ * 抽取结果存进 run.crisis_selection，同一局固定、跨局不同——
+ * 18 类危机一局能见到 10–12 类，纪元 3 也有自己的新类型（酸雨 / 辐射）。 */
+static void roll_crisis_selection(GameState *game)
+{
+    RunState *run = &game->run;
+    unsigned int pool = era_crisis_pool(run->era);
+    int pool_ids[32];
+    int pool_count = 0;
+    for (int id = 1; id < ENV_COUNT && id < 32; ++id) {
+        if (pool & (1u << id)) {
+            pool_ids[pool_count++] = id;
+        }
+    }
+    if (pool_count <= ERA_CRISIS_PER_ERA) {
+        run->crisis_selection = pool;
+        return;
+    }
+    unsigned int selection = 0u;
+    int chosen = 0;
+    while (chosen < ERA_CRISIS_PER_ERA) {
+        unsigned int roll = tof_rng_next(&run->rng_state);
+        int pick = pool_ids[roll % (unsigned int)pool_count];
+        if (!(selection & (1u << pick))) {
+            selection |= 1u << pick;
+            ++chosen;
+        }
+    }
+    run->crisis_selection = selection;
+}
+
 void environment_init_run(GameState *game)
 {
     RunState *run = &game->run;
@@ -246,6 +287,9 @@ void environment_init_run(GameState *game)
     run->crisis_min_population = 0.0;
     run->adaptation_shield_active = false;
     run->adaptation_shield_used = false;
+    run->crisis_selection = 0u;
+    run->crisis_seen = 0u;
+    roll_crisis_selection(game);
     run->next_environment_id = pick_next_environment(game, -1, -1, &run->rng_state);
 }
 
@@ -358,6 +402,10 @@ void environment_apply_step(GameState *game, const EnvironmentStep *step)
         run->environment_time_left = step->environment_time_left;
         run->event_interval_left = 0.0;
         run->next_environment_id = -1;
+        /* v10 P0-26：逐类型台账——每种危机一条记录，重复事件不再放大样本数 */
+        if (environment_is_crisis(started) && started < 32) {
+            run->crisis_seen |= 1u << started;
+        }
         if (step->instant_population_loss_ratio > 0.0) {
             for (int i = 0; i < run->active_species_count && i < MAX_ACTIVE_SPECIES; ++i) {
                 double population = run->active_species[i].population *

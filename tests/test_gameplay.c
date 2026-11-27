@@ -12,6 +12,7 @@
 #include "evolution.h"
 #include "environment.h"
 #include "save.h"
+#include "legacy.h"
 #include "balance.h"
 
 static ActionResult act(GameState *game, ActionType type)
@@ -57,7 +58,15 @@ static void test_spawn_and_expiration(void)
     assert(act(&game, ACTION_CANCEL_END_ERA).code == ACTION_OK);
     game_update(&game, BUFF_CLICK_DURATION + 1.0);
     assert(game.run.buff_active_time_left == 0.0);
-    assert(fabs(economy_click_atp(&game) - base) < 1e-8);
+    /* v10：点击 = 3 秒产率，产率随种群变化，不再与常数基准比较；
+     * 改为核对“限时倍率已移除、公式各项正确”。 */
+    {
+        double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
+        evolution_price_rates(&game, &atp_rate, &biomass_rate, &knowledge_rate);
+        double expect = CLICK_INCOME_SECONDS * atp_rate * legacy_click_multiplier(&game.legacy);
+        assert(fabs(economy_click_atp(&game) - expect) < 1e-8);
+        assert(economy_click_atp(&game) < base * BUFF_CLICK_MULT);
+    }
 
     assert(act(&game, ACTION_OPEN_END_ERA).code == ACTION_OK);
     assert(act(&game, ACTION_CONFIRM_END_ERA).code == ACTION_OK);

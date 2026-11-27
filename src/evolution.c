@@ -925,15 +925,14 @@ double evolution_mutation_atp_cost(const GameState *game, int mutation_id)
     if (!def || def->min_phase < MUTATION_ATP_MIN_PHASE) {
         return 0.0;
     }
-    /* v7 P0-2/4d：按当前主谱系 ATP 收入的 45 秒计价，夹在 [1e7, 5e8] */
-    int slot = evolution_main_slot(game);
-    double rate = slot >= 0 ? evolution_calculate_species_rates(game, slot).atp_per_second : 0.0;
-    double cost = rate * MUTATION_ATP_SECONDS;
+    /* v7 P0-2/4d：按主谱系 ATP 收入的 45 秒计价。
+     * v10 P0-22：删掉 5e8 上限（它把“45 秒”压成“5 秒”，纪元 3 一局买 58 张），
+     * 只保留 1e7 的绝对地板；价格随产率同步上涨。 */
+    double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
+    evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
+    double cost = atp_rate * MUTATION_ATP_SECONDS;
     if (cost < MUTATION_ATP_COST_MIN) {
         cost = MUTATION_ATP_COST_MIN;
-    }
-    if (cost > MUTATION_ATP_COST_MAX) {
-        cost = MUTATION_ATP_COST_MAX;
     }
     return ceil(cost);
 }
@@ -1102,9 +1101,21 @@ int evolution_era_stage_cap(const GameState *game)
 
 double evolution_speciation_cost(const GameState *game, int target_species_id)
 {
-    double base = species_base_speciation_cost(target_species_id);
+    /* v10 P0-22：分化门票改时间本位——N × 1.08^阶段 秒的主谱系生物量产率。
+     * 阶段 13 再 ×1.6（P0-24 hard wall）。base_speciation_cost ×0.45 为常数地板。 */
+    double base = species_base_speciation_cost(target_species_id) * SPECIATION_FLOOR_SCALE;
+    double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
+    evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
+    int phase = species_phase(target_species_id);
+    double seconds = SPECIATION_TICKET_SECONDS
+                   * pow(SPECIATION_TICKET_PHASE_GROWTH, (double)phase);
+    if (phase >= SPECIATION_HARD_WALL_PHASE) {
+        seconds *= SPECIATION_HARD_WALL_MULT;
+    }
+    double ticket = seconds * biomass_rate;
+    double cost = ticket > base ? ticket : base;
     double discount = legacy_speciation_discount(&game->legacy);
-    return floor(base * (1.0 - discount));
+    return floor(cost * (1.0 - discount));
 }
 
 /* ---------------- 突变约束 ---------------- */
@@ -1533,8 +1544,21 @@ ActionCode evolution_validate_speciation(const GameState *game, int species_slot
         return ACTION_INVALID_TARGET;
     }
     const SpeciesState *parent = &game->run.active_species[species_slot];
-    if (target_species_id == parent->species_id ||
-        !species_has_parent(target_species_id, parent->species_id)) {
+    bool parent_edge = species_has_parent(target_species_id, parent->species_id);
+    /* v10 P1-11：阶段 6 起主谱系分化给“2 选 1”——主链节点或同阶段支线物种
+     * （支线直接从规则表挑，不改生态位数值；突变前置与门票照常检查）。 */
+    if (!parent_edge && parent->is_main_lineage &&
+        species_phase(parent->species_id) >= BRANCH_SPECIATION_MIN_PHASE) {
+        int branches[SPECIES_COUNT];
+        int branch_count = species_branch_candidates(parent->species_id, branches, SPECIES_COUNT);
+        for (int i = 0; i < branch_count; ++i) {
+            if (branches[i] == target_species_id) {
+                parent_edge = true;
+                break;
+            }
+        }
+    }
+    if (target_species_id == parent->species_id || !parent_edge) {
         return ACTION_INVALID_TARGET;
     }
     /* v8 P0-17：本纪元阶段封顶后只能横向扩展，不能跨阶段 */
@@ -1647,41 +1671,60 @@ ActionCode evolution_apply_speciation(GameState *game, int species_slot, int tar
 
 /* ---------------- 容量扩张与应急储备 ---------------- */
 
-double evolution_capacity_cost(const GameState *game)
+/* v10 P0-22：时间本位定价锚。取主谱系产率并剔除两类瞬时乘数：
+ *  - 环境倍率（危机期间 ×0.4–1.25，事件结束就恢复）；
+ *  - 限时增益倍率（buff ×1.2/×1.5，15–30 s）。
+ * 两者都是瞬态状态，不应让价格跟着抖；种群 / 突变 / 永久 / 洞见等持久乘数保留。
+ * 全部计价函数（升级 / 容量 / 储备 / 分化与突变门票 / 子升级 / 点击）共用。 */
+void evolution_price_rates(const GameState *game, double *atp_rate, double *biomass_rate,
+                           double *knowledge_rate)
 {
+    double atp = 0.0, biomass = 0.0, knowledge = 0.0;
     int slot = evolution_main_slot(game);
-    if (slot < 0) {
-        return 0.0;
+    if (slot >= 0) {
+        SpeciesRates rates = evolution_calculate_species_rates(game, slot);
+        double env = rates.environment_multiplier > 1e-9 ? rates.environment_multiplier : 1.0;
+        double buff = buffs_production_multiplier(game);
+        double normalize = env * (buff > 1e-9 ? buff : 1.0);
+        atp = rates.atp_per_second / normalize;
+        biomass = rates.biomass_per_second / normalize;
+        knowledge = rates.knowledge_per_second / normalize;
+        if (!isfinite(atp) || atp < 0.0) atp = 0.0;
+        if (!isfinite(biomass) || biomass < 0.0) biomass = 0.0;
+        if (!isfinite(knowledge) || knowledge < 0.0) knowledge = 0.0;
     }
-    SpeciesRates rates = evolution_calculate_species_rates(game, slot);
-    /* v8 P0-14：价格按“未含容量加成的上限”计，避免已买容量把下一级价格再推高一次 */
-    double cap_without_capacity =
-        rates.final_population_cap /
-        (1.0 + CAPACITY_GAIN_PER_LEVEL * (double)game->run.capacity_levels);
-    double cost = floor(CAPACITY_COST_PER_CAP * cap_without_capacity *
-                        pow(CAPACITY_COST_GROWTH, (double)game->run.capacity_levels));
-    /* v7 P0-4b：至少相当于当前 ATP 收入的 20 秒，让 ATP 有稳定出口 */
-    double floor_cost = rates.atp_per_second * CAPACITY_ATP_SECONDS;
-    return cost > floor_cost ? cost : floor_cost;
+    if (atp_rate) *atp_rate = atp;
+    if (biomass_rate) *biomass_rate = biomass;
+    if (knowledge_rate) *knowledge_rate = knowledge;
 }
 
-/* 第十一轮：容量双币拆分。前 CAPACITY_BIOMASS_ONLY_LEVELS 级仍只收 Biomass，
- * 之后按 70/30 由 ATP 与 Biomass 分担，让 ATP 在高阶段有出口。 */
+double evolution_capacity_cost(const GameState *game)
+{
+    /* v10 P0-22：容量 = ATP 部分（45 s 产率）+ 生物量部分（45 s 产率），
+     * 双币并行，ATP 与生物量各有一个稳定出口。 */
+    return evolution_capacity_atp_cost(game) + evolution_capacity_biomass_cost(game);
+}
+
 double evolution_capacity_atp_cost(const GameState *game)
 {
-    if (game->run.capacity_levels < CAPACITY_BIOMASS_ONLY_LEVELS) {
-        return 0.0;
+    double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
+    evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
+    double cost = atp_rate * CAPACITY_ATP_SECONDS;
+    if (cost < CAPACITY_COST_FLOOR) {
+        cost = CAPACITY_COST_FLOOR;
     }
-    return ceil(evolution_capacity_cost(game) * CAPACITY_ATP_SHARE);
+    return ceil(cost);
 }
 
 double evolution_capacity_biomass_cost(const GameState *game)
 {
-    double total = evolution_capacity_cost(game);
-    if (game->run.capacity_levels < CAPACITY_BIOMASS_ONLY_LEVELS) {
-        return total;
+    double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
+    evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
+    double cost = biomass_rate * CAPACITY_BIOMASS_SECONDS;
+    if (cost < CAPACITY_BIOMASS_FLOOR) {
+        cost = CAPACITY_BIOMASS_FLOOR;
     }
-    return ceil(total * CAPACITY_BIOMASS_SHARE);
+    return ceil(cost);
 }
 
 ActionCode evolution_apply_capacity_upgrade(GameState *game)
@@ -1709,8 +1752,15 @@ ActionCode evolution_apply_capacity_upgrade(GameState *game)
 
 double evolution_reserve_cost(const GameState *game)
 {
-    /* v7 P0-4c：储备改几何价，避免开局 20 秒连买满 */
-    return ceil(RESERVE_COST_ATP * pow(RESERVE_COST_GROWTH, (double)game->run.reserve_levels));
+    /* v10 P0-22：储备改时间本位——每级 80 s 产率，替换 1000 × 1.6^L。
+     * 每纪元 5–7 级，到 26 级触底需要跨纪元积累；RESERVE_COST_ATP 是地板。 */
+    double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
+    evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
+    double cost = atp_rate * RESERVE_ATP_SECONDS;
+    if (cost < RESERVE_COST_ATP) {
+        cost = RESERVE_COST_ATP;
+    }
+    return ceil(cost);
 }
 
 ActionCode evolution_apply_reserve(GameState *game)
@@ -1771,12 +1821,20 @@ double evolution_sub_upgrade_multiplier(const GameState *game, int species_slot)
     return multiplier;
 }
 
-double evolution_sub_upgrade_cost(const SubUpgradeDef *def)
+double evolution_sub_upgrade_cost(const GameState *game, const SubUpgradeDef *def)
 {
     if (!def) {
         return 0.0;
     }
-    return def->base_knowledge_cost * pow(SUB_UPGRADE_COST_GROWTH, (double)def->tier);
+    /* v10 P0-22：子升级改时间本位——50 s 主谱系知识产率（替换 300 × 3.2^tier）。
+     * 子升级乘算知识收入本身，形成自限反馈：买一层 → 收入 ×乘数 → 下一层贵 20%。 */
+    double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
+    evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
+    double cost = knowledge_rate * SUB_UPGRADE_KNOWLEDGE_SECONDS;
+    if (cost < def->base_knowledge_cost) {
+        cost = def->base_knowledge_cost;
+    }
+    return ceil(cost);
 }
 
 ActionCode evolution_apply_sub_upgrade(GameState *game, int species_slot)
@@ -1798,7 +1856,7 @@ ActionCode evolution_apply_sub_upgrade(GameState *game, int species_slot)
         }
         return ACTION_INVALID_TARGET;
     }
-    double cost = evolution_sub_upgrade_cost(next);
+    double cost = evolution_sub_upgrade_cost(game, next);
     if (game->run.knowledge < cost) {
         return ACTION_NOT_ENOUGH_KNOWLEDGE;
     }
@@ -1949,12 +2007,13 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
     }
 
     const RunState *run = &game->run;
+    /* v10 P0-23：单轮升级收益收一次平方根——等级数字回到 18–26，倍率可读 */
     double run_metabolism = 1.0 + RUN_METABOLISM_BONUS_PER_LEVEL *
-                                      run->run_upgrade_levels[UPGRADE_METABOLISM];
+                            sqrt((double)run->run_upgrade_levels[UPGRADE_METABOLISM]);
     double run_reproduction = 1.0 + RUN_REPRODUCTION_BONUS_PER_LEVEL *
-                                        run->run_upgrade_levels[UPGRADE_REPRODUCTION];
+                              sqrt((double)run->run_upgrade_levels[UPGRADE_REPRODUCTION]);
     double run_genome = 1.0 + RUN_GENOME_BONUS_PER_LEVEL *
-                                  run->run_upgrade_levels[UPGRADE_GENOME];
+                        sqrt((double)run->run_upgrade_levels[UPGRADE_GENOME]);
 
     double permanent_atp = legacy_atp_multiplier(&game->legacy);
     double permanent_biomass = legacy_biomass_multiplier(&game->legacy);
@@ -2010,7 +2069,7 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
     /* 第十轮：阶段 0–1 的 DNA 产出 ×1.5，缓解开局饥饿 */
     double early_dna = species_phase(species->species_id) <= EARLY_DNA_MAX_PHASE ? EARLY_DNA_BONUS
                                                                                : 1.0;
-    rates.dna_per_second = def->base_dna * dna_scale * run_genome *
+    rates.dna_per_second = def->base_dna * dna_scale * DNA_INCOME_SCALE * run_genome *
                            (1.0 + mutation_dna) * environment * permanent_dna * diversity *
                            production * eco_dna * sub * early_dna * insight_buff;
     rates.knowledge_per_second = def->base_knowledge * knowledge_scale * run_genome *
@@ -2024,7 +2083,8 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
 
     double positive_growth = 0.0;
     if (species->population < cap && cap > 0.0) {
-        positive_growth = species->population * def->base_growth * run_reproduction *
+        positive_growth = species->population * def->base_growth * POP_GROWTH_SCALE *
+                          run_reproduction *
                           (1.0 + mutation_growth) * syn_growth * key_growth *
                           (1.0 - species->population / cap);
     }

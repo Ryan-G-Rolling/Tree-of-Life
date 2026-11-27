@@ -170,7 +170,7 @@ ActionResult game_apply_action(GameState *game, GameAction action)
         if (action.target_id < UPGRADE_METABOLISM || action.target_id > UPGRADE_GENOME)
             return result(ACTION_INVALID_TARGET, 0.0, -1);
         int level = game->run.run_upgrade_levels[action.target_id];
-        double cost = economy_upgrade_cost((RunUpgradeType)action.target_id, level);
+        double cost = economy_upgrade_cost(game, (RunUpgradeType)action.target_id, level);
         double *wallet = action.target_id == UPGRADE_GENOME ? &next.run.biomass : &next.run.atp;
         if (!isfinite(cost) ||
             (RUN_UPGRADE_MAX_LEVEL >= 0 && level >= RUN_UPGRADE_MAX_LEVEL))

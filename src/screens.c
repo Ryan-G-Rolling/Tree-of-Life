@@ -1803,10 +1803,11 @@ static void draw_dish(const GameState *game)
     if (click >= 0.0) {
         char cn[24];
         ui_fmt_num(click, cn, (int)sizeof(cn));
+        /* v10：点击收益 = 3 秒产率，把口径写在玩家眼前 */
         if (buffs_click_multiplier(game) > 1.0) {
-            snprintf(rl, sizeof(rl), "采集 +%s ATP  ×2", cn);
+            snprintf(rl, sizeof(rl), "采集 +%s ATP（3 秒产出）×2", cn);
         } else {
-            snprintf(rl, sizeof(rl), "采集 +%s ATP", cn);
+            snprintf(rl, sizeof(rl), "采集 +%s ATP（3 秒产出）", cn);
         }
     } else {
         snprintf(rl, sizeof(rl), "点击采集");
