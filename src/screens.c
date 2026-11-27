@@ -18,6 +18,7 @@
 #include "raylib.h"
 #include "ui_internal.h"
 #include "ui_adapter.h"
+#include "tex.h"
 #include "atmosphere.h"
 #include "buffs.h"
 #include "codex.h"
@@ -248,6 +249,43 @@ static void capsule(Vector2 p, float len, float th, float ang, Color fill)
 
 /* 行星本体：按列做朗伯明暗 + 云带 + 大陆（带海岸线与内陆高光）+ 极冠 + 海面反光。
  * 目标是“从太空看一颗真的行星”，不是一个蓝球贴几块绿斑。 */
+/* 用扫描线填一个以 pts[0] 为中心的星形多边形。
+ * 一开始用 DrawTriangleFan / DrawTriangle 逐面拼，结果是"什么都不出现"——
+ * 同一条链路里 DrawCircle / DrawRectangle 都是正常的，只有三角面被整片丢掉
+ * （3 倍离屏缓冲 + 裁剪时最明显）。改成逐行求交、再用 DrawRectangleV 填，
+ * 这条路径在本工程的 UI 渲染里 100% 可靠。 */
+static void fill_blob(const Vector2 *pts, int n, Color col)
+{
+    if (n < 4) return;
+
+    float minY = pts[1].y, maxY = pts[1].y;
+    for (int i = 2; i < n; ++i) {
+        if (pts[i].y < minY) minY = pts[i].y;
+        if (pts[i].y > maxY) maxY = pts[i].y;
+    }
+
+    int y0 = (int)floorf(minY);
+    int y1 = (int)ceilf(maxY);
+    for (int y = y0; y <= y1; ++y) {
+        float cy = (float)y + 0.5f;
+        float lo = 1e30f, hi = -1e30f;
+        int hit = 0;
+        for (int i = 1; i < n; ++i) {
+            Vector2 a = pts[i];
+            Vector2 b = pts[(i + 1 < n) ? i + 1 : 1];
+            if ((a.y <= cy && b.y > cy) || (b.y <= cy && a.y > cy)) {
+                float t = (cy - a.y) / (b.y - a.y);
+                float x = a.x + (b.x - a.x) * t;
+                if (x < lo) lo = x;
+                if (x > hi) hi = x;
+                ++hit;
+            }
+        }
+        if (hit < 2) continue;
+        DrawRectangleV((Vector2){ lo, (float)y }, (Vector2){ hi - lo, 1.0f }, col);
+    }
+}
+
 static void planet_body(Vector2 c, float r, Color col, Color land, float a)
 {
     /* 星球自己的一套冷色：不跟着物种色走，否则暖色物种会把海面染成橙色 */
@@ -258,6 +296,7 @@ static void planet_body(Vector2 c, float r, Color col, Color land, float a)
     Color land_dark = ui_color_mix(land, (Color){ 24, 62, 44, 255 }, 0.55f);
 
     ui_glow(c, r * 1.30f, ui_color_mix(col, (Color){ 80, 170, 220, 255 }, 0.82f), 0.12f * a);
+
 
     int cols = (int)(r * 2.0f) + 1;
     if (cols > 110) cols = 110;
@@ -286,34 +325,74 @@ static void planet_body(Vector2 c, float r, Color col, Color land, float a)
         }
     }
 
-    /* 大陆：四块陆核，每块由 3 个叠在一起的椭圆组成，外圈有海岸线 */
+    /* 大陆：第 18 版改成"噪声海岸线的多边形团块"。
+     * 原来是每块大陆用 3 个叠在一起的椭圆，边缘太平滑，缩到展台上就是几颗
+     * 绿药丸。现在按角度给半径加 hash 抖动，再套一圈更暗的陆架，海岸线才有
+     * 真实的锯齿和浅滩过渡。 */
     for (int i = 0; i < 4; ++i) {
         float ang = 0.55f + (float)i * 1.62f + hash01((unsigned int)i * 29u + 11u) * 0.35f;
-        float dist = r * (0.20f + 0.28f * hash01((unsigned int)i * 31u + 17u));
-        Vector2 cc = { c.x + cosf(ang) * dist, c.y + sinf(ang) * dist * 0.88f };
+        float dist = r * (0.20f + 0.30f * hash01((unsigned int)i * 31u + 17u));
+        Vector2 cc = { c.x + cosf(ang) * dist, c.y + sinf(ang) * dist * 0.86f };
         float lam = 0.50f - 0.70f * ((cc.x - c.x) / r);
         if (lam < 0.0f) lam = 0.0f;
         if (lam > 1.0f) lam = 1.0f;
 
-        for (int b = 0; b < 3; ++b) {
-            float ox = (hash01((unsigned int)(i * 3 + b) * 43u + 5u) - 0.5f) * r * 0.30f;
-            float oy = (hash01((unsigned int)(i * 3 + b) * 47u + 7u) - 0.5f) * r * 0.26f;
-            float rx = r * (0.13f + 0.09f * hash01((unsigned int)(i * 3 + b) * 53u + 11u));
-            float ry = rx * (0.56f + 0.34f * hash01((unsigned int)(i * 3 + b) * 59u + 13u));
-            Vector2 bc = { cc.x + ox, cc.y + oy };
+        float baseR = r * (0.20f + 0.13f * hash01((unsigned int)i * 53u + 21u));
 
-            float al = (0.30f + 0.55f * lam) * a;
-            /* 海岸线：一圈更深的边 */
-            DrawEllipse((int)bc.x, (int)bc.y, rx * 1.10f, ry * 1.12f,
-                        Fade(ui_color_mix(land_dark, night, 0.45f), al * 0.65f));
-            DrawEllipse((int)bc.x, (int)bc.y, rx, ry,
-                        Fade(ui_color_mix(land_dark, day, lam * 0.35f), al));
-            /* 内陆高光：一小片更亮的中心，读成高原/植被差异 */
-            DrawEllipse((int)(bc.x - rx * 0.18f), (int)(bc.y - ry * 0.18f),
-                        rx * 0.44f, ry * 0.38f,
-                        Fade(ui_color_mix(land_dark, WHITE, 0.28f), al * 0.30f));
+        float seedc = hash01((unsigned int)i * 71u + 5u) * 6.28f;
+        /* 每块大陆的植被底色略不同：雨林偏绿、旱地偏赭、浅海偏青。
+         * 亮度整体压到海面之下，否则在蓝色球体上只剩一层"绿雾"，
+         * 缩到展台就看不见大陆轮廓。 */
+        Color veg[3] = {
+            (Color){ 62, 126, 88, 255 },
+            (Color){ 142, 118, 74, 255 },
+            (Color){ 56, 108, 118, 255 }
+        };
+        Color lc = ui_color_mix((Color){ 58, 96, 74, 255 }, veg[i % 3], 0.62f);
+
+        const int n = 24;
+        Vector2 shelf[n + 1];
+        Vector2 shore[n + 1];
+        shelf[0] = cc;
+        shore[0] = cc;
+        for (int k = 0; k < n; ++k) {
+            float aa = (float)k / (float)n * 2.0f * PI;
+            float j = 0.86f + 0.30f * hash01((unsigned int)(i * 97 + k) * 131u + 3u);
+            /* 两个不同频率的正弦叠上去，轮廓就不会是"均匀毛刺" */
+            float lobe = 1.0f + 0.10f * sinf(aa * 3.0f + seedc) + 0.05f * sinf(aa * 5.0f - seedc * 1.7f);
+            float rr = baseR * j * lobe;
+            shore[k + 1] = (Vector2){ cc.x + cosf(aa) * rr * 1.04f, cc.y + sinf(aa) * rr * 0.80f };
+            shelf[k + 1] = (Vector2){ cc.x + cosf(aa) * rr * 1.22f, cc.y + sinf(aa) * rr * 0.95f };
+        }
+
+        float al = (0.52f + 0.42f * lam) * a;
+        /* 陆架（浅海）：比陆地更暗更蓝的一圈，宽度不均匀，读成近岸浅滩 */
+        fill_blob(shelf, n + 1, Fade(ui_color_mix(ocean, land_dark, 0.12f), al * 0.22f));
+        /* 海岸暗边 */
+        fill_blob(shore, n + 1, Fade(ui_color_mix(day, WHITE, 0.55f), a * 0.30f));
+
+        /* 陆地主体：把 shore 收 8% 再画一层，留出细的海岸线 */
+        Vector2 body[n + 1];
+        body[0] = cc;
+        for (int k = 0; k < n; ++k) {
+            body[k + 1].x = cc.x + (shore[k + 1].x - cc.x) * 0.94f;
+            body[k + 1].y = cc.y + (shore[k + 1].y - cc.y) * 0.94f;
+        }
+        fill_blob(body, n + 1, Fade(ui_color_mix(lc, day, 0.06f + 0.12f * lam), a * 0.96f));
+
+        /* 植被/沙漠碎斑：几颗更亮更暗的小团，压掉"一块纯色"
+         * 位置用 hash 取在半径 0.45 以内，基本不会越出海岸线 */
+        for (int b = 0; b < 4; ++b) {
+            float ba = hash01((unsigned int)(i * 13 + b) * 89u + 7u) * 6.28f;
+            float bd = baseR * (0.12f + 0.34f * hash01((unsigned int)(i * 17 + b) * 97u + 9u));
+            float brx = baseR * (0.08f + 0.12f * hash01((unsigned int)(i * 19 + b) * 103u + 11u));
+            float bry = brx * (0.55f + 0.40f * hash01((unsigned int)(i * 23 + b) * 107u + 13u));
+            Color bc = (b % 2) ? ui_color_mix(lc, (Color){ 58, 92, 60, 255 }, 0.35f) : ui_color_mix(lc, (Color){ 30, 56, 44, 255 }, 0.45f);
+            DrawEllipse((int)(cc.x + cosf(ba) * bd * 1.1f), (int)(cc.y + sinf(ba) * bd * 0.8f),
+                        brx, bry, Fade(bc, al * 0.34f));
         }
     }
+
 
     /* 极冠：南北各一小片冰盖，贴着球体的上下缘 */
     DrawEllipse((int)c.x, (int)(c.y - r * 0.76f), r * 0.20f, r * 0.055f,
@@ -898,17 +977,17 @@ static void morph_civ(Vector2 c, float r, Color col, float t, float seed, float 
         float ga = hash01((unsigned int)g * 61u + 3u) * 2.0f * PI;
         float gd = r * (0.24f + 0.42f * hash01((unsigned int)g * 67u + 5u));
         Vector2 gc = { c.x + cosf(ga) * gd, c.y + sinf(ga) * gd * 0.86f };
-        for (int i = 0; i < 9; ++i) {
+        for (int i = 0; i < 5; ++i) {
             float ang = hash01((unsigned int)(g * 9 + i) * 19u + 7u) * 2.0f * PI;
-            float rr = r * 0.20f * sqrtf(hash01((unsigned int)(g * 9 + i) * 23u + 11u));
+            float rr = r * 0.13f * sqrtf(hash01((unsigned int)(g * 9 + i) * 23u + 11u));
             Vector2 p = { gc.x + cosf(ang) * rr, gc.y + sinf(ang) * rr * 0.7f };
             float tw = 0.5f + 0.5f * sinf(t * 1.6f + (float)i * 0.7f + (float)g);
             float lam = 0.50f - 0.68f * ((p.x - c.x) / (r * 0.84f));
             if (lam < 0.0f) lam = 0.0f;
             if (lam > 1.0f) lam = 1.0f;
-            DrawCircleV(p, r * 0.022f, Fade(COL_ACCENT, (0.22f + 0.65f * (1.0f - lam)) * (0.6f + 0.4f * tw) * a));
+            DrawCircleV(p, r * 0.011f, Fade(COL_ACCENT, (0.10f + 0.32f * (1.0f - lam)) * (0.6f + 0.4f * tw) * a));
         }
-        ui_glow(gc, r * 0.30f, COL_ACCENT, 0.10f * a);
+        ui_glow(gc, r * 0.24f, COL_ACCENT, 0.06f * a);
     }
 
     /* 夜面边缘的城市余晖 */
@@ -1101,10 +1180,63 @@ static void morph_transcend(Vector2 c, float r, Color col, float t, float seed, 
     }
 }
 
+/* 第 17 版：形态族 → AI 插画（assets/tex/morph）。
+ * 先按物种名做“属级”归类（硅藻 / 水母 / 菊石 / 蕨 / 珊瑚 / 真菌 / 鱼 …），
+ * 命中不了再退到阶段形态。返回 -1 表示这一类仍走程序化矢量（行星、黑洞、
+ * 城市、曼陀罗这些用矢量反而更稳、更衬 UI 配色）。 */
+static int sprite_morph(int species_id, int stage)
+{
+    const char *n = ua_species_name(species_id);
+    if (n) {
+        /* 顺序有讲究：先判“水母”，再判“鱼”，否则 Jellyfish 会被 Fish 抢走 */
+        if (strstr(n, "水母")) return TEXM_JELLY;
+        if (strstr(n, "硅藻")) return TEXM_DIATOM;
+        if (strstr(n, "纤毛") || strstr(n, "草履")) return TEXM_CILIATE;
+        if (strstr(n, "变形虫")) return TEXM_AMOEBA;
+        if (strstr(n, "菊石") || strstr(n, "鹦鹉螺") || strstr(n, "螺")) return TEXM_SPIRAL;
+        if (strstr(n, "蕨")) return TEXM_FERN;
+        if (strstr(n, "珊瑚") || strstr(n, "礁")) return TEXM_CORAL;
+        if (strstr(n, "真菌") || strstr(n, "菌丝") || strstr(n, "菌根") || strstr(n, "霉菌"))
+            return TEXM_FUNGUS;
+        if (strstr(n, "鱼")) return TEXM_FISH;
+        if (strstr(n, "蜂") || strstr(n, "蚁") || strstr(n, "巢")) return TEXM_HIVE;
+        if (strstr(n, "丝状") || strstr(n, "丝藻") || strstr(n, "藻丝")) return TEXM_FILAMENT;
+    }
+
+    switch (morph_class(stage)) {
+    case MORPH_COCCUS:    return TEXM_COCCUS;
+    case MORPH_ROD:       return TEXM_ROD;
+    case MORPH_EUKARYOTE: return TEXM_EUKARYOTE;
+    case MORPH_COLONY:    return TEXM_COLONY;
+    case MORPH_TISSUE:    return TEXM_TISSUE;
+    case MORPH_SYMBIO:    return TEXM_SYMBIO;
+    case MORPH_NEURAL:    return TEXM_NEURAL;
+    case MORPH_TECHNO:    return TEXM_TECHNO;
+    default:              return -1;
+    }
+}
+
+/* 第 18 版：族级微调系数。
+ * 插画已经统一归一化到"主体占画布 86% 且居中"（tools/normsprites.c），
+ * 这里只给几类在视觉上偏轻/偏重的形态补 2–6%，不做大幅缩放，
+ * 免得再顶到展台里的名字。 */
+static float sprite_scale(int sp)
+{
+    switch (sp) {
+    case TEXM_FISH:   return 1.06f;
+    case TEXM_FERN:   return 1.05f;
+    case TEXM_NEURAL: return 1.04f;
+    case TEXM_JELLY:  return 1.02f;
+    case TEXM_HIVE:   return 0.98f;
+    case TEXM_COCCUS: return 1.02f;
+    default: return 1.0f;
+    }
+}
+
 static void draw_organism(Vector2 c, float r, int species_id, int stage, Color accent,
                           float t, bool lit, bool detail, float a)
 {
-    Color col = lit ? accent : COL_GHOST;
+        Color col = lit ? accent : COL_GHOST;
     if (!lit) detail = false;
     if (a <= 0.0f) return;
 
@@ -1118,7 +1250,37 @@ static void draw_organism(Vector2 c, float r, int species_id, int stage, Color a
         return;
     }
 
-    if (lit && a > 0.25f) ui_glow(c, r * 1.55f, col, 0.16f * a);
+    if (lit && a > 0.25f) ui_glow(c, r * 1.55f, col, 0.12f * a);
+
+    /* 有 AI 插画就用插画：真实标本质感（第 17 版的核心改动）。
+     * 呼吸只是 ±1.2% 的缩放，够“活”，又不会让图鉴缩略图抖。 */
+    int sp = sprite_morph(species_id, stage);
+    if (sp >= 0 && tex_morph_ready(sp)) {
+        float size = r * 2.15f * sprite_scale(sp) * (1.0f + 0.012f * sinf(t * 1.7f + seed));
+        float bob  = r * 0.015f * sinf(t * 1.1f + seed * 2.0f);
+        float cy = c.y + bob;
+        float al = a > 1.0f ? 1.0f : a;
+
+        /* 显微背射光：标本背后垫一层极淡的冷白圆池。
+         * 这些插画是"标本摄影"的中间调，直接贴在深藏青展台上会像剪贴画浮着；
+         * 加一层背光后边缘有透光过渡，暗部主体也不会陷进背景里。 */
+        for (int i = 3; i >= 1; --i) {
+            float rr = r * (0.62f + 0.20f * (float)i);
+            float k  = 0.030f * (float)(4 - i) / 3.0f * al;
+            Color col2 = { 0, 0, 0, 0 };
+            DrawCircleGradient((int)c.x, (int)cy, rr,
+                               Fade((Color){ 176, 205, 232, 255 }, k * 3.0f), col2);
+        }
+
+        Rectangle dst = { c.x - size * 0.5f, c.y - size * 0.5f + bob, size, size };
+
+        /* 生态色只做 12% 的轻染：既保住物种之间"这个偏暖、那个偏冷"的辨识度，
+         * 又不至于把标本照片染回卡通色块。 */
+        Color base = ui_color_mix(accent, WHITE, 0.55f);
+        Color tint = ui_color_mix(base, WHITE, 0.88f);
+        tint.a = (unsigned char)(255.0f * al);
+        if (tex_morph_draw(sp, dst, tint)) return;
+    }
 
     switch (morph_class(stage)) {
     case MORPH_COCCUS:      morph_coccus(c, r, col, t, seed, a, detail); break;

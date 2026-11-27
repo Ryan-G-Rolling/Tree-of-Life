@@ -25,4 +25,37 @@ void tex_draw(Rectangle dst, Color tint);
 /* 释放显存（ui_shutdown 调用）。 */
 void tex_shutdown(void);
 
+/* ---------- 生物插图层（第 17 版） ----------
+ * assets/tex/morph/ 下的 19 张透明底科学插画，按形态族取图：
+ * 有图就用图（更"真"的标本质感），缺图返回 false，调用方回退程序化矢量形态。
+ * 懒加载：第一次用到某个形态族时才读盘，读不到就永久回退。 */
+typedef enum {
+    TEXM_COCCUS = 0,
+    TEXM_ROD,
+    TEXM_EUKARYOTE,
+    TEXM_COLONY,
+    TEXM_TISSUE,
+    TEXM_SYMBIO,
+    TEXM_NEURAL,
+    TEXM_TECHNO,
+    TEXM_DIATOM,
+    TEXM_CILIATE,
+    TEXM_AMOEBA,
+    TEXM_FILAMENT,
+    TEXM_SPIRAL,
+    TEXM_FISH,
+    TEXM_JELLY,
+    TEXM_FERN,
+    TEXM_FUNGUS,
+    TEXM_CORAL,
+    TEXM_HIVE,
+    TEXM_COUNT
+} TexMorph;
+
+/* 是否有该形态族的插图（懒加载一次）。 */
+bool tex_morph_ready(int morph);
+
+/* 把插图铺进 dst（等比拉伸，原文透明底）。没图返回 false。 */
+bool tex_morph_draw(int morph, Rectangle dst, Color tint);
+
 #endif /* TEX_H */

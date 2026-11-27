@@ -624,5 +624,5 @@ static void capture_screen(const GameState *base, const char *first_file)
     ui_debug_capture(&game, "shot_10c_speciation_zh.png");
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_NONE);
 
-    TraceLog(LOG_INFO, "shot capture done: 20 frames");
+    TraceLog(LOG_INFO, "shot capture done: 25 frames");
 }
