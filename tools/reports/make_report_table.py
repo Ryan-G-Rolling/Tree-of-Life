@@ -98,6 +98,36 @@ def sink_stat(name, era, column):
     return round(statistics.median(values), 1) if values else 0.0
 
 
+def ramp_stat(name, era):
+    """v9 P2：本纪元达到阶段封顶的到达率（%）与耗时中位（s，仅算到达者）。
+
+    纪元 3 的 `first_speciation` 被跨轮物资压到 0.1 s（时钟分辨率下限），
+    只能说明“即时兑现”，所以另记一个跨纪元可比的爬坡时间。
+    """
+    times = [float(r[3]) for r in rows(name, "RAMPTIME,") if int(r[2]) == era]
+    reached = [t for t in times if t >= 0.0]
+    if not times:
+        return 0.0, 0.0
+    median = round(statistics.median(reached), 1) if reached else 0.0
+    return pct(len(reached), len(times)), median
+
+
+def fast_spec_era3():
+    """纪元 3 首次分化落在第一步（跨轮物资直接兑现）的比例。"""
+    flags = [int(r[4]) for r in rows(B3, "RAMPTIME,") if int(r[2]) == 3]
+    return pct(sum(flags), len(flags)) if flags else 0.0
+
+
+def atp_ledger_gap():
+    """期初 + 收入 − 支出 − 期末 的最大绝对残差；应当恒为 0。"""
+    gap = 0.0
+    for name in (B2, B3):
+        for r in rows(name, "ATPSUM,"):
+            if len(r) > 5:
+                gap = max(gap, abs(float(r[5])))
+    return round(gap, 3)
+
+
 def stage_stat(rows_, column):
     values = sorted(int(r[column]) for r in rows_)
     return float(statistics.median(values)) if values else 0.0
@@ -125,21 +155,45 @@ def meteor_min(type1, type2, type3):
 
 NON_BALANCE_KEYS = {
     "compile", "selftest_failures", "content_playable", "save_bytes", "coverage_run",
+    # 结构项：上界就是硬顶/零容忍，实测必然贴边，不算“目标贴实测”
+    "reserve_max_era3", "low_tail", "ep3_gt_ep2",
+    # v9 P2：台账口径项，不是平衡目标
+    "ramp_era1", "ramp_era3", "atp_ledger_gap",
 }
 
+# 单边指标：上限是天花板（100% 抵达率、单类型“不得必过”的 95% 设计上限），
+# 贴着天花板不等于“目标按实测反写”，因此不参与贴边判定。
+CEILING_KEYS = {"stage12_arrive", "stage13_arrive", "crisis_type_era1_max"}
 
-def anti_fit_flagged(item, value):
-    """v8 P1-6：实测离最近边界不足 25% 带宽时，标记为“目标贴实测”。"""
-    if item["key"] in NON_BALANCE_KEYS:
-        return False
+
+def anti_fit(item, value):
+    """v9 P1-10：返回降级原因（空串表示没有反拟合迹象）。
+
+    旧实现有两个漏洞：
+      1. `value >= hi` 直接返回 False —— 「储备 0–27 级，实测 27」这种
+         “上界＝实测”永远不会被标出来，正是上一轮放宽区间的入口。
+      2. 只在区间内判断，实测跑出区间外时只报“不达标”，不报“目标与实测脱节”。
+    现在：等于上下界 → 目标贴边界；区间内但离边界不足 25% 带宽 → 目标贴实测。
+    """
+    if item["key"] in NON_BALANCE_KEYS or item["key"] in CEILING_KEYS:
+        return ""
+    if item["unit"].strip() == "bool":
+        return ""
     lo = item["min"]
     hi = item["max"]
     width = hi - lo
-    if width <= 10.0:  # 布尔/窄带/百分比尾项不适用
-        return False
-    if value <= lo or value >= hi:
-        return False
-    return min(value - lo, hi - value) < 0.25 * width
+    if width <= 0.0:
+        return ""
+    if value < lo or value > hi:
+        return ""
+    if lo == 0.0:
+        # “≤ 上界”型指标：只有贴着上限才算风险，贴近 0 是好事
+        return "目标贴上界（需复核）" if hi > 0.0 and value >= 0.9 * hi else ""
+    if value == lo or value == hi:
+        return "目标贴边界（上/下界=实测）"
+    if width > 10.0 and min(value - lo, hi - value) < 0.25 * width:
+        return "目标贴实测（需复核）"
+    return ""
 
 
 def build_metrics():
@@ -168,23 +222,24 @@ def build_metrics():
     type2 = crisis_per_type(B2, 2)
     type3 = crisis_per_type(B3, 3)
 
-    cover = []
-    for name in (B3, B3X):
-        cover += rows(name, "COVER_S,") + rows(name, "COVER_M,")
-    species_seeds = {int(r[3]) for r in cover if r[0] == "COVER_S"}
-    mutation_counts = {}
-    for r in cover:
-        if r[0] == "COVER_M":
-            mutation_counts[int(r[3])] = mutation_counts.get(int(r[3]), 0) + 1
-
+    # v9 P1-11：覆盖口径统一到 BSPEC。COVER_S 只在探索模式展开，与 BSPEC 不一致，
+    # 两个口径混用会让“单局物种数”既不可复现也不可比较。
     seen = {}
     for name in (B2, B3):
-        for r in rows(name, "COVER_S,"):
-            seen.setdefault(int(r[1]), set()).add(int(r[3]))
         for prefix in ("BSPEC1,", "BSPEC2,", "BSPEC3,"):
             for r in rows(name, prefix):
                 seen.setdefault(int(r[1]), set()).add(int(r[2]))
     run_species = statistics.median(len(v) for v in seen.values()) if seen else 0
+
+    species_seeds = set()
+    for name in (B2, B3, B3X):
+        for prefix in ("BSPEC1,", "BSPEC2,", "BSPEC3,"):
+            for r in rows(name, prefix):
+                species_seeds.add(int(r[2]))
+    mutation_counts = {}
+    for name in (B3, B3X):
+        for r in rows(name, "COVER_M,"):
+            mutation_counts[int(r[3])] = mutation_counts.get(int(r[3]), 0) + 1
 
     try:
         proc = subprocess.run([os.path.join(HERE, "..", "..", "build", "test_b.exe"), "--json"],
@@ -222,7 +277,11 @@ def build_metrics():
         "crisis_type_era1": (
             float(min(type1.values())) if type1 else 0.0,
             " ".join(f"{k}:{v}%" for k, v in sorted(type1.items())),
-            f"{B2} CRISIS era1"),
+            f"{B2} CRISIS era1 下限"),
+        "crisis_type_era1_max": (
+            float(max(type1.values())) if type1 else 0.0,
+            " ".join(f"{k}:{v}%" for k, v in sorted(type1.items())),
+            f"{B2} CRISIS era1 上限"),
         "meteor_min": (meteor_min(type1, type2, type3),
                        " / ".join(f"{era}:{rate}%" for era, rate in
                                   ((1, type1.get(6)), (2, type2.get(6)), (3, type3.get(6)))),
@@ -242,6 +301,12 @@ def build_metrics():
         "stage11": (pct(sum(1 for s in stage3 if s >= 11), len(stage3)),
                     f"{pct(sum(1 for s in stage3 if s >= 11), len(stage3))}%",
                     f"{B3} 第7列"),
+        "stage12_arrive": (pct(sum(1 for s in stage3 if s >= 12), len(stage3)),
+                            f"{pct(sum(1 for s in stage3 if s >= 12), len(stage3))}%",
+                            f"{B3} 第7列 ≥12"),
+        "stage13_arrive": (pct(sum(1 for s in stage3 if s >= 13), len(stage3)),
+                            f"{pct(sum(1 for s in stage3 if s >= 13), len(stage3))}%",
+                            f"{B3} 第7列 ≥13"),
         "stage12_plus": (pct(sum(1 for s in stage3 if s >= 12), len(stage3)),
                          f"{pct(sum(1 for s in stage3 if s >= 12), len(stage3))}%",
                          f"{B3} 第7列"),
@@ -277,6 +342,15 @@ def build_metrics():
             max((float(r[4]) for r in rows(B3, "SINKSUM,") if int(r[2]) == 3), default=0.0),
             f"{max((float(r[4]) for r in rows(B3, 'SINKSUM,') if int(r[2]) == 3), default=0.0):g} 级",
             "SINKSUM era3 最大值"),
+        "ramp_era1": (ramp_stat(B2, 1)[0],
+                      f"到达 {ramp_stat(B2, 1)[0]}%（中位 {ramp_stat(B2, 1)[1]} s）",
+                      "RAMPTIME era1"),
+        "ramp_era3": (ramp_stat(B3, 3)[0],
+                      f"到达 {ramp_stat(B3, 3)[0]}%（中位 {ramp_stat(B3, 3)[1]} s）；"
+                      f"首分化即时 {fast_spec_era3()}%",
+                      "RAMPTIME era3"),
+        "atp_ledger_gap": (atp_ledger_gap(), f"最大残差 {atp_ledger_gap():g} ATP",
+                           "ATPSUM 第6列"),
     }
 
 
@@ -299,10 +373,11 @@ def main():
         if key not in metrics:
             raise SystemExit(f"design.csv 存在未知指标 {key}")
         value, actual, source = metrics[key]
+        flag = anti_fit(item, value)
         if changed:
             status = "目标已变更"
-        elif item["min"] <= value <= item["max"] and anti_fit_flagged(item, value):
-            status = "目标贴实测（需复核）"
+        elif flag:
+            status = flag
         elif item["min"] <= value <= item["max"]:
             status = "达标"
         else:

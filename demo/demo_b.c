@@ -41,9 +41,19 @@ static bool g_explore = false;
 static unsigned int g_explore_rng = 0x5EED1234u;
 static int g_era = 1;
 static double g_time = 0.0;
-/* v7 P0-4：本轮已花掉的 ATP，用于计算“ATP 未花比例” */
+/* v9 P2：本轮已花掉的 ATP，用于计算“ATP 未花比例” */
 static double g_atp_spent = 0.0;
+/* v9 P2：本轮 ATP 收入（生产 + 点击 + 瞬时增益），用来闭合台账：
+ * 期初 + 收入 − 支出 应当等于期末，残差不为 0 就说明有出口没记进账。 */
+static double g_atp_income = 0.0;
 static double g_first_speciation = -1.0;
+/* v9 P2：首次分化发生在纪元第一步时为 true。纪元 3 带着满级跨轮物资开局，
+ * 第 0.1 s 就能买下光合 + 完成第一次分化，这个值贴住时钟分辨率下限，
+ * 只能说明“即时兑现”，不能当成爬坡时间读。 */
+static int g_first_speciation_instant = 0;
+/* v9 P2：首次达到本纪元阶段封顶的耗时（-1 表示本纪元没到顶）。
+ * 跨纪元可比，用来替代被跨轮物资压平的 first_speciation。 */
+static double g_cap_reached_time = -1.0;
 static int g_first_species = -1;
 static double g_mutation_time[MUTATION_COUNT];
 static int g_offer_slot = 0;
@@ -169,6 +179,8 @@ static void line(void)
     out("--------------------------------------------------------------\n");
 }
 
+/* 演示用的 A 侧占位定价：与 economy.c 同源于 balance.h 的同一组常量。
+ * 正式游戏由 A 层 game.c / economy.c 负责，本 demo 不链接 A 层。 */
 static double upgrade_cost(int type, int level)
 {
     switch (type) {
@@ -195,6 +207,9 @@ static void print_status(double time)
         environment_name(g.run.current_environment_id));
 }
 
+/* v9 P2：记账只认实际扣款。
+ * 以前这里累加的是本地算出来的 cost，与真实扣款差一个 floor/取整通道，
+ * 平衡表一改价台账就和钱包对不上；现在统一用 before - after 记账。 */
 static void try_buy_upgrades(void)
 {
     for (int type = 0; type < 3; ++type) {
@@ -203,60 +218,34 @@ static void try_buy_upgrades(void)
             continue;
         }
         double cost = upgrade_cost(type, g.run.run_upgrade_levels[type]);
+        if (!isfinite(cost)) {
+            continue;
+        }
         if (type == UPGRADE_GENOME) {
             if (g.run.biomass >= cost) {
                 g.run.biomass -= cost;
                 ++g.run.run_upgrade_levels[type];
                 mark_purchase();
             }
-        } else if (g.run.atp >= cost) {
-            if (g.run.atp - cost < target_atp_reserve()) {
-                continue;
-            }
-            g.run.atp -= cost;
-            g_atp_spent += cost;
-            ++g.run.run_upgrade_levels[type];
-            mark_purchase();
+            continue;
         }
+        if (g.run.atp - cost < target_atp_reserve()) {
+            continue;
+        }
+        double atp_before = g.run.atp;
+        g.run.atp -= cost;
+        g_atp_spent += atp_before - g.run.atp;
+        ++g.run.run_upgrade_levels[type];
+        mark_purchase();
     }
 }
 
 /* 第三轮：显式分化计划。
- * 主谱系：原始细胞 → 光合 → 藻类 → 多细胞 → 分化组织 → 认知生物圈
- * 额外分支：原始细胞 → 化能 → 原生捕食者 → 极端环境群落
- * 两条链合起来能发现 8 个非初始物种，对应 EP 的 S=8。 */
+ * v9 P0-18：主线后继改由规则层的 species_main_child 提供，演示与保底逻辑共用一张表。
+ * 额外分支：原始细胞 → 化能 → 原生捕食者 → 真菌网络 → 共生超级个体 → 菌根网络。 */
 static int main_chain_next(int species_id)
 {
-    switch (species_id) {
-    case SPECIES_PROTOCELL:
-        return SPECIES_CYANOBACTERIUM;
-    case SPECIES_CYANOBACTERIUM:
-        return SPECIES_ALGAL_EUKARYOTE;
-    case SPECIES_ALGAL_EUKARYOTE:
-        return SPECIES_MULTICELLULAR_COLONY;
-    case SPECIES_MULTICELLULAR_COLONY:
-        return SPECIES_DIFFERENTIATED_TISSUE;
-    case SPECIES_DIFFERENTIATED_TISSUE:
-        return SPECIES_COGNITIVE_BIOSPHERE;
-    case SPECIES_COGNITIVE_BIOSPHERE:
-        return SPECIES_SAPIENT_LIFE;
-    case SPECIES_SAPIENT_LIFE:
-        return SPECIES_TECHNOSPHERE;
-    case SPECIES_TECHNOSPHERE:
-        return SPECIES_CIVILIZATION;
-    case SPECIES_CIVILIZATION:
-        return SPECIES_SPACE_AGE;
-    case SPECIES_SPACE_AGE:
-        return SPECIES_SINGULARITY;
-    case SPECIES_SINGULARITY:
-        return SPECIES_TRANSCENDENCE;
-    case SPECIES_TRANSCENDENCE:
-        return SPECIES_NOETIC_FIELD;
-    case SPECIES_NOETIC_FIELD:
-        return SPECIES_COSMIC_WEAVE;
-    default:
-        return -1;
-    }
+    return species_main_child(species_id);
 }
 
 static int extra_chain_next(int species_id)
@@ -282,13 +271,29 @@ static int extra_chain_next(int species_id)
 }
 
 /* v8 P1-9：阶段封顶后，横向选择本阶段内可达、优先未发现的子物种。
- * 三个槽位各自沿一条支线推进，形成“同阶段并行支线”。 */
+ * 三个槽位各自沿一条支线推进，形成“同阶段并行支线”。
+ * v9 P1-11：优先挑“突变已齐、当场就能分化”的子物种；原先只看阶段高低，
+ * 一旦选中一个门票突变没凑齐的侧支就永久卡住（阶段 10 的横向落点因此全是 0）。 */
+static bool slot_owns_required(int slot, int target)
+{
+    const SpeciesState *species = &g.run.active_species[slot];
+    int required[4];
+    int count = species_required_mutations(target, required, 4);
+    for (int i = 0; i < count; ++i) {
+        if (!species->mutations[required[i]]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static int best_child_under_cap(int slot, int cap)
 {
     const SpeciesState *species = &g.run.active_species[slot];
     int children[SPECIES_COUNT];
     int count = species_children(species->species_id, children, SPECIES_COUNT);
     int best = -1;
+    int best_rank = -1;
     int best_phase = -1;
     for (int i = 0; i < count; ++i) {
         int id = children[i];
@@ -297,11 +302,11 @@ static int best_child_under_cap(int slot, int cap)
             continue;
         }
         bool undiscovered = !g.run.discovered_species[id];
-        if (undiscovered && (best < 0 || phase > best_phase)) {
+        bool ready = slot_owns_required(slot, id);
+        int rank = (ready ? 2 : 0) + (undiscovered ? 1 : 0);
+        if (rank > best_rank || (rank == best_rank && phase > best_phase)) {
             best = id;
-            best_phase = phase;
-        } else if (best < 0) {
-            best = id;
+            best_rank = rank;
             best_phase = phase;
         }
     }
@@ -567,6 +572,7 @@ static void try_speciation_slot(int slot)
         if (g_first_speciation < 0.0) {
             g_first_speciation = g_time;
             g_first_species = target;
+            g_first_speciation_instant = g_time <= FIXED_STEP_SECONDS + 1e-9;
         }
         out("  >> Speciation: %s -> %s  (Biomass -%.0f, population %.0f -> %.0f%s)\n",
             parent_name, child_name, cost, old_population, g.run.active_species[slot].population,
@@ -708,6 +714,7 @@ static EnvironmentStep simulate_step(double dt)
 
     /* 第十六轮：先推进增益倒计时；演示策略 100% 点击出现的因子 */
     buffs_update(&g, dt);
+    double atp_before_buff = g.run.atp;
     if (buffs_factor_visible(&g)) {
         int buff_type = g.run.buff_visible_type;
         int buff_icon = g.run.buff_visible_icon;
@@ -720,6 +727,7 @@ static EnvironmentStep simulate_step(double dt)
                 buffs_icon_name(buff_icon));
         }
     }
+    g_atp_income += g.run.atp - atp_before_buff;
 
     for (int i = 0; i < g.run.active_species_count; ++i) {
         rates[i] = evolution_calculate_species_rates(&g, i);
@@ -741,6 +749,7 @@ static EnvironmentStep simulate_step(double dt)
         g.run.active_species[i].population = populations[i];
     }
     g.run.atp += atp * dt;
+    g_atp_income += atp * dt;
     g.run.biomass += biomass * dt;
     g.run.dna += dna * dt;
     g.run.knowledge += knowledge * dt;
@@ -757,6 +766,7 @@ static EnvironmentStep simulate_step(double dt)
                        legacy_atp_multiplier(&g.legacy) * legacy_click_multiplier(&g.legacy) *
                        buffs_click_multiplier(&g);
         g.run.atp += click;
+        g_atp_income += click;
     }
 
     try_buy_upgrades();
@@ -874,6 +884,7 @@ static void start_new_run(void)
     g.run.dna = LEGACY_STARTING_DNA;
     g.run.discovered_species[SPECIES_PROTOCELL] = true;
     g_atp_spent = 0.0;
+    g_atp_income = 0.0;
     environment_init_run(&g);
     buffs_init_run(&g);
     legacy_apply_new_run_bonuses(&g);
@@ -945,7 +956,10 @@ static void init_game(unsigned int seed)
     g_time = 0.0;
     g_era = 1;
     g_atp_spent = 0.0;
+    g_atp_income = 0.0;
     g_first_speciation = -1.0;
+    g_first_speciation_instant = 0;
+    g_cap_reached_time = -1.0;
     g_first_species = -1;
     g_last_stage = -1;
     for (int id = 0; id < MUTATION_COUNT; ++id) {
@@ -1008,6 +1022,8 @@ typedef struct {
     int crises;
     double max_biomass;
     double first_speciation;
+    int first_speciation_instant;
+    double cap_reached_time;
     double last_purchase;
     double atp;
     double biomass;
@@ -1016,6 +1032,7 @@ typedef struct {
     int sub_upgrades;
     double first_mutation;
     double atp_spent;
+    double atp_residual;
     int buff_collected;
     int buff_rare;
     double buff_uptime;
@@ -1031,17 +1048,24 @@ static EraSummary simulate_era(int steps)
     EraSummary summary;
     memset(&summary, 0, sizeof(summary));
     g_first_speciation = -1.0;
+    g_first_speciation_instant = 0;
+    g_cap_reached_time = -1.0;
     g_first_species = -1;
     g_first_mutation = -1.0;
     g_last_purchase_time = -1.0;
     g_sub_upgrade_buys = 0;
     g_insight_buys = 0;
     g_atp_spent = 0.0;
+    g_atp_income = 0.0;
     g_last_stage = -1;
+    double atp_start = g.run.atp;
     for (int step = 1; step <= steps; ++step) {
         g_era = g.run.era;
         g_time = step * FIXED_STEP_SECONDS;
         simulate_step(FIXED_STEP_SECONDS);
+        if (g_cap_reached_time < 0.0 && evolution_main_stage(&g) >= evolution_era_stage_cap(&g)) {
+            g_cap_reached_time = g_time;
+        }
     }
     EraReward reward = prestige_preview_reward(&g);
     summary.ep = reward.total_points;
@@ -1049,6 +1073,8 @@ static EraSummary simulate_era(int steps)
                        &summary.crises);
     summary.max_biomass = g.run.max_biomass;
     summary.first_speciation = g_first_speciation;
+    summary.first_speciation_instant = g_first_speciation_instant;
+    summary.cap_reached_time = g_cap_reached_time;
     summary.last_purchase = g_last_purchase_time;
     summary.atp = g.run.atp;
     summary.biomass = g.run.biomass;
@@ -1056,6 +1082,7 @@ static EraSummary simulate_era(int steps)
     summary.knowledge = g.run.knowledge;
     summary.sub_upgrades = g_sub_upgrade_buys;
     summary.first_mutation = g_first_mutation;
+    summary.atp_residual = atp_start + g_atp_income - g_atp_spent - g.run.atp;
     summary.atp_spent = g_atp_spent;
     summary.buff_collected = g.run.buff_collected;
     summary.buff_rare = g.run.buff_rare_collected;
@@ -1103,8 +1130,12 @@ static void run_batch2(int count, int steps)
                era2.ep, era2.stages, era2.mutations, era2.species, era2.crises, era2.max_biomass,
                mutation_level, diversification_level, era2.first_speciation,
                era1.first_speciation, era1.last_purchase, era2.last_purchase, era2.atp,
-               era2.biomass, era2.dna, era2.knowledge, era1.sub_upgrades, era2.sub_upgrades,
+               era2.biomass, era2.dna, era2.knowledge,                era1.sub_upgrades, era2.sub_upgrades,
                era1.first_mutation, era2.first_mutation);
+        printf("RAMPTIME,%d,1,%.1f,%d\n", index, era1.cap_reached_time,
+               era1.first_speciation_instant);
+        printf("RAMPTIME,%d,2,%.1f,%d\n", index, era2.cap_reached_time,
+               era2.first_speciation_instant);
         for (int id = 0; id < MUTATION_COUNT; ++id) {
             if (g.run.discovered_mutations[id]) {
                 printf("BMUT2,%d,%d,%.1f\n", index, id, g_mutation_time[id]);
@@ -1118,8 +1149,10 @@ static void run_batch2(int count, int steps)
         for (int i = 0; i < era1_species_count; ++i) {
             printf("BSPEC1,%d,%d\n", index, era1_species_ids[i]);
         }
-        printf("ATPSUM,%d,1,%.0f,%.0f\n", index, era1.atp_spent, era1.atp);
-        printf("ATPSUM,%d,2,%.0f,%.0f\n", index, era2.atp_spent, era2.atp);
+        printf("ATPSUM,%d,1,%.0f,%.0f,%.3f\n", index, era1.atp_spent, era1.atp,
+               era1.atp_residual);
+        printf("ATPSUM,%d,2,%.0f,%.0f,%.3f\n", index, era2.atp_spent, era2.atp,
+               era2.atp_residual);
         printf("BUFFSUM,%d,1,%d,%d,%.1f,%d,%d\n", index, era1.buff_collected, era1.buff_rare,
                era1.buff_uptime, era1.insight_buys, era1.insight_levels);
         printf("BUFFSUM,%d,2,%d,%d,%.1f,%d,%d\n", index, era2.buff_collected, era2.buff_rare,
@@ -1169,14 +1202,23 @@ static void run_batch3(int count, int steps)
                diversification_level, era3.first_speciation, era3.knowledge,
                era1.sub_upgrades, era2.sub_upgrades, era3.sub_upgrades,
                era1.first_mutation, era2.first_mutation, era3.first_mutation);
+        printf("RAMPTIME,%d,1,%.1f,%d\n", index, era1.cap_reached_time,
+               era1.first_speciation_instant);
+        printf("RAMPTIME,%d,2,%.1f,%d\n", index, era2.cap_reached_time,
+               era2.first_speciation_instant);
+        printf("RAMPTIME,%d,3,%.1f,%d\n", index, era3.cap_reached_time,
+               era3.first_speciation_instant);
         for (int id = 1; id < SPECIES_COUNT; ++id) {
             if (g.run.discovered_species[id]) {
                 printf("BSPEC3,%d,%d\n", index, id);
             }
         }
-        printf("ATPSUM,%d,1,%.0f,%.0f\n", index, era1.atp_spent, era1.atp);
-        printf("ATPSUM,%d,2,%.0f,%.0f\n", index, era2.atp_spent, era2.atp);
-        printf("ATPSUM,%d,3,%.0f,%.0f\n", index, era3.atp_spent, era3.atp);
+        printf("ATPSUM,%d,1,%.0f,%.0f,%.3f\n", index, era1.atp_spent, era1.atp,
+               era1.atp_residual);
+        printf("ATPSUM,%d,2,%.0f,%.0f,%.3f\n", index, era2.atp_spent, era2.atp,
+               era2.atp_residual);
+        printf("ATPSUM,%d,3,%.0f,%.0f,%.3f\n", index, era3.atp_spent, era3.atp,
+               era3.atp_residual);
         printf("BUFFSUM,%d,1,%d,%d,%.1f,%d,%d\n", index, era1.buff_collected, era1.buff_rare,
                era1.buff_uptime, era1.insight_buys, era1.insight_levels);
         printf("BUFFSUM,%d,2,%d,%d,%.1f,%d,%d\n", index, era2.buff_collected, era2.buff_rare,

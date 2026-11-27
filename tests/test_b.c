@@ -612,7 +612,10 @@ static void test_adaptation_shield(void)
     double cap = 80.0;
     double damage = environment_damage_per_second(ENV_GLOBAL_WARMING);
     double positive = population * 0.010 * 1.10 * (1.0 - population / cap); /* 原始细胞基石 */
-    double raw_loss = population * damage * (2.0 - environment) * CRISIS_DAMAGE_MULTIPLIER;
+    /* v9 P0-19：伤害的阶段放大从 CRISIS_EARLY_SCALE 起算（原始细胞阶段 0） */
+    double stage_scale = CRISIS_EARLY_SCALE + CRISIS_DAMAGE_STAGE_SCALE * 0.0;
+    double raw_loss = population * damage * (2.0 - environment) * stage_scale *
+                      CRISIS_DAMAGE_MULTIPLIER;
     double expected = positive - raw_loss * 0.2;
 
     SpeciesRates shielded = evolution_calculate_species_rates(&game, 0);
@@ -1007,8 +1010,12 @@ static void test_long_run_simulation(void)
 
     const double dt = FIXED_STEP_SECONDS;
     const int steps = 9000; /* 15 分钟 */
+    int event_steps = 0;
     for (int i = 0; i < steps; ++i) {
         simulate_fixed_step(&game, dt);
+        if (game.run.current_environment_id != ENV_NORMAL_OCEAN) {
+            ++event_steps;
+        }
 
         CHECK(game.run.active_species_count >= 1);
         CHECK(game.run.active_species[0].is_main_lineage);
@@ -1030,10 +1037,12 @@ static void test_long_run_simulation(void)
                                    first.species_points + first.crisis_points +
                                    first.biomass_points);
 
+    /* v9 P0-19：环境事件必须真实发生；但“不做任何适应也想通过危机”不再成立，
+     * 因此这里只锁“事件发生过”和“通过类型数不超过本纪元的 4 类”。 */
+    CHECK(event_steps > 0);
     int crises = 0;
     prestige_run_stats(&game, 0, 0, 0, &crises);
-    CHECK(crises >= 1);
-    CHECK(crises <= ENV_COUNT - 1);
+    CHECK(crises <= 4);
 
     CHECK(game.run.environment_time_left <= 50.0 + 0.001);
     CHECK(game.run.event_interval_left <= EVENT_INTERVAL + 0.001);
@@ -1790,6 +1799,42 @@ static void test_round13_content_and_fuzz(void)
     }
 }
 
+/* v9 P0-18：主线后继必须是显式数据，而且每一环都是真实的分化边。
+ * 这里锁死“超越 → 无生命场 → 宇宙织体”，防止再退回按 ID 最小者猜主线。 */
+static void test_main_lineage(void)
+{
+    CHECK(species_main_child(SPECIES_PROTOCELL) == SPECIES_CYANOBACTERIUM);
+    CHECK(species_main_child(SPECIES_CYANOBACTERIUM) == SPECIES_ALGAL_EUKARYOTE);
+    CHECK(species_main_child(SPECIES_ALGAL_EUKARYOTE) == SPECIES_MULTICELLULAR_COLONY);
+    CHECK(species_main_child(SPECIES_MULTICELLULAR_COLONY) == SPECIES_DIFFERENTIATED_TISSUE);
+    CHECK(species_main_child(SPECIES_DIFFERENTIATED_TISSUE) == SPECIES_COGNITIVE_BIOSPHERE);
+    CHECK(species_main_child(SPECIES_COGNITIVE_BIOSPHERE) == SPECIES_SAPIENT_LIFE);
+    CHECK(species_main_child(SPECIES_SAPIENT_LIFE) == SPECIES_TECHNOSPHERE);
+    CHECK(species_main_child(SPECIES_TECHNOSPHERE) == SPECIES_CIVILIZATION);
+    CHECK(species_main_child(SPECIES_CIVILIZATION) == SPECIES_SPACE_AGE);
+    CHECK(species_main_child(SPECIES_SPACE_AGE) == SPECIES_SINGULARITY);
+    CHECK(species_main_child(SPECIES_SINGULARITY) == SPECIES_TRANSCENDENCE);
+    CHECK(species_main_child(SPECIES_TRANSCENDENCE) == SPECIES_NOETIC_FIELD);
+    CHECK(species_main_child(SPECIES_NOETIC_FIELD) == SPECIES_COSMIC_WEAVE);
+    CHECK(species_main_child(SPECIES_COSMIC_WEAVE) == -1);
+    CHECK(species_main_child(SPECIES_PHOTOSYNTHETIC_MAT) == -1);
+
+    /* 每一环都必须是合法的分化边，并且阶段严格递增 */
+    int chain[16];
+    int count = 0;
+    for (int id = SPECIES_PROTOCELL; id >= 0 && count < 16; id = species_main_child(id)) {
+        chain[count++] = id;
+    }
+    CHECK(count == 14);
+    for (int i = 1; i < count; ++i) {
+        CHECK(species_has_parent(chain[i], chain[i - 1]));
+        CHECK(species_phase(chain[i]) > species_phase(chain[i - 1]));
+    }
+    /* 阶段 12 的门槛必须由保底深度覆盖，阶段 13 不被保底 */
+    CHECK(species_phase(SPECIES_NOETIC_FIELD) <= MAINLINE_GUARANTEE_MAX_PHASE);
+    CHECK(species_phase(SPECIES_COSMIC_WEAVE) > MAINLINE_GUARANTEE_MAX_PHASE);
+}
+
 /* 第十四轮：20 物种 / 20 突变 / 两个新阶段的结构与可达性 */
 static void test_round14_content(void)
 {
@@ -2025,6 +2070,7 @@ int main(int argc, char **argv)
         test_reachability,
         test_round12_stage11_and_crisis,
         test_round13_content_and_fuzz,
+        test_main_lineage,
         test_round14_content,
         test_round15_content,
         test_every_content_playable,
