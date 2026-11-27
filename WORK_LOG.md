@@ -495,3 +495,32 @@ G3 末/中 = 0.872/0.837 = **1.042** PASS；G4 物种中位 **17**（P10 17 / P9
 
 **未处理（方案 §8 已预判）**：覆盖率受 `BRANCH_MAX_DEPTH 2` 与 bot 不吃方向卡限制；
 容量被属性卡挤占 ATP 买不动；阶段 13 仍是彩蛋区。
+
+## 2026-11-28 · Agent · v23 定稿复核（报告/文档层）
+
+- **原因**：用户上传 `TreeOfLife-全局审查与定稿-v23.md`，要求按审查结论做最终修改完善。审查结论为代码零缺陷，
+  只需四项报告/文档层收口，明确不改 `balance.h`、不改 `demo_b.c` 判断、不碰阶段 13、不动 `BRANCH_MAX_DEPTH`。
+
+- **工作区回滚**：`README.md`、`WORK_LOG.md`、`Makefile`、`data/balance.h`、`demo/demo_b.c`、`src/environment.c`、
+  `tests/test_b.c`、`tools/reports/design.csv`、`tools/reports/make_report_table.py` 共 9 个文件的 BOM 重复
+  （`﻿`→`﻿﻿`）与换行漂移。先逐文件 diff（`--ignore-space-at-eol`、`-w`）确认无实际内容变化，再按路径逐个检出还原；
+  未使用整树 checkout，未改历史。还原后 `git status` 仅剩本轮 4 个文档/脚本改动。
+
+- **已知残留入档**：`docs/CHANGELOG-v19.md` §八 改为四条带归因的冻结项——容量 4 级（bot 为分化预留 0.55 张票，
+  非价格）、覆盖 54/264（`BRANCH_MAX_DEPTH 2` 结构上限）、阶段 13 抵达 2.1%（彩蛋区设计）、
+  G2 中位 15 ≈ 自限 16（bot 行为而非经济约束）；写明下一轮不得当新 bug 修。§五 G2 行同步改判为「记录项」。
+
+- **G2 降级 + 结构断言**：`tools/reports/gate_check.py` 把 G2 移出判定列表，改为记录项打印；
+  新增与 bot 无关的结构口径——第 12 张门票 = `MUTATION_ATP_SECONDS × MUTATION_TICKET_GROWTH^12` = **39.0 s 产率**，
+  两个常量用正则从 `data/balance.h` 读取（不另写一份），只打印不判定。退出码只由 G3/G4/G5 决定。
+
+- **对照跑两位小数**：`tools/reports/compare_strategy.py` 的支出/收入由一位改两位小数。200 局同种子实测
+  **86.29%（买属性卡）vs 86.31%（`--lean`）**，两组不再显示成同一个数，可确认分支确实切换。
+  `docs/CHANGELOG-v19.md` §六 表与说明同步更新。
+
+- **验证**：`python tools/reports/gate_check.py tools/reports/batch3_scan_round15.csv "…batch3_scan…,batch3_explore…,batch2_scan…"`
+  输出 1000 局：G3 PASS（0.872/0.837=1.042）、G4 PASS（中位 17）、G5 FAIL（阶段 12 95.7% / 13 2.1%，与冻结口径一致）；
+  记录项新增「G2 结构口径 39.0 s 产率」。`compare_strategy.py 200` 正常完成。两个脚本 `ast.parse` 语法校验通过。
+  本轮未改游戏代码，未重编译、未重跑 1000 种子生产批次，1000 局数据复用现有 `tools/reports/batch*_round15.csv`。
+
+- **未完成**：`git push` 需联网，若沙箱拦截则本地提交后留待同步；P1-13 `src/screens.c` 拆分仍按 v19 记录保留为未做。

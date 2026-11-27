@@ -63,7 +63,7 @@ def main():
           f"{'容量满级':>10}{'储备满级':>12}")
     for name, r in results:
         print(f"{name:26}{r['mut']:>6.0f}{r['spc']:>6.0f}{r['stage']:>6.0f}"
-              f"{r['spent']:>12.3g}{r['ratio']:>9.1f}%{r['cap_full']:>9.1f}%"
+              f"{r['spent']:>12.3g}{r['ratio']:>9.2f}%{r['cap_full']:>9.1f}%"
               f"{r['res_time']:>9.0f}s")
     print("\n注：容量列是「触顶 26 级（CAPACITY_MAX_LEVEL）的局占比」；储备列为满级时间中位。")
     return 0
