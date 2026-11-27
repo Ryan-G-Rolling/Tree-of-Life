@@ -9,10 +9,11 @@
 #include "legacy.h"
 #include "save.h"
 #include "balance.h"
+#include "buffs.h"
 static ActionResult act(GameState *g,ActionType type,int id,int option) {
     return game_apply_action(g,(GameAction){type,0,id,option});
 }
-static void seed(GameState *g,unsigned int rng) { game_init(g);g->run.rng_state=rng;environment_init_run(g); }
+static void seed(GameState *g,unsigned int rng) { game_init(g);g->run.rng_state=rng;environment_init_run(g);buffs_init_run(g); }
 static void test_actions_and_save(void) {
     GameState g;seed(&g,77);
     assert(g.run.era==1 && g.run.next_environment_id>0);
@@ -96,12 +97,11 @@ static void test_natural_playthrough(void) {
                 if(act(&g,ACTION_BUY_RUN_UPGRADE,u,0).code==ACTION_OK)buys++;
         }
         if(!g.run.mutation_offer.active)act(&g,ACTION_GENERATE_MUTATION_OFFER,0,0);
-        int children[8],n=species_children(g.run.active_species[0].species_id,children,8);
-        if(n>8)n=8; /* species_children 返回的是总数，写出的最多 max_ids 个 */
-        int selected=-1,main_next=species_main_child(g.run.active_species[0].species_id);
         /* v9 P1-11：先攒主线门票（否则便宜的侧支突变会把 DNA 花光，
            而突变价格随已拥有数量指数上涨，主线门票反而永远买不起），
-           再退到任意买得起的候选。 */
+           再退到任意买得起的候选。主线后继不再从 species_children 里挑，
+           所以这里不需要子代数组（远端把越界写改成 SPECIES_COUNT，一并保留在别处）。 */
+        int selected=-1,main_next=species_main_child(g.run.active_species[0].species_id);
         int main_req[4],main_req_n=main_next>=0?species_required_mutations(main_next,main_req,4):0;
         for(int i=0;i<g.run.mutation_offer.choice_count && selected<0;i++) {
             int id=g.run.mutation_offer.mutation_ids[i];
@@ -131,3 +131,4 @@ static void test_natural_playthrough(void) {
     printf("Natural 60-minute run: stage %d, %d mutations, %d speciations, %d upgrades, reward %d EP\n",evolution_main_stage(&g),mutations,splits,buys,r.total_points);
 }
 int main(void) { test_actions_and_save();test_crisis_and_chunks();test_natural_playthrough();puts("All real A+B integration checks passed");return 0; }
+

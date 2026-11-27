@@ -430,6 +430,27 @@ void ui_glow(Vector2 c, float radius, Color col, float alpha)
     EndBlendMode();
 }
 
+/* ---------------- 逻辑坐标裁剪 ----------------
+ * 生物图（细胞/组织/行星/奇点）的鞭毛、环轨、喷流会伸到"本体半径"之外，
+ * 只调小半径挡不住全部，必须再加一层硬裁剪，图像才保证落在指定画框内。
+ * scissor 参数是渲染目标像素，逻辑坐标要乘超采样倍数（与星图连线同一套换算）。
+ * raylib 的 scissor 没有栈，begin/end 不能嵌套。 */
+void ui_clip_begin(Rectangle r)
+{
+    int ss = ui_canvas_ss();
+    if (ss < 1) ss = 1;
+    int x = (int)(r.x * (float)ss);
+    int y = (int)(r.y * (float)ss);
+    int w = (int)(r.width * (float)ss + 0.5f);
+    int h = (int)(r.height * (float)ss + 0.5f);
+    BeginScissorMode(x, y, w, h);
+}
+
+void ui_clip_end(void)
+{
+    EndScissorMode();
+}
+
 void ui_bar(Rectangle r, float t, Color fill, Color back)
 {
     if (back.a == 0) back = COL_BAR_TRACK;

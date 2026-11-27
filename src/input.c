@@ -45,7 +45,17 @@ Vector2 input_mouse_virtual(void)
 
 bool input_click_pressed(void)  { return IsMouseButtonPressed(MOUSE_BUTTON_LEFT); }
 bool input_click_released(void) { return IsMouseButtonReleased(MOUSE_BUTTON_LEFT); }
+bool input_click_down(void)     { return IsMouseButtonDown(MOUSE_BUTTON_LEFT); }
 bool input_key_pressed(int key) { return IsKeyPressed(key); }
+float input_wheel(void)         { return GetMouseWheelMove(); }
+
+/* 本帧鼠标位移，换算到逻辑坐标（已除以窗口缩放），星图拖拽直接叠加即可 */
+Vector2 input_mouse_delta(void)
+{
+    Vector2 d = GetMouseDelta();
+    float k = (g_scale > 0.0001f) ? g_scale : 1.0f;
+    return (Vector2){ d.x / k, d.y / k };
+}
 
 /* 从后往前找：后绘制的（弹层）优先，天然实现“上层遮挡”。 */
 int input_hit_topmost(const UiLayout *layout, const UIState *state)
