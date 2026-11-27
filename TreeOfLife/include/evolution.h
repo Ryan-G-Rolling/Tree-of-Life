@@ -120,6 +120,8 @@ bool species_requires_legacy(int target_species_id, int *branch, int *level);
 int evolution_max_speciation_slots(const GameState *game);
 int evolution_main_slot(const GameState *game);
 int evolution_main_stage(const GameState *game);
+/* v8 P0-17：本纪元的阶段深度上限（纪元 1/2/3 = 8/10/13） */
+int evolution_era_stage_cap(const GameState *game);
 double evolution_speciation_cost(const GameState *game, int target_species_id);
 
 /* ---------------- 突变 ---------------- */
@@ -135,6 +137,10 @@ ActionCode evolution_open_mutation_offer(GameState *game, int species_slot);
 
 int evolution_mutation_choice_count(const GameState *game);
 double evolution_mutation_cost(const GameState *game, int mutation_id);
+/* 第十五轮：阶段 8 起的高阶突变额外消耗 ATP；低阶返回 0 */
+double evolution_mutation_atp_cost(const GameState *game, int mutation_id);
+/* 该突变是否被任一物种的分化前置引用（进入必需成本链） */
+bool evolution_mutation_is_required(int mutation_id);
 double evolution_mutation_cost_for_slot(const GameState *game, int species_slot,
                                         int mutation_id);
 bool evolution_mutation_available(const GameState *game, int species_slot, int mutation_id);
@@ -171,6 +177,12 @@ double evolution_sub_upgrade_cost(const SubUpgradeDef *def);
 ActionCode evolution_apply_sub_upgrade(GameState *game, int species_slot);
 /* 全部在场物种的理念产率之和，供 UI 与 A 写回 */
 double evolution_knowledge_per_second(const GameState *game);
+
+/* 第十六轮：洞见——无上限知识升级，每级 +2% 全产率 */
+double evolution_insight_cost(const GameState *game);
+int evolution_insight_level(const GameState *game);
+double evolution_insight_multiplier(const GameState *game);
+ActionCode evolution_apply_insight(GameState *game);
 
 /* ---------------- 规则查询 ---------------- */
 /* 只校验主谱系能否分化为目标物种；option=1（保留亲本）还需要

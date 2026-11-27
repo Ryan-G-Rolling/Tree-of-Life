@@ -20,6 +20,7 @@
 #include <string.h>
 
 #include "balance.h"
+#include "buffs.h"
 #include "environment.h"
 #include "evolution.h"
 #include "game_types.h"
@@ -40,17 +41,51 @@ static bool g_explore = false;
 static unsigned int g_explore_rng = 0x5EED1234u;
 static int g_era = 1;
 static double g_time = 0.0;
+/* v7 P0-4：本轮已花掉的 ATP，用于计算“ATP 未花比例” */
+static double g_atp_spent = 0.0;
 static double g_first_speciation = -1.0;
 static int g_first_species = -1;
 static double g_mutation_time[MUTATION_COUNT];
 static int g_offer_slot = 0;
 static double g_last_purchase_time = -1.0;
 static int g_sub_upgrade_buys = 0;
+static int g_insight_buys = 0;
 static int g_batch_index = 0;
 static double g_first_mutation = -1.0;
 static int g_last_stage = -1;
 
 static double main_population_value(void);
+static int planned_target(int slot);
+
+/* v7 P0-2/4：为下一步主线门票预留 ATP，避免商店把 ATP 花光后卡在阶段 8 */
+static double target_atp_reserve(void)
+{
+    int slot = evolution_main_slot(&g);
+    if (slot < 0) {
+        return 0.0;
+    }
+    int target = planned_target(slot);
+    if (target < 0) {
+        return 0.0;
+    }
+    /* v8 P0-14：同阶段的横向支线不构成“跨阶段门票”，不为它锁死 ATP */
+    if (species_phase(target) <= evolution_main_stage(&g)) {
+        return 0.0;
+    }
+    int required[4];
+    int count = species_required_mutations(target, required, 4);
+    double reserve = 0.0;
+    for (int i = 0; i < count; ++i) {
+        if (g.run.active_species[slot].mutations[required[i]]) {
+            continue;
+        }
+        double cost = evolution_mutation_atp_cost(&g, required[i]);
+        if (cost > reserve) {
+            reserve = cost;
+        }
+    }
+    return reserve;
+}
 
 static void mark_purchase(void)
 {
@@ -163,7 +198,8 @@ static void print_status(double time)
 static void try_buy_upgrades(void)
 {
     for (int type = 0; type < 3; ++type) {
-        if (g.run.run_upgrade_levels[type] >= RUN_UPGRADE_MAX_LEVEL) {
+        if (RUN_UPGRADE_MAX_LEVEL >= 0 &&
+            g.run.run_upgrade_levels[type] >= RUN_UPGRADE_MAX_LEVEL) {
             continue;
         }
         double cost = upgrade_cost(type, g.run.run_upgrade_levels[type]);
@@ -174,7 +210,11 @@ static void try_buy_upgrades(void)
                 mark_purchase();
             }
         } else if (g.run.atp >= cost) {
+            if (g.run.atp - cost < target_atp_reserve()) {
+                continue;
+            }
             g.run.atp -= cost;
+            g_atp_spent += cost;
             ++g.run.run_upgrade_levels[type];
             mark_purchase();
         }
@@ -210,6 +250,10 @@ static int main_chain_next(int species_id)
         return SPECIES_SINGULARITY;
     case SPECIES_SINGULARITY:
         return SPECIES_TRANSCENDENCE;
+    case SPECIES_TRANSCENDENCE:
+        return SPECIES_NOETIC_FIELD;
+    case SPECIES_NOETIC_FIELD:
+        return SPECIES_COSMIC_WEAVE;
     default:
         return -1;
     }
@@ -237,14 +281,46 @@ static int extra_chain_next(int species_id)
     }
 }
 
+/* v8 P1-9：阶段封顶后，横向选择本阶段内可达、优先未发现的子物种。
+ * 三个槽位各自沿一条支线推进，形成“同阶段并行支线”。 */
+static int best_child_under_cap(int slot, int cap)
+{
+    const SpeciesState *species = &g.run.active_species[slot];
+    int children[SPECIES_COUNT];
+    int count = species_children(species->species_id, children, SPECIES_COUNT);
+    int best = -1;
+    int best_phase = -1;
+    for (int i = 0; i < count; ++i) {
+        int id = children[i];
+        int phase = species_phase(id);
+        if (phase > cap) {
+            continue;
+        }
+        bool undiscovered = !g.run.discovered_species[id];
+        if (undiscovered && (best < 0 || phase > best_phase)) {
+            best = id;
+            best_phase = phase;
+        } else if (best < 0) {
+            best = id;
+            best_phase = phase;
+        }
+    }
+    return best;
+}
+
 static int planned_target(int slot)
 {
     if (slot < 0 || slot >= g.run.active_species_count) {
         return -1;
     }
     const SpeciesState *species = &g.run.active_species[slot];
-    return species->is_main_lineage ? main_chain_next(species->species_id)
-                                    : extra_chain_next(species->species_id);
+    int cap = evolution_era_stage_cap(&g);
+    int chain = species->is_main_lineage ? main_chain_next(species->species_id)
+                                         : extra_chain_next(species->species_id);
+    if (chain >= 0 && species_phase(chain) <= cap) {
+        return chain;
+    }
+    return best_child_under_cap(slot, cap);
 }
 
 /* 自动策略优先购买“该槽下一物种分化所需”的突变 */
@@ -276,6 +352,19 @@ static void choose_mutation(int slot)
         return;
     }
     int pick = -1;
+    /* 第十五轮：只要主线目标还缺前置，就只买前置，不拿旁支消耗 DNA。 */
+    bool target_missing = false;
+    int target = planned_target(slot);
+    if (target >= 0) {
+        int required[4];
+        int count = species_required_mutations(target, required, 4);
+        for (int i = 0; i < count; ++i) {
+            if (!g.run.active_species[slot].mutations[required[i]]) {
+                target_missing = true;
+                break;
+            }
+        }
+    }
     if (g_explore) {
         /* 图鉴策略：优先买尚未发现的，其次在买得起的候选里随机选 */
         int choices[MAX_MUTATION_CHOICES];
@@ -303,25 +392,58 @@ static void choose_mutation(int slot)
         for (int i = 0; i < offer->choice_count; ++i) {
             if (mutation_unlocks_slot(slot, offer->mutation_ids[i])) {
                 target_offered = true;
-                if (g.run.dna >= offer->dna_costs[i]) {
+                int mid = offer->mutation_ids[i];
+                if (g.run.dna >= offer->dna_costs[i] &&
+                    g.run.atp >= evolution_mutation_atp_cost(&g, mid)) {
                     pick = i;
                     break;
                 }
             }
-        }
-        if (pick < 0 && target_offered) {
-            /* 关键突变在候选里但买不起：攒 DNA，不拿廉价突变把价格推高 */
-            return;
         }
         if (pick < 0) {
-            /* 其次补图鉴：优先选尚未发现且买得起的突变，避免两个谱系重复购买 */
+            if (target_missing) {
+                return;
+            }
+            /* 第十五轮：主线前置齐备、只差 Biomass 时，才用富余 DNA 买属性突变。 */
+            (void)target_offered;
+            int fallback = -1;
             for (int i = 0; i < offer->choice_count; ++i) {
-                if (!g.run.discovered_mutations[offer->mutation_ids[i]] &&
-                    g.run.dna >= offer->dna_costs[i]) {
-                    pick = i;
-                    break;
+                int mid = offer->mutation_ids[i];
+                if (evolution_mutation_is_required(mid) ||
+                    g.run.discovered_mutations[mid]) {
+                    continue;
+                }
+                if (g.run.dna < offer->dna_costs[i] ||
+                    g.run.atp < evolution_mutation_atp_cost(&g, mid)) {
+                    continue;
+                }
+                if (fallback < 0 ||
+                    offer->dna_costs[i] < offer->dna_costs[fallback]) {
+                    fallback = i;
                 }
             }
+            if (fallback < 0) {
+                /* 没有纯属性突变时，退而购买任意未发现且买得起的突变，
+                 * 维持自动策略的生存力；真实玩家可自行取舍。 */
+                for (int i = 0; i < offer->choice_count; ++i) {
+                    int mid = offer->mutation_ids[i];
+                    if (g.run.discovered_mutations[mid]) {
+                        continue;
+                    }
+                    if (g.run.dna < offer->dna_costs[i] ||
+                        g.run.atp < evolution_mutation_atp_cost(&g, mid)) {
+                        continue;
+                    }
+                    if (fallback < 0 ||
+                        offer->dna_costs[i] < offer->dna_costs[fallback]) {
+                        fallback = i;
+                    }
+                }
+            }
+            if (fallback < 0) {
+                return;
+            }
+            pick = fallback;
         }
     }
     if (pick < 0) {
@@ -338,7 +460,9 @@ static void choose_mutation(int slot)
     }
     int mutation_id = offer->mutation_ids[pick];
     double cost = offer->dna_costs[pick];
+    double atp_before = g.run.atp;
     if (evolution_apply_mutation(&g, slot, mutation_id) == ACTION_OK) {
+        g_atp_spent += atp_before - g.run.atp; /* P2：用实际扣款记账，避免改价静默漂移 */
         mark_purchase(); /* 第十轮：突变计入统一“末次有效购买”口径 */
         if (g_first_mutation < 0.0) {
             g_first_mutation = g_time;
@@ -357,6 +481,29 @@ static void try_mutations(void)
 {
     if (g.run.mutation_offer.active) {
         choose_mutation(g.run.mutation_offer.species_slot);
+        return;
+    }
+    /* 第十五轮：普通策略只为主线开候选，避免额外分支的待选提案
+     * 长期占用唯一候选位，把主线前置卡死。
+     * v8 P1-9：主线到本纪元封顶后，轮转所有槽位，让三条并行支线都能推进。 */
+    if (!g_explore) {
+        int main_slot = evolution_main_slot(&g);
+        bool capped = evolution_main_stage(&g) >= evolution_era_stage_cap(&g);
+        if (!capped) {
+            if (main_slot >= 0 && evolution_open_mutation_offer(&g, main_slot) == ACTION_OK) {
+                choose_mutation(main_slot);
+            }
+            return;
+        }
+        for (int i = 0; i < g.run.active_species_count; ++i) {
+            int slot = (g_offer_slot + i) % g.run.active_species_count;
+            if (evolution_open_mutation_offer(&g, slot) == ACTION_OK) {
+                g_offer_slot = slot + 1;
+                choose_mutation(slot);
+                return;
+            }
+        }
+        g_offer_slot = 0;
         return;
     }
     /* 轮转候选槽位，让主谱系与额外分支都能拿到自己的前置突变 */
@@ -436,25 +583,42 @@ static void try_speciation(void)
 
 static void try_sinks(void)
 {
-    /* Biomass：容量扩张（第十轮起无上限；第十一轮起 ATP/Biomass 双币） */
-    while (CAPACITY_MAX_LEVEL < 0 || g.run.capacity_levels < CAPACITY_MAX_LEVEL) {
-        double biomass_cost = evolution_capacity_biomass_cost(&g);
-        double atp_cost = evolution_capacity_atp_cost(&g);
-        if (biomass_cost <= 0.0 || g.run.biomass < biomass_cost * 2.0 ||
-            g.run.atp < atp_cost * 2.0) {
+    /* v8 P0-15：先买储备（几何价 + 乘算减伤），到达 0.20 下限后不再买无收益的等级 */
+    while ((RESERVE_MAX_LEVEL < 0 || g.run.reserve_levels < RESERVE_MAX_LEVEL)) {
+        if (reserve_damage_scale(g.run.reserve_levels) <= RESERVE_REDUCTION_FLOOR + 1e-12) {
             break;
         }
-        if (evolution_apply_capacity_upgrade(&g) != ACTION_OK) {
+        double cost = evolution_reserve_cost(&g);
+        if (g.run.atp < cost * 1.25 + target_atp_reserve()) {
             break;
         }
-        mark_purchase();
-    }
-    /* ATP：应急储备，最多 5 级（危机损失 -50%） */
-    while (g.run.reserve_levels < RESERVE_MAX_LEVEL &&
-           g.run.atp >= RESERVE_COST_ATP * 2.0) {
+        double atp_before = g.run.atp;
         if (evolution_apply_reserve(&g) != ACTION_OK) {
             break;
         }
+        g_atp_spent += atp_before - g.run.atp;
+        mark_purchase();
+    }
+    /* v8 P0-14：容量最后买，用来吸收储备留下的余额；
+     * 逐币判断，任一货币可支付即可，两种都为 0 才是真的不可购买 */
+    while (CAPACITY_MAX_LEVEL < 0 || g.run.capacity_levels < CAPACITY_MAX_LEVEL) {
+        double biomass_cost = evolution_capacity_biomass_cost(&g);
+        double atp_cost = evolution_capacity_atp_cost(&g);
+        double reserve = target_atp_reserve();
+        if (atp_cost <= 0.0 && biomass_cost <= 0.0) {
+            break;
+        }
+        if (atp_cost > 0.0 && g.run.atp < atp_cost * 1.25 + reserve) {
+            break;
+        }
+        if (biomass_cost > 0.0 && g.run.biomass < biomass_cost * 1.25) {
+            break;
+        }
+        double atp_before = g.run.atp;
+        if (evolution_apply_capacity_upgrade(&g) != ACTION_OK) {
+            break;
+        }
+        g_atp_spent += atp_before - g.run.atp;
         mark_purchase();
     }
 }
@@ -502,6 +666,37 @@ static void try_sub_upgrades(void)
     }
 }
 
+/* 第十六轮：知识富余时买洞见（先保证每个物种的下一层子升级买得起） */
+static void try_insight(void)
+{
+    double reserve = 0.0;
+    for (int i = 0; i < g.run.active_species_count; ++i) {
+        const SubUpgradeDef *next = evolution_sub_upgrade_next(&g, i);
+        if (next) {
+            double cost = evolution_sub_upgrade_cost(next);
+            if (cost > reserve) {
+                reserve = cost;
+            }
+        }
+    }
+    while (g.run.knowledge >= evolution_insight_cost(&g) + reserve) {
+        double cost = evolution_insight_cost(&g);
+        if (evolution_apply_insight(&g) != ACTION_OK) {
+            break;
+        }
+        mark_purchase();
+        ++g_insight_buys;
+        if (g_quiet) {
+            printf("BINSIGHT,%d,%d,%.1f,%.0f,%.0f,%d\n", g_batch_index, g.run.era, g_time, cost,
+                   g.run.knowledge, g.run.insight_levels);
+        }
+        char detail[96];
+        snprintf(detail, sizeof(detail), "insight;%.0f;%d", cost, g.run.insight_levels);
+        csv_event("insight", detail);
+        out("  >> Insight Lv.%d (+2%% production, -%.0f Knowledge)\n", g.run.insight_levels, cost);
+    }
+}
+
 static EnvironmentStep simulate_step(double dt)
 {
     SpeciesRates rates[MAX_ACTIVE_SPECIES];
@@ -510,6 +705,21 @@ static EnvironmentStep simulate_step(double dt)
     double biomass = 0.0;
     double dna = 0.0;
     double knowledge = 0.0;
+
+    /* 第十六轮：先推进增益倒计时；演示策略 100% 点击出现的因子 */
+    buffs_update(&g, dt);
+    if (buffs_factor_visible(&g)) {
+        int buff_type = g.run.buff_visible_type;
+        int buff_icon = g.run.buff_visible_icon;
+        if (buffs_collect(&g) == ACTION_OK) {
+            char detail[128];
+            snprintf(detail, sizeof(detail), "%s;%s;%.0f", buffs_type_name(buff_type),
+                     buffs_icon_name(buff_icon), g_time);
+            csv_event("buff", detail);
+            out("  ~~ Factor collected: %s (%s)\n", buffs_type_name(buff_type),
+                buffs_icon_name(buff_icon));
+        }
+    }
 
     for (int i = 0; i < g.run.active_species_count; ++i) {
         rates[i] = evolution_calculate_species_rates(&g, i);
@@ -544,7 +754,8 @@ static EnvironmentStep simulate_step(double dt)
         double click = BASE_CLICK_ATP *
                        (1.0 + RUN_METABOLISM_BONUS_PER_LEVEL *
                                   g.run.run_upgrade_levels[UPGRADE_METABOLISM]) *
-                       legacy_atp_multiplier(&g.legacy) * legacy_click_multiplier(&g.legacy);
+                       legacy_atp_multiplier(&g.legacy) * legacy_click_multiplier(&g.legacy) *
+                       buffs_click_multiplier(&g);
         g.run.atp += click;
     }
 
@@ -553,20 +764,27 @@ static EnvironmentStep simulate_step(double dt)
     try_speciation();
     try_sinks();
     try_sub_upgrades();
+    try_insight();
 
     EnvironmentStep step = environment_calculate_step(&g, dt);
     environment_apply_step(&g, &step);
 
     /* 机器模式：危机结束时输出逐次记录，供覆盖率与通过率统计 */
     if ((g_csv || g_quiet) && step.event_ended) {
+        /* v7 P2：打印真实通过线（纪元 1 是 0.625，纪元 2+ 是 0.70） */
+        double pass_ratio = g_era <= 1
+                                ? CRISIS_PASS_RATIO_ERA1
+                                : (g_era == 2 ? CRISIS_PASS_POPULATION_RATIO
+                                              : CRISIS_PASS_RATIO_ERA3);
         double threshold = fmax(MIN_ACTIVE_POPULATION,
-                                g.run.crisis_start_population * CRISIS_PASS_POPULATION_RATIO);
+                                g.run.crisis_start_population * pass_ratio);
         double end_population = main_population_value();
         double lowest = step.crisis_lowest_population > 0.0 ? step.crisis_lowest_population
                                                             : g.run.crisis_start_population;
-        printf("CRISIS,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%d\n", g_era, step.ended_environment_id,
-               g.run.crisis_start_population, lowest, end_population, threshold,
-               threshold > 0.0 ? lowest / threshold : 0.0, step.crisis_survived ? 1 : 0);
+        printf("CRISIS,%d,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d\n", g_era,
+               step.ended_environment_id, g.run.crisis_start_population, lowest, end_population,
+               threshold, threshold > 0.0 ? lowest / threshold : 0.0, step.crisis_survived ? 1 : 0,
+               g_batch_index);
     }
 
     /* 机器模式下记录主谱系阶段进入时点，用于验证理念升级的响应速度 */
@@ -655,7 +873,9 @@ static void start_new_run(void)
     g.run.biomass = STARTING_BIOMASS;
     g.run.dna = LEGACY_STARTING_DNA;
     g.run.discovered_species[SPECIES_PROTOCELL] = true;
+    g_atp_spent = 0.0;
     environment_init_run(&g);
+    buffs_init_run(&g);
     legacy_apply_new_run_bonuses(&g);
     g.phase = PHASE_RUNNING;
     g_click_timer = 0.0;
@@ -708,7 +928,7 @@ static void csv_mutation_impact(void)
 static void init_game(unsigned int seed)
 {
     memset(&g, 0, sizeof(g));
-    g.save_version = 6;
+    g.save_version = 7;
     g.phase = PHASE_RUNNING;
     g.run.era = 1;
     g.run.rng_state = seed;
@@ -720,9 +940,11 @@ static void init_game(unsigned int seed)
     g.run.active_species[0].population = STARTING_POPULATION;
     g.run.discovered_species[SPECIES_PROTOCELL] = true;
     environment_init_run(&g);
+    buffs_init_run(&g);
     g_click_timer = 0.0;
     g_time = 0.0;
     g_era = 1;
+    g_atp_spent = 0.0;
     g_first_speciation = -1.0;
     g_first_species = -1;
     g_last_stage = -1;
@@ -793,6 +1015,14 @@ typedef struct {
     double knowledge;
     int sub_upgrades;
     double first_mutation;
+    double atp_spent;
+    int buff_collected;
+    int buff_rare;
+    double buff_uptime;
+    int insight_buys;
+    int insight_levels;
+    int capacity_levels;
+    int reserve_levels;
 } EraSummary;
 
 /* 跑完一整轮并汇总 EP 明细；调用方负责 g_time / g_era 与阶段切换 */
@@ -805,6 +1035,8 @@ static EraSummary simulate_era(int steps)
     g_first_mutation = -1.0;
     g_last_purchase_time = -1.0;
     g_sub_upgrade_buys = 0;
+    g_insight_buys = 0;
+    g_atp_spent = 0.0;
     g_last_stage = -1;
     for (int step = 1; step <= steps; ++step) {
         g_era = g.run.era;
@@ -824,6 +1056,14 @@ static EraSummary simulate_era(int steps)
     summary.knowledge = g.run.knowledge;
     summary.sub_upgrades = g_sub_upgrade_buys;
     summary.first_mutation = g_first_mutation;
+    summary.atp_spent = g_atp_spent;
+    summary.buff_collected = g.run.buff_collected;
+    summary.buff_rare = g.run.buff_rare_collected;
+    summary.buff_uptime = g.run.buff_total_active_time;
+    summary.insight_buys = g_insight_buys;
+    summary.insight_levels = g.run.insight_levels;
+    summary.capacity_levels = g.run.capacity_levels;
+    summary.reserve_levels = g.run.reserve_levels;
     return summary;
 }
 
@@ -833,6 +1073,7 @@ static void run_batch2(int count, int steps)
     g_quiet = true;
     for (int index = 1; index <= count; ++index) {
         unsigned int seed = 0xC0FFEE01u + (unsigned int)index * 2654435761u;
+        g_batch_index = index;
         init_game(seed);
         EraSummary era1 = simulate_era(steps);
         int era1_species_ids[SPECIES_COUNT];
@@ -854,6 +1095,7 @@ static void run_batch2(int count, int steps)
         if (g.run.rng_state == 0) {
             g.run.rng_state = 1u;
         }
+        buffs_init_run(&g);
         EraSummary era2 = simulate_era(steps);
         printf("BATCH2,%d,%u,%d,%d,%d,%d,%d,%.0f,%d,%d,%d,%d,%d,%.0f,%d,%d,%.1f,%.1f,%.1f,%.1f,%.0f,%.0f,%.0f,%.1f,%d,%d,%.1f,%.1f\n",
                index, seed,
@@ -876,6 +1118,14 @@ static void run_batch2(int count, int steps)
         for (int i = 0; i < era1_species_count; ++i) {
             printf("BSPEC1,%d,%d\n", index, era1_species_ids[i]);
         }
+        printf("ATPSUM,%d,1,%.0f,%.0f\n", index, era1.atp_spent, era1.atp);
+        printf("ATPSUM,%d,2,%.0f,%.0f\n", index, era2.atp_spent, era2.atp);
+        printf("BUFFSUM,%d,1,%d,%d,%.1f,%d,%d\n", index, era1.buff_collected, era1.buff_rare,
+               era1.buff_uptime, era1.insight_buys, era1.insight_levels);
+        printf("BUFFSUM,%d,2,%d,%d,%.1f,%d,%d\n", index, era2.buff_collected, era2.buff_rare,
+               era2.buff_uptime, era2.insight_buys, era2.insight_levels);
+        printf("SINKSUM,%d,1,%d,%d\n", index, era1.capacity_levels, era1.reserve_levels);
+        printf("SINKSUM,%d,2,%d,%d\n", index, era2.capacity_levels, era2.reserve_levels);
         print_coverage(index, 2);
     }
     g_quiet = false;
@@ -898,6 +1148,7 @@ static void run_batch3(int count, int steps)
         if (g.run.rng_state == 0) {
             g.run.rng_state = 1u;
         }
+        buffs_init_run(&g);
         EraSummary era2 = simulate_era(steps);
         g.phase = PHASE_END_ERA_PREVIEW;
         prestige_commit_end_era(&g);
@@ -909,6 +1160,7 @@ static void run_batch3(int count, int steps)
         if (g.run.rng_state == 0) {
             g.run.rng_state = 1u;
         }
+        buffs_init_run(&g);
         EraSummary era3 = simulate_era(steps);
         printf("BATCH3,%d,%u,%d,%d,%d,%d,%d,%d,%d,%.0f,%.1f,%d,%d,%.1f,%.1f,%d,%d,%d,%.1f,%.1f,%.1f\n",
                index, seed,
@@ -922,6 +1174,18 @@ static void run_batch3(int count, int steps)
                 printf("BSPEC3,%d,%d\n", index, id);
             }
         }
+        printf("ATPSUM,%d,1,%.0f,%.0f\n", index, era1.atp_spent, era1.atp);
+        printf("ATPSUM,%d,2,%.0f,%.0f\n", index, era2.atp_spent, era2.atp);
+        printf("ATPSUM,%d,3,%.0f,%.0f\n", index, era3.atp_spent, era3.atp);
+        printf("BUFFSUM,%d,1,%d,%d,%.1f,%d,%d\n", index, era1.buff_collected, era1.buff_rare,
+               era1.buff_uptime, era1.insight_buys, era1.insight_levels);
+        printf("BUFFSUM,%d,2,%d,%d,%.1f,%d,%d\n", index, era2.buff_collected, era2.buff_rare,
+               era2.buff_uptime, era2.insight_buys, era2.insight_levels);
+        printf("BUFFSUM,%d,3,%d,%d,%.1f,%d,%d\n", index, era3.buff_collected, era3.buff_rare,
+               era3.buff_uptime, era3.insight_buys, era3.insight_levels);
+        printf("SINKSUM,%d,1,%d,%d\n", index, era1.capacity_levels, era1.reserve_levels);
+        printf("SINKSUM,%d,2,%d,%d\n", index, era2.capacity_levels, era2.reserve_levels);
+        printf("SINKSUM,%d,3,%d,%d\n", index, era3.capacity_levels, era3.reserve_levels);
         print_coverage(index, 3);
     }
     g_quiet = false;

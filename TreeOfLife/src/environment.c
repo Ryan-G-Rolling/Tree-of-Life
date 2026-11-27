@@ -34,17 +34,17 @@ static const EnvironmentDef k_environments[ENV_COUNT] = {
     { "Normal Ocean", "Stable water. Nothing is selected for or against.",
       TRAIT_NONE, 0, 0.0, 0.0, 0, false, false },
     { "Global Warming", "Heat rises. Heat-tolerant species keep producing.",
-      TRAIT_HEAT, 2, 45.0, 0.013, 0, false, true },
+      TRAIT_HEAT, 2, 45.0, 0.0132, 0, false, true },
     { "Global Cooling", "Temperatures fall. Cold-tolerant species keep producing.",
       TRAIT_COLD, 2, 45.0, 0.0135, 0, false, true },
     { "Low Light Period", "Light fades. Photosynthetic lines lose output.",
-      TRAIT_LOW_LIGHT, 2, 50.0, 0.013, 0, false, true },
+      TRAIT_LOW_LIGHT, 2, 50.0, 0.0115, 0, false, true },
     { "Oxygen Rise", "Oxygen floods the water. Aerobic lines benefit.",
       TRAIT_OXYGEN, 1, 45.0, 0.015, 0, false, true },
     { "Toxic Bloom", "Poison spreads. Toxin-resistant species survive.",
-      TRAIT_TOXIN, 2, 40.0, 0.0145, 0, false, true },
+      TRAIT_TOXIN, 2, 40.0, 0.0148, 0, false, true },
     { "Meteor Impact", "The sky burns. Every lineage loses population at once.",
-      TRAIT_HIGHEST, 3, 30.0, 0.0245, SPECIATION_METEOR_MIN_STAGE, true, true },
+      TRAIT_HIGHEST, 3, 30.0, 0.0260, SPECIATION_METEOR_MIN_STAGE, true, true },
     /* 第四轮：正面 / 中性随机事件，damage = 0 且不计入危机统计 */
     { "Nutrient Upwelling", "A rich current feeds every lineage for a while.",
       TRAIT_NONE, 0, 40.0, 0.0, 0, false, false },
@@ -156,6 +156,10 @@ double environment_multiplier_for_slot(const GameState *game, int species_slot)
     } else if (multiplier > 1.0) {
         multiplier = 1.0 + (multiplier - 1.0) * legacy_positive_multiplier_scale(&game->legacy);
     }
+    /* v8 P0-16：Meteor 的威慑改为事件期间全面减产，而非一次性人口抽签 */
+    if (environment_id == ENV_METEOR_IMPACT) {
+        multiplier *= METEOR_PRODUCTION_SCALE;
+    }
     return multiplier;
 }
 
@@ -251,9 +255,11 @@ EnvironmentStep environment_calculate_step(const GameState *game, double dt)
             step.event_ended = true;
             step.ended_environment_id = current;
             if (environment_is_crisis(current)) {
-                /* 第十二轮：通过线按纪元区分，避免开局就被 0.70 打穿低尾 */
-                double pass_ratio = game->run.era <= 1 ? CRISIS_PASS_RATIO_ERA1
-                                                       : CRISIS_PASS_POPULATION_RATIO;
+                /* 第十二轮：通过线按纪元区分；v7：纪元 3 收紧到 0.85 */
+                double pass_ratio = game->run.era <= 1
+                                        ? CRISIS_PASS_RATIO_ERA1
+                                        : (game->run.era == 2 ? CRISIS_PASS_POPULATION_RATIO
+                                                              : CRISIS_PASS_RATIO_ERA3);
                 double threshold =
                     fmax(MIN_ACTIVE_POPULATION,
                          game->run.crisis_start_population * pass_ratio);
@@ -308,11 +314,7 @@ EnvironmentStep environment_calculate_step(const GameState *game, double dt)
             if (ratio > INSTANT_LOSS_MAX) {
                 ratio = INSTANT_LOSS_MAX;
             }
-            double reserve_scale = 1.0 - RESERVE_REDUCTION_PER_LEVEL *
-                                             (double)game->run.reserve_levels;
-            if (reserve_scale < 0.5) {
-                reserve_scale = 0.5;
-            }
+            double reserve_scale = reserve_damage_scale(game->run.reserve_levels);
             step.instant_population_loss_ratio = ratio * reserve_scale;
         }
     } else {
@@ -355,8 +357,15 @@ void environment_apply_step(GameState *game, const EnvironmentStep *step)
                 run->active_species[i].population = population;
             }
         }
-        /* 最低人口从即时损失后的值开始记录 */
-        run->crisis_min_population = main_lineage_population(game);
+        /* 最低人口从即时损失后的值开始记录。
+         * 第十五轮修复（v7 P0-1）：一次性损失型危机（Meteor）的判定基准
+         * 也改为“损失后的人口”，否则阶段 ≥6 时 0.35+0.05×stage 的损失
+         * 会让“最低人口 ≥ 起始×0.70”恒不成立，事件数学上不可通过。 */
+        double baseline = main_lineage_population(game);
+        run->crisis_min_population = baseline;
+        if (step->instant_population_loss_ratio > 0.0) {
+            run->crisis_start_population = baseline;
+        }
     } else {
         run->environment_time_left = step->environment_time_left;
         run->event_interval_left = step->event_interval_left;

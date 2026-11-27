@@ -11,6 +11,11 @@ TreeOfLife/build/*
 *.csv
 *.log
 
+# 验收台账：目标与实测必须可审计
+!TreeOfLife/build/design.csv
+!TreeOfLife/build/observed.csv
+!TreeOfLife/build/design.lock
+
 # 临时目录
 .screenshots/
 .trae-html-share-packages/
