@@ -112,6 +112,9 @@ void evolution_synergy_bonuses(const GameState *game, int species_slot, double *
                                int *trait_bonus);
 
 /* ---------------- 进化树 ---------------- */
+/* v9 P0-18：显式主线后继（原始细胞 → … → 宇宙织体），-1 表示主线到此为止。
+ * 规则层与演示策略共用同一张表，避免“最小 ID 子物种”把保底引向侧支。 */
+int species_main_child(int species_id);
 /* 返回子代总数，最多写入 max_ids 项；遍历完整列表时用 SPECIES_COUNT 容量。 */
 int species_children(int parent_id, int *out_ids, int max_ids);
 int species_min_child_cost(int parent_id);

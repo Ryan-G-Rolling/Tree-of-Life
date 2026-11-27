@@ -2789,11 +2789,18 @@ static void draw_expand_card(const GameState *game, const UIState *S,
     ui_text(eff, r.x + 12.0f, r.y + 22.0f, F_CAPTION, COL_DIM);
 
     char num[24], costline[56];
-    ui_fmt_num(cost, num, (int)sizeof(num));
-    snprintf(costline, sizeof(costline), "%s ATP", num);
-    ui_text(costline, r.x + 12.0f, r.y + 39.0f, F_CAPTION, usable ? col : COL_FAINT);
-    ui_text_right(usable ? "购买" : "资源不足", r.x + r.width - 12.0f, r.y + 39.0f,
-                  F_CAPTION, usable ? COL_TEXT : COL_FAINT);
+    bool inf = !isfinite(cost);
+    if (inf) {
+        snprintf(costline, sizeof(costline), "已满级");
+    } else {
+        ui_fmt_num(cost, num, (int)sizeof(num));
+        snprintf(costline, sizeof(costline), "%s ATP", num);
+    }
+    ui_text(costline, r.x + 12.0f, r.y + 39.0f, F_CAPTION, inf ? COL_FAINT : (usable ? col : COL_FAINT));
+    if (!inf) {
+        ui_text_right(usable ? "购买" : "资源不足", r.x + r.width - 12.0f, r.y + 39.0f,
+                      F_CAPTION, usable ? COL_TEXT : COL_FAINT);
+    }
 }
 
 /* ---------------- 洞见（Insight）：理念的长线出口 ----------------

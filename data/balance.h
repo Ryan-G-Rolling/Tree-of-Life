@@ -112,14 +112,39 @@
 #endif
 /* 第十二轮：纪元 1 用更宽的通过线（0.65），纪元 2+ 用 0.70，
  * 避免“越后期越松”/“开局就把低尾打穿”。
- * 第十四轮：0.63 → 0.60，把纪元 1 的 6/6 危机存活率拉回 35% 带。 */
+ * 第十四轮：0.63 → 0.60，把纪元 1 的 6/6 危机存活率拉回 35% 带。
+ * v9 P0-19：4 类危机轮换后定在 0.672。实测 0.672 → 全清 37%，0.675 → 6%：
+ * 单局危机损失集中在 33% 附近，这条线对数值极敏感，调整前必须复跑 1000 种子。 */
 #ifndef CRISIS_PASS_RATIO_ERA1
-#define CRISIS_PASS_RATIO_ERA1 0.625
+#define CRISIS_PASS_RATIO_ERA1 0.672
 #endif
-/* v7：纪元 3 收紧到 0.85，让“三纪元全通”重新成为挑战而不是默认 */
+/* v7：纪元 3 收紧到 0.85。v9 P0-19：改为 0.75 —— 0.85 时单局危机次数
+ * 被失败重抽拉到 7 次以上，全清率压在 3% 以下；0.75 后回到 30% 带，
+ * 同时纪元 3 仍是三纪元里通过线最高的一档。 */
 #ifndef CRISIS_PASS_RATIO_ERA3
-#define CRISIS_PASS_RATIO_ERA3 0.85
+#define CRISIS_PASS_RATIO_ERA3 0.75
 #endif
+/* v9 P0-19：每个纪元只轮换 4 类危机（掩码 = 环境 id 位）。
+ * 7 类全开时单类 45–99% 相乘必然落到 2%，“全清”等于抽奖；
+ * 4 类把理论全清率抬到 0.6^4 ≈ 13%、0.75^4 ≈ 32%，成为可追求的目标。
+ * 七类在三个纪元里轮转，任何一局至少能遇到 4 类不同的压力。 */
+#ifndef ERA_CRISIS_MASK_1
+#define ERA_CRISIS_MASK_1 ((1u << 1) | (1u << 2) | (1u << 3) | (1u << 6))   /* 变暖/变冷/微光/陨石 */
+#endif
+#ifndef ERA_CRISIS_MASK_2
+#define ERA_CRISIS_MASK_2 ((1u << 2) | (1u << 4) | (1u << 5) | (1u << 13))  /* 变冷/氧气/毒素/雾霾 */
+#endif
+#ifndef ERA_CRISIS_MASK_3
+#define ERA_CRISIS_MASK_3 ((1u << 1) | (1u << 5) | (1u << 6) | (1u << 13))  /* 变暖/毒素/陨石/雾霾 */
+#endif
+static inline unsigned int era_crisis_mask(int era)
+{
+    if (era <= 1) {
+        return ERA_CRISIS_MASK_1;
+    }
+    return era == 2 ? ERA_CRISIS_MASK_2 : ERA_CRISIS_MASK_3;
+}
+
 /* 第十一轮：危机判定改为“事件期间最低人口”；事件期产率再打折，
  * 一次性损失随阶段放大，应急储备按级减免。 */
 #ifndef CRISIS_EVENT_PRODUCTION_SCALE
@@ -141,6 +166,13 @@
 #ifndef CRISIS_DAMAGE_STAGE_SCALE
 #define CRISIS_DAMAGE_STAGE_SCALE 0.25
 #endif
+/* v9 P0-19：危机伤害的阶段放大改为从 0.80 起算（原为 1.0 + 0.25×stage）。
+ * 每个纪元第一次危机落在 60 s、主谱系还在阶段 1–2，旧公式下“没有对应适应性状”
+ * 就等于必死：纪元 2 的微光期首次通过率只有 0.3%，“全清”被开局抽签决定。
+ * 从 0.80 起算把前期伤害压掉约两成，后期（阶段 10）几乎不变。 */
+#ifndef CRISIS_EARLY_SCALE
+#define CRISIS_EARLY_SCALE 0.80
+#endif
 #define CRISIS_SHIELD_POPULATION_RATIO 0.20
 #define CRISIS_SHIELD_DAMAGE_REDUCTION 0.80
 #define METEOR_INSTANT_LOSS_RATIO 0.35
@@ -149,6 +181,13 @@
 #define ENVIRONMENT_POSITIVE_BONUS_SCALE_LV4 1.15
 
 /* ---------------- 02 §9 EP 结算 ---------------- */
+/* v9 P0-18：关键突变保底的深度上限。主线后继的所需突变在候选池里会被强制占位，
+ * 上限设在阶段 12 —— 阶段 12（无生命场）从 0.4% 拉回可追求区间；
+ * 阶段 13（宇宙织体）不再保底，继续靠稀有突变自然达成（目标 1–8%）。 */
+#ifndef MAINLINE_GUARANTEE_MAX_PHASE
+#define MAINLINE_GUARANTEE_MAX_PHASE 12
+#endif
+
 #define EP_PER_STAGE 2
 #define EP_MUTATIONS_PER_POINT 3
 #define EP_SPECIES_PER_POINT 2
@@ -220,8 +259,11 @@
 #ifndef CAPACITY_COST_PER_CAP
 #define CAPACITY_COST_PER_CAP 0.5
 #endif
-/* v7 P0-4b：容量价格带“收入的 20 秒”下限，避免收入指数上涨后 ATP 无处可花 */
+/* v7 P0-4b：容量价格带“收入的 5 秒”下限，避免收入指数上涨后 ATP 无处可花 */
+/* v9 P0-21：改为可覆盖，用于 5/12/20 的单变量对照 */
+#ifndef CAPACITY_ATP_SECONDS
 #define CAPACITY_ATP_SECONDS 5.0
+#endif
 #define CAPACITY_GAIN_PER_LEVEL 0.05
 #define CAPACITY_COST_GROWTH 1.08
 /* 第十轮：容量扩张改为无上限（-1 表示无限），Biomass 永远有出口 */
@@ -246,7 +288,11 @@
 #ifndef RESERVE_REDUCTION_FLOOR
 #define RESERVE_REDUCTION_FLOOR 0.20
 #endif
-#define RESERVE_MAX_LEVEL (-1)
+/* v9 P0-20：储备减伤 0.94^n 在第 26 级触底（0.94^26 ≈ 0.199 < 0.20），
+ * 第 27 级起是“花钱买 0 收益”。显式截断在 26 级，游戏内不再允许继续购买。 */
+#ifndef RESERVE_MAX_LEVEL
+#define RESERVE_MAX_LEVEL 26
+#endif
 
 /* 储备减伤系数：0.94^levels，最低 0.20。环境与产率两处共用同一实现。 */
 static inline double reserve_damage_scale(int levels)

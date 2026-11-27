@@ -34,17 +34,17 @@ static const EnvironmentDef k_environments[ENV_COUNT] = {
     { "常态海洋", "稳定的水体，没有任何选择压力。",
       TRAIT_NONE, 0, 0.0, 0.0, 0, false, false },
     { "全球变暖", "温度上升，耐热物种维持产出。",
-      TRAIT_HEAT, 2, 45.0, 0.0132, 0, false, true },
+      TRAIT_HEAT, 2, 45.0, 0.0130, 0, false, true },
     { "全球变冷", "温度下降，耐寒物种维持产出。",
-      TRAIT_COLD, 2, 45.0, 0.0135, 0, false, true },
+      TRAIT_COLD, 2, 45.0, 0.0122, 0, false, true },
     { "微光期", "光线衰减，光合谱系产出下降。",
       TRAIT_LOW_LIGHT, 2, 50.0, 0.0115, 0, false, true },
     { "氧气上升", "氧气涌入水体，有氧谱系受益。",
-      TRAIT_OXYGEN, 1, 45.0, 0.015, 0, false, true },
+      TRAIT_OXYGEN, 1, 45.0, 0.0124, 0, false, true },
     { "毒素爆发", "毒素扩散，耐毒物种存活。",
       TRAIT_TOXIN, 2, 40.0, 0.0148, 0, false, true },
     { "陨石撞击", "天空燃烧，所有谱系同时损失种群。",
-      TRAIT_HIGHEST, 3, 30.0, 0.0260, SPECIATION_METEOR_MIN_STAGE, true, true },
+      TRAIT_HIGHEST, 3, 30.0, 0.0170, SPECIATION_METEOR_MIN_STAGE, true, true },
     /* 第四轮：正面 / 中性随机事件，damage = 0 且不计入危机统计 */
     { "养分上涌", "富养洋流在一段时间内滋养所有谱系。",
       TRAIT_NONE, 0, 40.0, 0.0, 0, false, false },
@@ -61,7 +61,7 @@ static const EnvironmentDef k_environments[ENV_COUNT] = {
       TRAIT_HEAT, 0, 50.0, 0.0, 0, false, false },
     /* 第七轮：阶段 5 之后的工业污染危机 */
     { "工业雾霾", "膨胀的技术圈用颗粒物窒息水体。",
-      TRAIT_TOXIN, 3, 45.0, 0.026, 5, false, true },
+      TRAIT_TOXIN, 3, 45.0, 0.0155, 5, false, true },
 };
 
 static bool valid_environment(int environment_id)
@@ -179,18 +179,23 @@ static double main_lineage_population(const GameState *game)
 
 /* 单个随机数抽取，排除上一个事件与阶段未解锁的事件。
  * 第三轮：危机轮转——优先抽取本纪元尚未通过的危机类型，
- * 避免同一类型反复出现导致危机种类 C 长期停在 5。 */
+ * 避免同一类型反复出现导致危机种类 C 长期停在 5。
+ * v9 P0-19：危机池按纪元轮换（每纪元 4 类），全清率因此从 2% 回到可追求区间。 */
 static int pick_next_environment(const GameState *game, int exclude_id, int pending_survived_id,
                                  unsigned int *rng_state)
 {
     int candidates[ENV_COUNT];
     int count = 0;
+    unsigned int crisis_mask = era_crisis_mask(game->run.era);
     int stage = evolution_main_stage(game);
     for (int id = 1; id < ENV_COUNT; ++id) {
         if (id == exclude_id) {
             continue;
         }
         if (k_environments[id].min_stage > stage) {
+            continue;
+        }
+        if (k_environments[id].crisis && !(crisis_mask & (1u << id))) {
             continue;
         }
         candidates[count++] = id;
@@ -222,7 +227,13 @@ static int pick_next_environment(const GameState *game, int exclude_id, int pend
     if (unpassed_count > 0) {
         return unpassed[roll % (unsigned int)unpassed_count];
     }
-    return candidates[roll % (unsigned int)count];
+    /* v9 P0-19：本纪元的 4 类危机全部通过后不再重复抽同类危机。
+     * 旧逻辑会一直从“全部候选”里重抽，单局危机次数被拉到 9–10 次，
+     * 每次 50–70% 的通过率连乘后“全清”只剩 0.5–4%。 */
+    if (boon_count > 0) {
+        return boons[roll % (unsigned int)boon_count];
+    }
+    return ENV_NORMAL_OCEAN;
 }
 
 void environment_init_run(GameState *game)

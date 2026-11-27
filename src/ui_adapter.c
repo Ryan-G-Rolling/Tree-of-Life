@@ -8,6 +8,7 @@
  *
  * 与 mock_adapter.c 的差别：所有数据来自 A/B 真实实现，不再有假表。
  */
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -77,7 +78,10 @@ int ua_reserve_level(const GameState *game)  { return game ? game->run.reserve_l
 
 double ua_capacity_atp_cost(const GameState *game)
 {
-    return game ? evolution_capacity_atp_cost(game) : 0.0;
+    if (!game) return 0.0;
+    /* 与 ua_run_upgrade_cost 同一约定：不能再买就返回 INFINITY */
+    if (CAPACITY_MAX_LEVEL >= 0 && game->run.capacity_levels >= CAPACITY_MAX_LEVEL) return INFINITY;
+    return evolution_capacity_atp_cost(game);
 }
 
 double ua_capacity_biomass_cost(const GameState *game)
@@ -87,7 +91,10 @@ double ua_capacity_biomass_cost(const GameState *game)
 
 double ua_reserve_atp_cost(const GameState *game)
 {
-    return game ? evolution_reserve_cost(game) : 0.0;
+    if (!game) return 0.0;
+    /* v9 P0-20：储备 26 级硬顶，满级后不再报价，避免"花钱买 0 收益" */
+    if (RESERVE_MAX_LEVEL >= 0 && game->run.reserve_levels >= RESERVE_MAX_LEVEL) return INFINITY;
+    return evolution_reserve_cost(game);
 }
 
 double ua_capacity_cap_bonus(const GameState *game)

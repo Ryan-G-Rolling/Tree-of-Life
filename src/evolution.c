@@ -247,7 +247,9 @@ static const MutationDef k_mutations[MUTATION_COUNT] = {
       2, 11, -1, MUTATION_OMEGA_POINT, -1, -1 },
     { "Entropy Reversal", "Decay is redirected into structure.",
       950.0, 0.40, 0.30, 0.30, 0.30, 0.0, { 3, 3, 3, 3, 3 },
-      2, 12, -1, MUTATION_COSMIC_AWARENESS, -1, -1 },
+      /* v9 P0-18：阶段 13 不再吃保底，改为提高抽取权重（稀有 20 → 普通 100），
+       * 让“最深的最后一步”保持稀有但可遇到（目标 1–8%）。 */
+      0, 12, -1, MUTATION_COSMIC_AWARENESS, -1, -1 },
     /* 第十五轮：阶段 0 · 第 1 支 */
     { "Lipid Repair", "A stage-0 adaptation that improves light capture.",
       13.5, 0.04, 0.06, 0.04, 0.05, 0.01, { 2, 0, 0, 0, 1 },
@@ -1254,20 +1256,13 @@ static int mutation_weight(const GameState *game, const MutationDef *def)
 static int find_key_mutation(const GameState *game, const SpeciesState *species,
                              const int *pool, int pool_n)
 {
-    int children[SPECIES_COUNT];
-    int child_count = species_children(species->species_id, children, SPECIES_COUNT);
-    if (child_count == 0) {
-        return -1;
-    }
     /* 第十二轮（D2）：只要下一阶段还缺必需突变，就强制占一个候选位。
-     * 第十五轮：子物种扩到每节点 10+ 个后，用“最小 ID 子物种”作为主线代理
-     * （主线物种先建表，ID 总小于侧支与新增内容），避免买了侧支门票就关闭保底。 */
+     * v9 P0-18：主线后继改为显式表（species_main_child），不再用“最小 ID 子物种”；
+     * 并把保底深度封在 MAINLINE_GUARANTEE_MAX_PHASE，避免最深一层变成必得。 */
     (void)game;
-    int main_child = children[0];
-    for (int c = 1; c < child_count; ++c) {
-        if (children[c] < main_child) {
-            main_child = children[c];
-        }
+    int main_child = species_main_child(species->species_id);
+    if (main_child < 0 || species_phase(main_child) > MAINLINE_GUARANTEE_MAX_PHASE) {
+        return -1;
     }
     int required[4];
     int required_count = species_required_mutations(main_child, required, 4);
@@ -2038,7 +2033,7 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
     double damage = environment_damage_per_second(run->current_environment_id);
     if (damage > 0.0) {
         int stage = species_phase(species->species_id);
-        double stage_scale = 1.0 + CRISIS_DAMAGE_STAGE_SCALE * (double)stage;
+        double stage_scale = CRISIS_EARLY_SCALE + CRISIS_DAMAGE_STAGE_SCALE * (double)stage;
         double reserve_scale = reserve_damage_scale(run->reserve_levels);
         event_loss = species->population * damage * (2.0 - environment) * stage_scale;
         event_loss *= CRISIS_DAMAGE_MULTIPLIER;

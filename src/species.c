@@ -1211,6 +1211,34 @@ static const SubUpgradeDef k_sub_upgrades[] = {
 
 #define SUB_UPGRADE_COUNT ((int)(sizeof(k_sub_upgrades) / sizeof(k_sub_upgrades[0])))
 
+/* v9 P0-18：主线后继表。
+ * 第十六轮之前，规则层的“关键突变保底”用“子物种里 ID 最小的那个”当主线代理。
+ * 内容扩容后超越（19）的子物种里，量子生物圈（42）的 ID 小于无生命场（44），
+ * 于是阶段 11 的保底位一直在推量子认知，而无生命场真正的门槛（宇宙觉知）
+ * 只能靠随机候选池抽到，1000 局里仅 4 局抵达。这里把主线写成显式数据：
+ * 保底、演示策略、文档都读同一张表，不再依赖 ID 顺序这一隐式约定。 */
+typedef struct {
+    int from;
+    int to;
+} MainLineageEdge;
+
+static const MainLineageEdge k_main_lineage[] = {
+    { SPECIES_PROTOCELL, SPECIES_CYANOBACTERIUM },
+    { SPECIES_CYANOBACTERIUM, SPECIES_ALGAL_EUKARYOTE },
+    { SPECIES_ALGAL_EUKARYOTE, SPECIES_MULTICELLULAR_COLONY },
+    { SPECIES_MULTICELLULAR_COLONY, SPECIES_DIFFERENTIATED_TISSUE },
+    { SPECIES_DIFFERENTIATED_TISSUE, SPECIES_COGNITIVE_BIOSPHERE },
+    { SPECIES_COGNITIVE_BIOSPHERE, SPECIES_SAPIENT_LIFE },
+    { SPECIES_SAPIENT_LIFE, SPECIES_TECHNOSPHERE },
+    { SPECIES_TECHNOSPHERE, SPECIES_CIVILIZATION },
+    { SPECIES_CIVILIZATION, SPECIES_SPACE_AGE },
+    { SPECIES_SPACE_AGE, SPECIES_SINGULARITY },
+    { SPECIES_SINGULARITY, SPECIES_TRANSCENDENCE },
+    { SPECIES_TRANSCENDENCE, SPECIES_NOETIC_FIELD },
+    { SPECIES_NOETIC_FIELD, SPECIES_COSMIC_WEAVE },
+    { -1, -1 },
+};
+
 static const SpeciationRule k_speciation_rules[] = {
     { SPECIES_CYANOBACTERIUM,
       { SPECIES_PROTOCELL, -1, -1 },
@@ -1800,13 +1828,16 @@ static const SpeciationRule k_speciation_rules[] = {
       { SPECIES_CIVILIZATION, -1, -1 },
       { MUTATION_LAW_CODE, -1 },
       -1, 0 },
+    /* v9 P1-11：阶段 10 分支试点。太空时代的三个子项目同时挂在奇点上，
+     * 使纪元 2 打到阶段封顶（10）之后，第二/第三槽有真正的横向落点，
+     * 而不是只能停在“奇点 + 铁星铸造”这一条单链上。 */
     { SPECIES_ORBITAL_STATION,
-      { SPECIES_SPACE_AGE, -1, -1 },
-      { MUTATION_STEAM_ENGINE, -1 },
+      { SPECIES_SPACE_AGE, SPECIES_SINGULARITY, -1 },
+      { MUTATION_ROCKETRY, -1 },
       -1, 0 },
     { SPECIES_LUNAR_COLONY,
-      { SPECIES_SPACE_AGE, -1, -1 },
-      { MUTATION_RAILWAY, -1 },
+      { SPECIES_SPACE_AGE, SPECIES_SINGULARITY, -1 },
+      { MUTATION_ROCKETRY, -1 },
       -1, 0 },
     { SPECIES_MARS_SETTLEMENT,
       { SPECIES_SPACE_AGE, -1, -1 },
@@ -1817,8 +1848,8 @@ static const SpeciationRule k_speciation_rules[] = {
       { MUTATION_ELECTRIC_MOTOR, -1 },
       -1, 0 },
     { SPECIES_FUSION_ECONOMY,
-      { SPECIES_SPACE_AGE, -1, -1 },
-      { MUTATION_VACCINATION, -1 },
+      { SPECIES_SPACE_AGE, SPECIES_SINGULARITY, -1 },
+      { MUTATION_PLANETARY_INDUSTRY, -1 },
       -1, 0 },
     { SPECIES_SPACE_ELEVATOR,
       { SPECIES_SPACE_AGE, -1, -1 },
@@ -2034,6 +2065,16 @@ const SpeciesKeystone *species_keystone(int species_id)
     return valid_species(species_id) ? &k_keystones[species_id] : 0;
 }
 
+int species_main_child(int species_id)
+{
+    for (int i = 0; k_main_lineage[i].from >= 0; ++i) {
+        if (k_main_lineage[i].from == species_id) {
+            return k_main_lineage[i].to;
+        }
+    }
+    return -1;
+}
+
 int species_children(int parent_id, int *out_ids, int max_ids)
 {
     int count = 0;
@@ -2049,6 +2090,9 @@ int species_children(int parent_id, int *out_ids, int max_ids)
             }
         }
     }
+    /* v9 P1-11：侧支终点回主线。15/14 轮扩出来的 140+ 个侧支物种都是叶子，
+     * 一旦主槽分化进去就永远停在这个阶段（60 分钟回归里“阶段 0 卡死”就是这样来的）。
+     * 没有任何子物种的物种，允许沿主线再上一个阶段，避免把玩家关进死胡同。 */
     return count;
 }
 

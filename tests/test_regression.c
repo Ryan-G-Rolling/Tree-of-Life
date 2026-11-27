@@ -97,17 +97,27 @@ static void test_natural_playthrough(void) {
                 if(act(&g,ACTION_BUY_RUN_UPGRADE,u,0).code==ACTION_OK)buys++;
         }
         if(!g.run.mutation_offer.active)act(&g,ACTION_GENERATE_MUTATION_OFFER,0,0);
-        int children[SPECIES_COUNT],n=species_children(g.run.active_species[0].species_id,children,SPECIES_COUNT);
-        int selected=-1;
-        /* Buy offered prerequisites first, then any affordable candidate. */
-        for(int i=0;i<g.run.mutation_offer.choice_count;i++) {
+        /* v9 P1-11：先攒主线门票（否则便宜的侧支突变会把 DNA 花光，
+           而突变价格随已拥有数量指数上涨，主线门票反而永远买不起），
+           再退到任意买得起的候选。主线后继不再从 species_children 里挑，
+           所以这里不需要子代数组（远端把越界写改成 SPECIES_COUNT，一并保留在别处）。 */
+        int selected=-1,main_next=species_main_child(g.run.active_species[0].species_id);
+        int main_req[4],main_req_n=main_next>=0?species_required_mutations(main_next,main_req,4):0;
+        for(int i=0;i<g.run.mutation_offer.choice_count && selected<0;i++) {
             int id=g.run.mutation_offer.mutation_ids[i];
             if(g.run.dna<g.run.mutation_offer.dna_costs[i])continue;
-            if(selected<0)selected=id;
-            for(int c=0;c<n;c++){int req[8],k=species_required_mutations(children[c],req,8);for(int r=0;r<k;r++)if(req[r]==id)selected=id;}
+            for(int r=0;r<main_req_n;r++)if(main_req[r]==id)selected=id;
+        }
+        for(int i=0;i<g.run.mutation_offer.choice_count && selected<0;i++) {
+            int id=g.run.mutation_offer.mutation_ids[i];
+            if(g.run.dna<g.run.mutation_offer.dna_costs[i])continue;
+            selected=id;
         }
         if(selected>=0 && act(&g,ACTION_CHOOSE_MUTATION,selected,0).code==ACTION_OK)mutations++;
-        for(int c=0;c<n;c++)if(act(&g,ACTION_SPECIATE,children[c],0).code==ACTION_OK){splits++;break;}
+        /* v9 P1-11：只沿主线后继分化。186 个物种里有 156 个是终点物种，
+           随口挑 children[0] 会把演示局带进“阶段 0 死胡同”，
+           侧支走法由 test_b 的可达性与 1000 种子批量覆盖。 */
+        if(main_next>=0 && act(&g,ACTION_SPECIATE,main_next,0).code==ACTION_OK)splits++;
         game_update(&g,1.0);
         assert(fabs(g.run.elapsed_time-(second+1.0))<1e-6);
         assert(isfinite(g.run.atp) && isfinite(g.run.dna) && isfinite(g.run.biomass));
