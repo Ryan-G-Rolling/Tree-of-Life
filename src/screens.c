@@ -2645,36 +2645,36 @@ static void draw_shop_upgrade(const GameState *game, int type, Rectangle r)
     DrawRectangleRounded((Rectangle){ r.x + 6.0f, r.y + 10.0f, 3.0f, r.height - 20.0f },
                          1.0f, 4, Fade(icol, 0.85f));
 
-    /* 四张卡（三机能 + 洞见）共用一列，卡高从 140 压到 118，
-     * 高度刚好把底部让给洞见条目，不再用 28px 细条硬塞。 */
-    Rectangle tile = { r.x + 12.0f, r.y + 10.0f, 48.0f, 48.0f };
+    /* 卡高 118 → 96：底部让出两条「扩张」（容量 / 储备），
+     * 它们是 ATP 的两个出口，和机能卡同一列读起来才顺。 */
+    Rectangle tile = { r.x + 12.0f, r.y + 8.0f, 40.0f, 40.0f };
     icon_badge(tile, icon, icol, S->time);
 
-    ui_text_strong(ua_run_upgrade_title((RunUpgradeType)type), r.x + 72.0f, r.y + 8.0f,
+    ui_text_strong(ua_run_upgrade_title((RunUpgradeType)type), r.x + 62.0f, r.y + 6.0f,
                    F_LABEL, COL_TEXT);
 
     char lv[24];
     snprintf(lv, sizeof(lv), "Lv.%d", level);
     float lw = ui_text_w(lv, F_CAPTION) + 14.0f;
-    Rectangle chip = { r.x + r.width - 12.0f - lw, r.y + 8.0f, lw, H_CHIP };
+    Rectangle chip = { r.x + r.width - 12.0f - lw, r.y + 6.0f, lw, H_CHIP };
     ui_panel(chip, R_CHIP(H_CHIP), Fade(icol, 0.12f), BLANK);
     ui_text_center(lv, chip.x + lw * 0.5f, chip.y + 4.0f, F_CAPTION, icol);
 
     char eff[96];
     ua_run_upgrade_effect(game, (RunUpgradeType)type, eff, (int)sizeof(eff));
-    ui_text(eff, r.x + 72.0f, r.y + 28.0f, F_CAPTION, COL_DIM);
+    ui_text(eff, r.x + 62.0f, r.y + 26.0f, F_CAPTION, COL_DIM);
 
     /* 等级刻条：10 格 */
     {
         int seg = level > 10 ? 10 : level;
         for (int i = 0; i < 10; ++i) {
-            Rectangle tick = { r.x + 72.0f + (float)i * 12.0f, r.y + 48.0f, 8.0f, 4.0f };
+            Rectangle tick = { r.x + 62.0f + (float)i * 12.0f, r.y + 42.0f, 8.0f, 4.0f };
             ui_panel(tick, 2.0f, i < seg ? Fade(icol, 0.9f) : COL_BAR_TRACK, BLANK);
         }
         if (level > 10) {
             char more[16];
             snprintf(more, sizeof(more), "+%d", level - 10);
-            ui_text(more, r.x + 72.0f + 10.0f * 12.0f + 4.0f, r.y + 42.0f, F_CAPTION, COL_FAINT);
+            ui_text(more, r.x + 62.0f + 10.0f * 12.0f + 4.0f, r.y + 36.0f, F_CAPTION, COL_FAINT);
         }
     }
 
@@ -2686,7 +2686,7 @@ static void draw_shop_upgrade(const GameState *game, int type, Rectangle r)
     if (inf) snprintf(cost, sizeof(cost), "已满级");
     else snprintf(cost, sizeof(cost), "%s %s", num, type == UPGRADE_GENOME ? "生物量" : "ATP");
 
-    Rectangle pill = { r.x + 12.0f, r.y + 76.0f, r.width - 24.0f, 28.0f };
+    Rectangle pill = { r.x + 12.0f, r.y + 58.0f, r.width - 24.0f, 28.0f };
     ui_panel(pill, R_BTN, usable ? Fade(icol, 0.13f) : COL_SURFACE_OFF,
              usable ? Fade(icol, 0.55f) : Fade(COL_LINE, 0.7f));
     ui_text(cost, pill.x + 12.0f, pill.y + 5.0f, F_BODY, usable ? icol : COL_FAINT);
@@ -2720,32 +2720,80 @@ static void draw_shop_branch(const GameState *game, int child, Rectangle r)
     DrawRectangleRounded((Rectangle){ r.x + 6.0f, r.y + 10.0f, 3.0f, r.height - 20.0f },
                          1.0f, 4, Fade(col, 0.85f));
 
-    Rectangle tile = { r.x + 12.0f, r.y + 10.0f, 48.0f, 48.0f };
+    Rectangle tile = { r.x + 12.0f, r.y + 8.0f, 40.0f, 40.0f };
     ui_panel(tile, 10.0f, ui_color_mix(COL_PANEL_HI, col, 0.10f), Fade(col, 0.30f));
-    draw_organism_in((Rectangle){ tile.x + 4.0f, tile.y + 4.0f, 40.0f, 40.0f },
-                     (Vector2){ tile.x + 24.0f, tile.y + 25.0f }, 18.0f, child, stage, col,
+    draw_organism_in((Rectangle){ tile.x + 4.0f, tile.y + 4.0f, 32.0f, 32.0f },
+                     (Vector2){ tile.x + 20.0f, tile.y + 21.0f }, 15.0f, child, stage, col,
                      S->time + (float)child * 0.3f, ok, ok, ok ? 1.0f : 0.65f);
 
-    ui_text_strong(ua_species_name(child), r.x + 72.0f, r.y + 8.0f, F_LABEL, COL_TEXT);
+    ui_text_strong(ua_species_name(child), r.x + 62.0f, r.y + 6.0f, F_LABEL, COL_TEXT);
 
     char meta[96];
     snprintf(meta, sizeof(meta), "阶段 %d · %s", stage, ua_ecology_name(child));
-    ui_text(meta, r.x + 72.0f, r.y + 28.0f, F_CAPTION, COL_DIM);
+    ui_text(meta, r.x + 62.0f, r.y + 26.0f, F_CAPTION, COL_DIM);
 
     char req[128];
     ua_speciation_requirement(child, req, (int)sizeof(req));
-    ui_text(req, r.x + 72.0f, r.y + 48.0f, F_CAPTION, ok ? COL_GOOD : COL_FAINT);
+    ui_text(req, r.x + 62.0f, r.y + 42.0f, F_CAPTION, ok ? COL_GOOD : COL_FAINT);
 
     char num[32], cost[56];
     ui_fmt_num(ua_speciation_cost(game, child), num, (int)sizeof(num));
     snprintf(cost, sizeof(cost), "%s 生物量", num);
-    Rectangle pill = { r.x + 12.0f, r.y + 76.0f, r.width - 24.0f, 28.0f };
+    Rectangle pill = { r.x + 12.0f, r.y + 60.0f, r.width - 24.0f, 26.0f };
     ui_panel(pill, R_BTN, afford ? Fade(COL_BIOMASS, 0.13f) : COL_SURFACE_OFF,
              afford ? Fade(COL_BIOMASS, 0.55f) : Fade(COL_LINE, 0.7f));
     ui_text(cost, pill.x + 12.0f, pill.y + 5.0f, F_BODY, afford ? COL_BIOMASS : COL_FAINT);
     ui_text_right(ok ? (afford ? "分化" : "资源不足") : "前置不足",
                   pill.x + pill.width - 12.0f, pill.y + 6.0f, F_CAPTION,
                   ok && afford ? COL_TEXT : COL_FAINT);
+}
+
+/* ---------------- 扩张：容量 / 储备 ----------------
+ * 快捷键 4/5 一直是可用的，但界面里原先没有按钮，玩家只能靠底栏一行小字猜。
+ * 这两张小卡把"花什么、换来什么、每级加多少"直接写出来：
+ *   容量  提高种群承载上限（每级 +5%）
+ *   储备  削减危机造成的伤害（每级 ×0.94，最低留 20%）
+ * 价格与效果都取自适配层，界面不碰规则公式。 */
+static void draw_expand_card(const GameState *game, const UIState *S,
+                             bool reserve, Rectangle r)
+{
+    UiButton *b = btn_find(S, reserve ? UI_BTN_BUY_RESERVE : UI_BTN_BUY_CAPACITY, -1);
+    float hv = btn_hover_step(b, is_hot(S, b));
+    bool usable = b && b->enabled;
+    Color col = reserve ? COL_TEAL : COL_BIOMASS;
+    int lv = reserve ? ua_reserve_level(game) : ua_capacity_level(game);
+    double cost = reserve ? ua_reserve_atp_cost(game)
+                          : ua_capacity_atp_cost(game) + ua_capacity_biomass_cost(game);
+
+    if (usable && hv > 0.02f) ui_halo(r, R_BTN, col, 0.11f * hv);
+    ui_panel(r, R_BTN, ui_color_mix(COL_PANEL_HI, COL_PANEL_HOT, hv * 0.75f),
+             (hv > 0.02f) ? Fade(col, 0.85f) : Fade(COL_LINE, 0.55f));
+    DrawRectangleRounded((Rectangle){ r.x + 5.0f, r.y + 8.0f, 3.0f, r.height - 16.0f },
+                         1.0f, 4, Fade(col, 0.85f));
+
+    char title[32];
+    snprintf(title, sizeof(title), "%s %s Lv.%d", reserve ? "5 储备" : "4 容量",
+             reserve ? "减伤" : "上限", lv);
+    ui_text_strong(title, r.x + 12.0f, r.y + 3.0f, F_LABEL, COL_TEXT);
+
+    char eff[56];
+    if (reserve) {
+        snprintf(eff, sizeof(eff), "-%d%% · 每级 -%d%%",
+                 (int)(ua_reserve_reduction(game) * 100.0 + 0.5),
+                 (int)(ua_reserve_step() * 100.0 + 0.5));
+    } else {
+        snprintf(eff, sizeof(eff), "+%d%% · 每级 +%d%%",
+                 (int)(ua_capacity_cap_bonus(game) * 100.0 + 0.5),
+                 (int)(ua_capacity_step() * 100.0 + 0.5));
+    }
+    ui_text(eff, r.x + 12.0f, r.y + 22.0f, F_CAPTION, COL_DIM);
+
+    char num[24], costline[56];
+    ui_fmt_num(cost, num, (int)sizeof(num));
+    snprintf(costline, sizeof(costline), "%s ATP", num);
+    ui_text(costline, r.x + 12.0f, r.y + 39.0f, F_CAPTION, usable ? col : COL_FAINT);
+    ui_text_right(usable ? "购买" : "资源不足", r.x + r.width - 12.0f, r.y + 39.0f,
+                  F_CAPTION, usable ? COL_TEXT : COL_FAINT);
 }
 
 /* ---------------- 洞见（Insight）：理念的长线出口 ----------------
@@ -2857,9 +2905,10 @@ static void draw_shop(const GameState *game)
 
     int children[SPECIES_COUNT];
     int n = ua_speciation_children(game, children, SPECIES_COUNT);
-    /* 三张卡让出底部 96px 给洞见条目：卡高 140→118、间距 148→126 */
+    /* 三张机能/分化卡高 96、间距 102；再往下并列两张扩张卡（容量 / 储备），
+     * 最底部留给洞见。四条长线一屏看全，玩家不必靠快捷键说明猜作用。 */
     for (int i = 0; i < 3; ++i) {
-        Rectangle row = { r.x + S_PAD, r.y + 88.0f + (float)i * 126.0f, 320.0f, 118.0f };
+        Rectangle row = { r.x + S_PAD, r.y + 88.0f + (float)i * 102.0f, 320.0f, 96.0f };
         if (S->store_tab == 0) {
             draw_shop_upgrade(game, i, row);
         } else if (i < n) {
@@ -2881,6 +2930,10 @@ static void draw_shop(const GameState *game)
                     F_CAPTION, COL_FAINT);
         }
     }
+
+    /* 容量 / 储备：两个页签下都在。它们不是阶段性目标，而是随时可买的扩张。 */
+    draw_expand_card(game, S, false, (Rectangle){ r.x + S_PAD, r.y + 392.0f, 156.0f, 60.0f });
+    draw_expand_card(game, S, true,  (Rectangle){ r.x + S_PAD + 164.0f, r.y + 392.0f, 156.0f, 60.0f });
 
     /* 洞见：两个页签下都在，因为它是“理念”的出口，与机能/分化并列的第三条长线 */
     draw_insight_card(game, S);
@@ -3063,7 +3116,7 @@ static void build_main(UiLayout *L, const GameState *game, const UIState *S)
         int n = ua_speciation_children(game, ch, SPECIES_COUNT);
         for (int i = 0; i < n && i < 3; ++i) {
             btn_add(L, UI_BTN_OPEN_SPECIATION,
-                    (Rectangle){ 928.0f, 172.0f + (float)i * 126.0f, 320.0f, 118.0f },
+                    (Rectangle){ 928.0f, 172.0f + (float)i * 102.0f, 320.0f, 96.0f },
                     ch[i], 0, true);
         }
     } else {
@@ -3072,9 +3125,19 @@ static void build_main(UiLayout *L, const GameState *game, const UIState *S)
             bool affordable = isfinite(price) &&
                 ((i == UPGRADE_GENOME) ? (game->run.biomass >= price) : (game->run.atp >= price));
             btn_add(L, UI_BTN_UPGRADE,
-                    (Rectangle){ 928.0f, 172.0f + (float)i * 126.0f, 320.0f, 118.0f },
+                    (Rectangle){ 928.0f, 172.0f + (float)i * 102.0f, 320.0f, 96.0f },
                     i, 0, affordable);
         }
+    }
+
+    /* 扩张：容量 / 储备。两者都作用在"当前在场物种"上，没有活体时不可买。 */
+    {
+        bool alive = game->run.active_species_count > 0;
+        btn_add(L, UI_BTN_BUY_CAPACITY, (Rectangle){ 928.0f, 476.0f, 156.0f, 60.0f }, 0, 0,
+                alive && game->run.atp >= ua_capacity_atp_cost(game)
+                      && game->run.biomass >= ua_capacity_biomass_cost(game));
+        btn_add(L, UI_BTN_BUY_RESERVE, (Rectangle){ 1092.0f, 476.0f, 156.0f, 60.0f }, 0, 0,
+                alive && game->run.atp >= ua_reserve_atp_cost(game));
     }
 
     /* 洞见：与机能/分化同列，占底部 80px */
@@ -3724,7 +3787,8 @@ static Rectangle mutation_panel_rect(const GameState *game)
 {
     int n = game->run.mutation_offer.active ? game->run.mutation_offer.choice_count : 0;
     if (n < 1) n = 1;
-    float h = 96.0f + n * 110.0f + 60.0f;
+    /* 每条候选卡多一行"这条路线后续通向哪里"，卡高 98→112、间距 110→124 */
+    float h = 96.0f + n * 124.0f + 60.0f;
     if (h < 300.0f) h = 300.0f;
     return (Rectangle){ 320.0f, (UI_H - h) * 0.5f, 640.0f, h };
 }
@@ -3867,8 +3931,8 @@ static void build_overlay(UiLayout *L, const GameState *game, const UIState *S)
         for (int i = 0; i < game->run.mutation_offer.choice_count && i < MAX_MUTATION_CHOICES; ++i) {
             bool afford = game->run.dna >= game->run.mutation_offer.dna_costs[i];
             btn_add(L, UI_BTN_CHOOSE_MUTATION,
-                    (Rectangle){ panel.x + 24.0f, panel.y + 84.0f + (float)i * 110.0f,
-                                 panel.width - 48.0f, 98.0f },
+                    (Rectangle){ panel.x + 24.0f, panel.y + 84.0f + (float)i * 124.0f,
+                                 panel.width - 48.0f, 112.0f },
                     game->run.mutation_offer.mutation_ids[i], i, afford);
         }
         btn_add(L, UI_BTN_CLOSE_OVERLAY,
@@ -3890,8 +3954,8 @@ static void build_overlay(UiLayout *L, const GameState *game, const UIState *S)
             bool ok = ua_speciation_check(game, children[i]) == ACTION_OK
                    && game->run.biomass >= ua_speciation_cost(game, children[i]);
             btn_add(L, UI_BTN_SPECIATE,
-                    (Rectangle){ panel.x + 24.0f, panel.y + 84.0f + (float)(i - first) * 102.0f,
-                                 panel.width - 48.0f, 94.0f },
+                    (Rectangle){ panel.x + 24.0f, panel.y + 84.0f + (float)(i - first) * 108.0f,
+                                 panel.width - 48.0f, 100.0f },
                     children[i], S->keep_parent, ok);
         }
         btn_add(L, UI_BTN_SPECIATION_PAGE,
@@ -4104,8 +4168,8 @@ static void draw_mutation_overlay(const GameState *game, const UIState *S)
     }
 
     for (int i = 0; i < game->run.mutation_offer.choice_count; ++i) {
-        Rectangle r = { panel.x + 24.0f, panel.y + 84.0f + (float)i * 110.0f,
-                        panel.width - 48.0f, 98.0f };
+        Rectangle r = { panel.x + 24.0f, panel.y + 84.0f + (float)i * 124.0f,
+                        panel.width - 48.0f, 112.0f };
         UiButton *b = btn_find(S, UI_BTN_CHOOSE_MUTATION, game->run.mutation_offer.mutation_ids[i]);
         bool hot = is_hot(S, b);
         int mid = game->run.mutation_offer.mutation_ids[i];
@@ -4117,15 +4181,15 @@ static void draw_mutation_overlay(const GameState *game, const UIState *S)
         ui_panel(r, R_CARD, usable ? ui_color_mix(COL_PANEL_HI, COL_PANEL_HOT, hv) : COL_PANEL_HI,
                  rare ? Fade(COL_RARE, 0.60f) : Fade(COL_LINE, 0.6f));
 
-        Rectangle tile = { r.x + 14.0f, r.y + 22.0f, 54.0f, 54.0f };
+        Rectangle tile = { r.x + 14.0f, r.y + 28.0f, 54.0f, 54.0f };
         ui_panel(tile, 10.0f, Fade(COL_BG_DEEP, 0.6f), Fade(rare ? COL_RARE : COL_DNA, 0.30f));
         draw_mutation_sigil((Vector2){ tile.x + 27.0f, tile.y + 27.0f }, mid,
                             rare ? COL_RARE : COL_DNA, rare, g_ui.time);
 
-        ui_text_strong(ua_mutation_name(mid), r.x + 82.0f, r.y + 12.0f, F_TITLE, COL_TEXT);
+        ui_text_strong(ua_mutation_name(mid), r.x + 82.0f, r.y + 10.0f, F_TITLE, COL_TEXT);
         if (rare) {
             float nw = ui_text_w(ua_mutation_name(mid), F_TITLE);
-            Rectangle tag = { r.x + 82.0f + nw + 10.0f, r.y + 16.0f,
+            Rectangle tag = { r.x + 82.0f + nw + 10.0f, r.y + 14.0f,
                               ui_text_w("稀有", F_CAPTION) + 14.0f, H_CHIP };
             ui_panel(tag, R_CHIP(tag.height), Fade(COL_RARE, 0.16f), Fade(COL_RARE, 0.45f));
             ui_text_center("稀有", tag.x + tag.width * 0.5f, tag.y + 4.0f, F_CAPTION, COL_RARE);
@@ -4133,13 +4197,21 @@ static void draw_mutation_overlay(const GameState *game, const UIState *S)
 
         char desc[160];
         ua_mutation_desc(mid, desc, (int)sizeof(desc));
-        ui_text(desc, r.x + 82.0f, r.y + 40.0f, F_BODY, COL_DIM);
+        ui_text(desc, r.x + 82.0f, r.y + 32.0f, F_BODY, COL_DIM);
+
+        /* 路线预告：选之前就知道这条路后面会解锁哪些物种。
+         * 名字与走向由适配层从"前置突变 → 物种 → 子代"现查，UI 不复制规则表。 */
+        char route[192];
+        ua_mutation_route(mid, route, (int)sizeof(route));
+        ui_text("后续", r.x + 82.0f, r.y + 55.0f, F_CAPTION, COL_ACCENT);
+        ui_text(route, r.x + 82.0f + ui_text_w("后续 ", F_CAPTION), r.y + 55.0f,
+                F_CAPTION, COL_DIM);
 
         char cost[48];
         ui_fmt_num(game->run.mutation_offer.dna_costs[i], num, (int)sizeof(num));
         snprintf(cost, sizeof(cost), "%s DNA", num);
-        ui_text(cost, r.x + 82.0f, r.y + 68.0f, F_BODY, usable ? COL_DNA : COL_BAD);
-        ui_text_right("点击选择", r.x + r.width - 16.0f, r.y + 70.0f, F_CAPTION, COL_FAINT);
+        ui_text(cost, r.x + 82.0f, r.y + 83.0f, F_BODY, usable ? COL_DNA : COL_BAD);
+        ui_text_right("点击选择", r.x + r.width - 16.0f, r.y + 85.0f, F_CAPTION, COL_FAINT);
     }
 
     UiButton *close = btn_find(S, UI_BTN_CLOSE_OVERLAY, -1);
@@ -4171,8 +4243,8 @@ static void draw_speciation_overlay(const GameState *game, const UIState *S)
 
     int first = speciation_page_start(S, n);
     for (int i = first; i < n && i < first + UI_SPECIATION_PAGE_SIZE; ++i) {
-        Rectangle r = { panel.x + 24.0f, panel.y + 84.0f + (float)(i - first) * 102.0f,
-                        panel.width - 48.0f, 94.0f };
+        Rectangle r = { panel.x + 24.0f, panel.y + 84.0f + (float)(i - first) * 108.0f,
+                        panel.width - 48.0f, 100.0f };
         UiButton *b = btn_find(S, UI_BTN_SPECIATE, children[i]);
         bool hot = is_hot(S, b);
         int sid = children[i];
@@ -4199,6 +4271,13 @@ static void draw_speciation_overlay(const GameState *game, const UIState *S)
         ua_speciation_requirement(sid, req, (int)sizeof(req));
         ui_text(req, r.x + 84.0f, r.y + 56.0f, F_CAPTION,
                check == ACTION_OK ? COL_FAINT : COL_BAD);
+
+        /* 与突变候选同一套提示：选这个分支之后还能走向哪里 */
+        char tail[128];
+        ua_species_route(sid, tail, (int)sizeof(tail));
+        ui_text("后续", r.x + 84.0f, r.y + 77.0f, F_CAPTION, COL_ACCENT);
+        ui_text(tail, r.x + 84.0f + ui_text_w("后续 ", F_CAPTION), r.y + 77.0f,
+                F_CAPTION, COL_DIM);
 
         char price[64];
         ui_fmt_num(cost, num, (int)sizeof(num));
@@ -4670,9 +4749,17 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
     ui_text("一圈一个阶段，越外越晚 · 拖拽平移 · 滚轮缩放 · 点节点看它从哪来",
             panel.x + 24.0f, panel.y + 44.0f, F_CAPTION, COL_DIM);
 
+    /* 发现表只算一次，节点降噪、前沿判定、标签排序共用 */
+    bool found_flag[SPECIES_COUNT];
     int discovered = 0;
+    int found_stage_max = 0;
     for (int i = 0; i < SPECIES_COUNT; ++i) {
-        if (game->legacy.codex_species[i] || game->run.discovered_species[i]) ++discovered;
+        found_flag[i] = game->legacy.codex_species[i] || game->run.discovered_species[i];
+        if (found_flag[i]) {
+            ++discovered;
+            int st = ua_species_stage(i);
+            if (st > found_stage_max) found_stage_max = st;
+        }
     }
 
     UiButton *reset = btn_find(S, UI_BTN_TREE_RESET, -1);
@@ -4710,19 +4797,15 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
         for (int k = 1; k <= 64; ++k) {
             float a = (float)k * (2.0f * PI / 64.0f);
             Vector2 p = { c2.x + cosf(a) * rx, c2.y + sinf(a) * ry };
-            DrawLineEx(prev, p, 1.0f, Fade(COL_LINE_STRONG, s % 2 ? 0.10f : 0.16f));
+            DrawLineEx(prev, p, 1.0f, Fade(COL_LINE_STRONG, s % 2 ? 0.06f : 0.10f));
             prev = p;
         }
         /* 圈号不写字：14 个"阶段 N"会在轴上叠成一串，还和标签抢位置。
          * 只留一个刻度点，阶段数在底部详情条里跟着选中物种显示。 */
-        DrawCircleV((Vector2){ c2.x, c2.y - ry }, 1.6f, Fade(COL_ACCENT, 0.35f));
+        DrawCircleV((Vector2){ c2.x, c2.y - ry }, 1.6f, Fade(COL_ACCENT, 0.30f));
     }
-    for (int k = 0; k < 12; ++k) {
-        float a = (float)k * (2.0f * PI / 12.0f);
-        DrawLineEx(c2, (Vector2){ c2.x + cosf(a) * tree_ring_rx(maxst) * zoom,
-                                  c2.y + sinf(a) * tree_ring_ry(maxst) * zoom },
-                   1.0f, Fade(COL_LINE, 0.08f));
-    }
+    /* 旧版 12 条辐射线把星图压成一个"靶心"，和 186 个节点叠在一起更乱。
+     * 环已经足够表达阶段，放射线整组删掉。 */
 
     Vector2 node[SPECIES_COUNT];
     Vector2 vp[SPECIES_COUNT];
@@ -4780,9 +4863,9 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
                     tree_edge(vp[p], vp[child], c2, Fade(COL_ACCENT, 0.10f + 0.08f * pulse), 4.5f);
                     tree_edge(vp[p], vp[child], c2, Fade(COL_ACCENT, 0.55f + 0.30f * pulse), 2.0f);
                 } else if (lit) {
-                    tree_edge(vp[p], vp[child], c2, Fade(ecology_color(child), 0.42f), 1.3f);
+                    tree_edge(vp[p], vp[child], c2, Fade(ecology_color(child), 0.26f), 1.1f);
                 } else {
-                    tree_edge(vp[p], vp[child], c2, Fade(COL_LINE_STRONG, 0.13f), 1.0f);
+                    tree_edge(vp[p], vp[child], c2, Fade(COL_LINE_STRONG, 0.10f), 1.0f);
                 }
             }
         }
@@ -4797,10 +4880,34 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
         if (p.x < sky.x - nr || p.x > sky.x + sky.width + nr) continue;
         if (p.y < sky.y - nr || p.y > sky.y + sky.height + nr) continue;
 
-        bool found = game->legacy.codex_species[i] || game->run.discovered_species[i];
+        bool found = found_flag[i];
         bool cur = (i == main_id);
         bool pick = (i == sel);
         Color col = ecology_color(i);
+
+        /* 未探索节点：只留一颗"星尘"。旧版把 169 个未发现物种也画成
+         * 8px 圆底 + 描边 + 暗色生物，同心圈之间又只有十几像素，远看就是一张
+         * 密集点阵，把真正点亮的 17 个节点完全盖住。这里改成两种点：
+         *   前沿（亲本已点亮）= 4.2px 生态色 + 细环，提示"下一步能往这走"；
+         *   其余未探索          = 2.4px 暗点，只保留"后面还有很多"的轮廓。
+         * 选中节点即使在暗区也要完整显示，否则点不到自己在看什么。 */
+        if (!found && !pick) {
+            bool frontier = false;
+            int ps[4];
+            int pn = ua_species_parents(i, ps, 4);
+            for (int q = 0; q < pn && !frontier; ++q) {
+                if (ps[q] >= 0 && ps[q] < SPECIES_COUNT && found_flag[ps[q]]) frontier = true;
+            }
+            /* 越过已探索前沿一圈以上的点再淡一档，画面重心留在玩家能走的区域 */
+            bool far = ua_species_stage(i) > found_stage_max + 1;
+            float dr = frontier ? 4.2f : (far ? 2.0f : 2.6f);
+            DrawCircleV(p, dr, frontier ? Fade(col, 0.62f)
+                                        : Fade(COL_LINE_STRONG, far ? 0.22f : 0.38f));
+            if (frontier) {
+                DrawRing(p, dr + 1.6f, dr + 2.4f, 0.0f, 360.0f, 24, Fade(col, 0.32f));
+            }
+            continue;
+        }
 
         if (pick) {
             float pulse = 0.5f + 0.5f * sinf(g_ui.time * 2.4f);
@@ -4828,14 +4935,20 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
         Rectangle placed[SPECIES_COUNT];
         int placed_n = 0;
 
-        for (int pass = 0; pass < 2; ++pass) {
+        /* 三轮放置：当前/选中 → 选中路线 → 其余已点亮。
+         * 原来只有"必画/普通"两轮，17 个已点亮节点按 id 抢位置，
+         * 常把玩家正在看的整条路线名字挤掉、却留下一堆无关支线的名字。 */
+        for (int pass = 0; pass < 3; ++pass) {
             for (int i = 0; i < SPECIES_COUNT; ++i) {
-                bool found = game->legacy.codex_species[i] || game->run.discovered_species[i];
+                bool found = found_flag[i];
                 bool cur = (i == main_id);
                 bool pick = (i == sel);
                 bool must = cur || pick;
+                bool onpath = on_route[i];
                 if (!(found || must)) continue;
-                if ((pass == 0) != must) continue;
+                if (pass == 0 && !must) continue;
+                if (pass == 1 && (!onpath || must)) continue;
+                if (pass == 2 && (onpath || must)) continue;
 
                 Vector2 p = vp[i];
                 if (p.x < sky.x - 20.0f || p.x > sky.x + sky.width + 20.0f) continue;
@@ -4901,7 +5014,11 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
                         best.y = sky.y + sky.height - 62.0f - best.height;
                 }
 
-                ui_text(nm, best.x + 1.0f, best.y + 1.0f, F_CAPTION, Fade(COL_BG_DEEP, 0.85f));
+                /* 半透明底托：星图里连线纵横，只靠 1px 阴影压不住，
+                 * 名字会被亮线穿过读不清。底色不盖住节点本身，只垫字。 */
+                DrawRectangleRounded((Rectangle){ best.x - 3.0f, best.y - 2.0f,
+                                                  best.width + 6.0f, best.height + 4.0f },
+                                     3.0f, 4, Fade(COL_BG_DEEP, 0.78f));
                 ui_text(nm, best.x, best.y, F_CAPTION, pick ? COL_ACCENT : (found ? COL_DIM : COL_FAINT));
                 placed[placed_n++] = best;
             }

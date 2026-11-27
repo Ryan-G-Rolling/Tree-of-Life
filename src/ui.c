@@ -161,6 +161,8 @@ static bool action_needs_game(UiButtonId id)
     case UI_BTN_START_NEW_RUN:
     case UI_BTN_COLLECT_BUFF:
     case UI_BTN_BUY_INSIGHT:
+    case UI_BTN_BUY_CAPACITY:
+    case UI_BTN_BUY_RESERVE:
         return true;
     default:
         return false;
@@ -173,6 +175,8 @@ static void fill_action(const UiButton *b, GameAction *out)
     switch (b->id) {
     case UI_BTN_COLLECT_BUFF:     out->type = ACTION_COLLECT_BUFF; break;
     case UI_BTN_BUY_INSIGHT:      out->type = ACTION_BUY_INSIGHT; break;
+    case UI_BTN_BUY_CAPACITY:     out->type = ACTION_BUY_CAPACITY; break;
+    case UI_BTN_BUY_RESERVE:      out->type = ACTION_BUY_RESERVE; break;
     case UI_BTN_CLICK:            out->type = ACTION_CLICK_ATP; break;
     case UI_BTN_UPGRADE:          out->type = ACTION_BUY_RUN_UPGRADE; out->target_id = b->target_id; break;
     case UI_BTN_OPEN_MUTATION:    out->type = ACTION_GENERATE_MUTATION_OFFER; out->target_species_slot = b->target_id; break;

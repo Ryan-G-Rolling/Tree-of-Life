@@ -47,6 +47,22 @@ double ua_knowledge_rate(const GameState *game);
 /* 某类限时增益的总时长，用于画皿壁上的剩余时间弧（0 表示一次性资源包） */
 double ua_buff_duration(int buff_type);
 
+/* ---- 两个“扩张”：容量（种群上限）与储备（危机减伤）----
+ * 它们不走 RunUpgradeType，各有独立等级与价格。规则全在 evolution.c，
+ * 这里只转发 + 把等级折成一屏能读懂的百分比：
+ *   ua_capacity_cap_bonus : 累计加成（0.15 表示种群上限 +15%）
+ *   ua_reserve_reduction  : 累计减伤（0.12 表示危机伤害 -12%） */
+int    ua_capacity_level(const GameState *game);
+int    ua_reserve_level(const GameState *game);
+double ua_capacity_atp_cost(const GameState *game);
+double ua_capacity_biomass_cost(const GameState *game);
+double ua_reserve_atp_cost(const GameState *game);
+double ua_capacity_cap_bonus(const GameState *game);
+double ua_reserve_reduction(const GameState *game);
+/* 每级的增量（容量 +5%，储备按 0.94 乘算），用于卡上的“每级”小字 */
+double ua_capacity_step(void);
+double ua_reserve_step(void);
+
 /* ================= B 侧：物种 ================= */
 
 const char *ua_species_name(int species_id);
@@ -88,11 +104,23 @@ ActionCode ua_speciation_check(const GameState *game, int target_species_id);
 /* 前置条件文本，用于按钮下方说明，例如“需要 Nucleus + 已有 Photosynthesis”。 */
 const char *ua_speciation_requirement(int target_species_id, char *buf, int buf_size);
 
+/* 这个物种再往后还能分化成什么 —— 分化候选卡上的“后续”。
+ * 沿子代取阶段最近的主干走两步，输出“珊瑚共同体 → 真核群落”；
+ * 已是末端则写“已到本路线末端”。名字全部走中文图鉴。 */
+const char *ua_species_route(int species_id, char *buf, int buf_size);
+
 /* ================= B 侧：突变 ================= */
 
 const char *ua_mutation_name(int mutation_id);
 const char *ua_mutation_desc(int mutation_id, char *buf, int buf_size);
 bool ua_mutation_is_rare(int mutation_id);
+
+/* 这条突变之后会通向哪里 —— 直接画在候选卡上的一句话。
+ * 规则层不提供“路线”这种 UI 语义，所以这里按 前置突变 → 物种 → 子代 现场走一遍：
+ *   “解锁 光合细胞 → 藻类群落 → 礁石文明”
+ *   “纯数值强化 · 不单独解锁分化路线”（没有任何物种拿它当前置时）
+ * 最多走两步，保证一行放得下。 */
+const char *ua_mutation_route(int mutation_id, char *buf, int buf_size);
 
 /* 突变共振（同一物种凑齐两个突变才生效的构筑加成）。
    “突变图谱”弹层要列出本轮已触发的共振，判定必须问 B，UI 不自己比对。 */

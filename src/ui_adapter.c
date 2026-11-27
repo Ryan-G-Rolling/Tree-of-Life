@@ -68,6 +68,44 @@ double ua_run_upgrade_cost(const GameState *game, RunUpgradeType type)
     return cost; /* INFINITY 表示已满级，调用方用 isfinite 判断 */
 }
 
+/* ---- 扩张：容量（种群上限）与储备（危机减伤）----
+ * 两者都不在 RunUpgradeType 里，各有独立等级。价格与效果全在 evolution.c /
+ * balance.h，这里只做转发；百分比折算也只用规则层给的常量，不另写公式。 */
+
+int ua_capacity_level(const GameState *game) { return game ? game->run.capacity_levels : 0; }
+int ua_reserve_level(const GameState *game)  { return game ? game->run.reserve_levels : 0; }
+
+double ua_capacity_atp_cost(const GameState *game)
+{
+    return game ? evolution_capacity_atp_cost(game) : 0.0;
+}
+
+double ua_capacity_biomass_cost(const GameState *game)
+{
+    return game ? evolution_capacity_biomass_cost(game) : 0.0;
+}
+
+double ua_reserve_atp_cost(const GameState *game)
+{
+    return game ? evolution_reserve_cost(game) : 0.0;
+}
+
+double ua_capacity_cap_bonus(const GameState *game)
+{
+    int lv = game ? game->run.capacity_levels : 0;
+    return CAPACITY_GAIN_PER_LEVEL * (double)lv;
+}
+
+double ua_reserve_reduction(const GameState *game)
+{
+    int lv = game ? game->run.reserve_levels : 0;
+    /* 与 environment.c 同源：0.94^lv，最低 0.20 保留伤害 */
+    return 1.0 - reserve_damage_scale(lv);
+}
+
+double ua_capacity_step(void) { return CAPACITY_GAIN_PER_LEVEL; }
+double ua_reserve_step(void)  { return 1.0 - RESERVE_REDUCTION_STEP; }
+
 const char *ua_run_upgrade_title(RunUpgradeType type)
 {
     switch (type) {
@@ -356,6 +394,107 @@ bool ua_mutation_is_rare(int mutation_id)
 {
     const MutationDef *def = mutation_get(mutation_id);
     return def && def->rarity >= 1;
+}
+
+/* 从某个物种沿主干往下走两步，拼成一行中文路线。突变预告与分化预告共用。 */
+static void species_route_tail(int start, char *buf, int buf_size, size_t *used)
+{
+    int cur = start;
+    int stage = species_phase(cur);
+    for (int step = 0; step < 2; ++step) {
+        int kids[SPECIES_COUNT];
+        int kn = species_children(cur, kids, SPECIES_COUNT);
+        int next = -1, best = -1;
+        for (int k = 0; k < kn; ++k) {
+            int st = species_phase(kids[k]);
+            if (st <= stage) continue;
+            if (next < 0 || st < best || (st == best && kids[k] < next)) {
+                next = kids[k];
+                best = st;
+            }
+        }
+        if (next < 0) break;
+        char piece[96];
+        snprintf(piece, sizeof(piece), " → %s", ua_species_name(next));
+        text_append(buf, buf_size, used, piece);
+        cur = next;
+        stage = best;
+    }
+}
+
+const char *ua_species_route(int species_id, char *buf, int buf_size)
+{
+    if (!buf || buf_size <= 0) return buf;
+    buf[0] = '\0';
+    if (species_id < 0 || species_id >= SPECIES_COUNT) {
+        snprintf(buf, (size_t)buf_size, "无后续路线");
+        return buf;
+    }
+
+    size_t used = 0;
+    text_append(buf, buf_size, &used, ua_species_name(species_id));
+    size_t before = used;
+    species_route_tail(species_id, buf, buf_size, &used);
+    if (used == before) text_append(buf, buf_size, &used, " · 已到末端");
+    return buf;
+}
+
+/* 这条突变之后通向哪里。
+ *
+ * 玩家在三条候选里选一个，最想知道的是"我现在走的这条路后面长什么样"，
+ * 而 MutationDef 只说自己加多少数值。所以这里把规则表倒着查一遍：
+ *   突变 → 有哪些物种拿它当前置 → 从最近的那个物种沿主干往下走两步。
+ * 只写 3 个节点，保证一行放得下；支线多的时候补一句数量。 */
+const char *ua_mutation_route(int mutation_id, char *buf, int buf_size)
+{
+    if (!buf || buf_size <= 0) return buf;
+    buf[0] = '\0';
+    if (mutation_id < 0) {
+        snprintf(buf, (size_t)buf_size, "无后续路线");
+        return buf;
+    }
+
+    int hits[SPECIES_COUNT];
+    int hn = 0;
+    for (int sid = 1; sid < SPECIES_COUNT; ++sid) {
+        int reqs[TRAIT_COUNT + 8];
+        int n = species_required_mutations(sid, reqs, (int)(sizeof reqs / sizeof reqs[0]));
+        for (int k = 0; k < n; ++k) {
+            if (reqs[k] == mutation_id) { hits[hn++] = sid; break; }
+        }
+    }
+
+    if (hn == 0) {
+        snprintf(buf, (size_t)buf_size, "纯数值强化 · 不单独解锁分化路线");
+        return buf;
+    }
+
+    /* 按阶段升序：先解锁的那个物种才是"下一步"，插入排序（hn 很小） */
+    for (int a = 1; a < hn; ++a) {
+        int v = hits[a], b = a - 1;
+        while (b >= 0 && (species_phase(hits[b]) > species_phase(v) ||
+                          (species_phase(hits[b]) == species_phase(v) && hits[b] > v))) {
+            hits[b + 1] = hits[b];
+            --b;
+        }
+        hits[b + 1] = v;
+    }
+
+    size_t used = 0;
+    char piece[96];
+    /* 物种名必须走 ua_species_name（图鉴 204 条中文名），不能直接用
+     * species_name —— B 的规则表里存的是 "Orbital Foundry" 这类英文原名。 */
+    snprintf(piece, sizeof(piece), "解锁 %s", ua_species_name(hits[0]));
+    text_append(buf, buf_size, &used, piece);
+
+    /* 沿主干往下走两步：每步取"阶段最小且更晚"的子代，同阶段取 id 小的 */
+    species_route_tail(hits[0], buf, buf_size, &used);
+
+    if (hn > 1) {
+        snprintf(piece, sizeof(piece), "  等 %d 条支线", hn);
+        text_append(buf, buf_size, &used, piece);
+    }
+    return buf;
 }
 
 int ua_synergy_count(void)

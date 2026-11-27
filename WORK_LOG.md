@@ -139,3 +139,10 @@ A/B/C 可运行整合版已在此前完成，Git 基线为 `44e2c0d`；既有结
 - **中文化**：`ua_speciation_requirement()` 改取图鉴的 204 条中文突变名（原来直接用 `MutationDef.name`，界面上出现「需要：Lipid Repair」「需要：RNA Proofreading」）。`ua_mutation_desc()` 不再返回 `MutationDef.description`（英文模板，且同阶段多条共用一句），改为按 atp/biomass/dna/cap/growth 加成、5 项抗性与理念加成现场拼中文摘要，例如「阶段 8 · ATP +25% · 生物量 +20% · 上限 +30% · 增速 +5% · 耐热 +2 · 耐氧 +2」，无加成时写「无产出加成」。
 - **截图与验证**：main.c 新增 `fill_demo_early()`（单槽杆状菌）与 4 张新图：`shot_10_early_rod`、`shot_10b_lowlight`（微光期）、`shot_10c_speciation_zh`（中文前置条件）、`shot_02b_mutation_late`（后期突变，验证最长中文摘要不顶到「点击选择」）。0 warning / 0 error；`make test` 26 组 92,578 项 + 36 项接线 + 集成 + 60 分钟回归 + gameplay + codex 全通过；`make test-ui` 25 次点击一致；字形集重生成 1291 字符；`--shot --ss 3` 导出 25 张 3840×2160，`make dist` 单文件 22 MB 在空目录跑通并导出 25 张，已覆盖 `deliverables/`。
 - **未改动**：`EP` / `Evolution Points` / `Legacy` 仍是设计文档里的专有名词（顶栏写作「EP 永久」），本轮只译突变名与前置条件，不改这些品牌词。
+
+## 2026-11-27 · C · 容量/储备说明、星图降噪、突变与分化路线预告
+
+- **容量/储备**：底栏只有快捷键说明，UI 里没有按钮。新增 `UI_BTN_BUY_CAPACITY` / `UI_BTN_BUY_RESERVE`，write 侧经 `fill_action()` 映射到 `ACTION_BUY_CAPACITY` / `ACTION_BUY_RESERVE`；适配层转发 `evolution_capacity_atp_cost()` / `evolution_reserve_cost()` 并用 `CAPACITY_GAIN_PER_LEVEL`、`reserve_damage_scale()` 折算百分比。商店机能/分化页三张卡高 118→96，底部并列两张 156×60 扩张卡（y=476），洞见卡位置不变。卡标题带快捷键与等级，效果行写「+25% · 每级 +5%」「-17% · 每级 -6%」。
+- **星图**：未探索节点从「8px 圆 + 环 + 暗色生物」改为按前沿/远处两档的 2–4px 星尘点，`found_flag[]` 只算一次；删除 12 条辐射线，环线 alpha 0.10/0.16→0.06/0.10，已点亮连线 0.42→0.26；标签改三轮放置（必画 → 选中路线 → 其余已点亮）并加 0.78 不透明底托，避免被连线划花。
+- **路线预告**：`ua_mutation_route()` 倒查「哪些物种拿这条突变当前置」→ 按阶段排序 → 沿主干子代走两步；`ua_species_route()` 复用同一个 `species_route_tail()` 给分化卡用。物种名必须走 `ua_species_name()`（图鉴中文名），第一版误用 `species_name()` 导致「Orbital Foundry」等英文名上屏，截图核对时发现并修掉。突变卡 98→112 高、间距 110→124；分化卡 94→100 高、间距 102→108（避免最后一行压到页脚按钮），三处矩形（绘制 + build）保持同源。
+- **验证**：0 warning/error；`make test` 26 组 92,578 项 + 36 项接线 + 集成 + 60 分钟回归 + gameplay + codex 全绿；`make test-ui` 25 次点击一致；`--shot --ss 3` 25 张 3840×2160；`make dist` 单文件 22 MB 在空目录导出 25 张通过。
