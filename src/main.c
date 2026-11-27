@@ -36,6 +36,7 @@ int mock_selftest(void);
 #endif
 
 #include "ui_internal.h"
+#include "codex.h"      /* 截图演示：按中文名定位图鉴条目 */
 
 #define SAVE_PATH "saves/treeoflife-v8.sav"
 #define FIXED_STEP 0.1
@@ -547,6 +548,25 @@ static void capture_screen(const GameState *base, const char *first_file)
     ui_debug_set_codex_tab(2);
     ui_debug_capture(&game, "shot_04c_codex_record.png");
 
+    /* 图鉴详情：物种大图里的生境背景（石松林 → 湿地与森林）。
+     * 大图与展台共用 habitat_draw，一张图就能核对两处是否一致。 */
+    {
+        int probe = -1;
+        for (int i = 0; i < SPECIES_COUNT; ++i) {
+            const CodexEntry *e = codex_entry(CODEX_SPECIES, i);
+            if (e && e->name && strcmp(e->name, "石松林") == 0) { probe = i; break; }
+        }
+        if (probe >= 0) {
+            game.run.discovered_species[probe] = true;
+            game.legacy.codex_species[probe] = true;
+            g_ui.codex_detail_kind = CODEX_SPECIES;
+            g_ui.codex_detail_id = probe;
+            ui_debug_force(UI_SCREEN_MAIN, UI_OVL_CODEX_DETAIL);
+            ui_debug_capture(&game, "shot_04d_codex_habitat.png");
+            ui_debug_force(UI_SCREEN_MAIN, UI_OVL_CODEX);
+        }
+    }
+
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_TREE);
     ui_debug_capture(&game, "shot_05_tree.png");
 
@@ -624,5 +644,8 @@ static void capture_screen(const GameState *base, const char *first_file)
     ui_debug_capture(&game, "shot_10c_speciation_zh.png");
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_NONE);
 
-    TraceLog(LOG_INFO, "shot capture done: 25 frames");
+    /* 生境样张：8 种大环境并排，核对"每个阶段站在什么地上" */
+    ui_debug_capture_habitats("shot_11_habitats.png");
+
+    TraceLog(LOG_INFO, "shot capture done: 27 frames");
 }

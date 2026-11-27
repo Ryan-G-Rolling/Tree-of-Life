@@ -25,6 +25,7 @@
 #include "embedded.h"
 #include "atmosphere.h"
 #include "codex.h"
+#include "habitat.h"
 
 UIState g_ui;
 
@@ -1007,6 +1008,27 @@ void ui_debug_poke_crisis(int env_id, float t)
     g_ui.prev_env_id = env_id;   /* 免得下一帧 crisis_watch 又触发一次 */
 }
 
+/* 画布 → PNG。alpha 强制不透明的理由见下方注释（12 版遗留 bug）。 */
+static void export_canvas(const char *path)
+{
+    Image image = LoadImageFromTexture(g_canvas.texture);
+    ImageFlipVertical(&image);
+
+    /* ⚠ 必须把 alpha 强制为 255。
+     * 画布是 RGBA 帧缓冲：凡是 alpha<1 的层（暗角、柔光、玻璃渐变）都会按
+     * dstA = srcA² + dstA(1-srcA) 拉低画布自身的 alpha。窗口里这层会再和黑底
+     * 合成，看不出问题；但导出的 PNG 带着半透明像素，看图器会把它们和**白色**
+     * 背景合成 —— 整张 4K 图会变成一层灰雾，颜色全部失真（这是 12 版遗留 bug）。 */
+    if (image.format == PIXELFORMAT_UNCOMPRESSED_R8G8B8A8) {
+        unsigned char *px = (unsigned char *)image.data;
+        int n = image.width * image.height;
+        for (int i = 0; i < n; ++i) px[i * 4 + 3] = 255;
+    }
+
+    ExportImage(image, path);
+    UnloadImage(image);
+}
+
 void ui_debug_capture(const GameState *game, const char *path)
 {
     g_ui.time = 2.0f;
@@ -1029,21 +1051,65 @@ void ui_debug_capture(const GameState *game, const char *path)
     EndMode2D();
     EndTextureMode();
 
-    Image image = LoadImageFromTexture(g_canvas.texture);
-    ImageFlipVertical(&image);
+    export_canvas(path);
+}
 
-    /* ⚠ 必须把 alpha 强制为 255。
-     * 画布是 RGBA 帧缓冲：凡是 alpha<1 的层（暗角、柔光、玻璃渐变）都会按
-     * dstA = srcA² + dstA(1-srcA) 拉低画布自身的 alpha。窗口里这层会再和黑底
-     * 合成，看不出问题；但导出的 PNG 带着半透明像素，看图器会把它们和**白色**
-     * 背景合成 —— 整张 4K 图会变成一层灰雾，颜色全部失真（这是 12 版遗留 bug）。 */
-    if (image.format == PIXELFORMAT_UNCOMPRESSED_R8G8B8A8) {
-        unsigned char *px = (unsigned char *)image.data;
-        int n = image.width * image.height;
-        for (int i = 0; i < n; ++i) px[i * 4 + 3] = 255;
+/* 生境样张：8 种大环境并排，用来核对"每个阶段站在什么地上"。
+ * 只在 --shot 里出，不进游戏流程。 */
+void ui_debug_capture_habitats(const char *path)
+{
+    static const char *k_range[HABITAT_COUNT] = {
+        "阶段 0–1 · 原始生命 / 原核",
+        "阶段 2–3 · 真核 / 多细胞",
+        "阶段 4–5 · 组织分化 / 共生",
+        "旁支 · 耐寒谱系",
+        "阶段 6–7 · 认知圈 / 智慧生命",
+        "阶段 8–9 · 技术圈 / 文明",
+        "阶段 10 · 太空时代",
+        "阶段 11 · 超越",
+    };
+    static const char *k_fauna[HABITAT_COUNT] = {
+        "热泉光合席 · 嗜热古菌",
+        "蓝细菌 · 藻类真核生物",
+        "珊瑚尖塔 · 珊瑚共生体",
+        "极地苔原 · 极端环境群落",
+        "菌藻地衣 · 石松林",
+        "礁石都市 · 轨道蜂群",
+        "太空时代 · 星际方舟",
+        "奇点 · 超越",
+    };
+
+    canvas_ensure(compute_ss());
+    atm_ensure();
+
+    BeginTextureMode(g_canvas);
+    ClearBackground(COL_BG_DEEP);
+    BeginMode2D(ui_camera());
+    atm_draw_static();
+
+    ui_text_strong("生境演替 · 大环境随时代更换", 40.0f, 24.0f, F_TITLE, COL_TEXT);
+    ui_text("同一块展台，从热泉一路换到星云：阶段推进时环境整体替换，不再全程泡在海水里。",
+            40.0f, 54.0f, F_CAPTION, COL_DIM);
+
+    for (int i = 0; i < HABITAT_COUNT; ++i) {
+        int col = i % 4, row = i / 4;
+        Rectangle r = { 40.0f + (float)col * 300.0f, 86.0f + (float)row * 306.0f, 280.0f, 282.0f };
+        ui_panel(r, R_CARD, COL_PANEL, Fade(COL_LINE, 0.55f));
+        Rectangle art = { r.x + 8.0f, r.y + 8.0f, r.width - 16.0f, 190.0f };
+        ui_clip_begin(art);
+        habitat_draw(art, i, 6.0f, 0.9f);
+        ui_clip_end();
+        ui_panel(art, R_CARD - 4.0f, BLANK, Fade(COL_LINE, 0.35f));
+
+        Color ac = habitat_accent(i);
+        DrawCircleV((Vector2){ r.x + 18.0f, r.y + 212.0f }, 3.0f, ac);
+        ui_text_strong(habitat_name(i), r.x + 28.0f, r.y + 204.0f, F_LABEL, COL_TEXT);
+        ui_text(k_range[i], r.x + 14.0f, r.y + 230.0f, F_CAPTION, ac);
+        ui_text(k_fauna[i], r.x + 14.0f, r.y + 252.0f, F_CAPTION, COL_DIM);
     }
+    EndMode2D();
+    EndTextureMode();
 
-    ExportImage(image, path);
-    UnloadImage(image);
+    export_canvas(path);
 }
 

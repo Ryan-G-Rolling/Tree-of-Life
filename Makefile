@@ -46,7 +46,7 @@ DIST_LDFLAGS = -static -static-libgcc
 CORE_SRC := src/game.c src/economy.c src/save.c \
             src/evolution.c src/species.c src/environment.c src/prestige.c src/legacy.c src/buffs.c
 UI_SRC   := src/main.c src/ui.c src/render.c src/screens.c src/input.c src/atmosphere.c src/tex.c \
-            src/ui_adapter.c src/embedded.c src/codex.c
+            src/ui_adapter.c src/embedded.c src/codex.c src/habitat.c
 
 RULES_SRC   := src/evolution.c src/species.c src/environment.c src/prestige.c src/legacy.c src/buffs.c
 CONTROL_SRC := src/game.c src/economy.c src/save.c
@@ -220,7 +220,7 @@ test-ui: build/test_click_feedback.exe
 
 # Only reachable production layout sections are linked; no drawing backend needed.
 .PHONY: test-layout
-build/test_ui_layout.exe: tests/test_ui_layout.c $(CORE_SRC) src/ui.c src/ui_adapter.c src/screens.c src/codex.c src/render.c src/atmosphere.c src/tex.c src/embedded.c src/input.c $(HEADERS)
+build/test_ui_layout.exe: tests/test_ui_layout.c $(CORE_SRC) src/ui.c src/ui_adapter.c src/screens.c src/codex.c src/render.c src/atmosphere.c src/tex.c src/embedded.c src/input.c src/habitat.c $(HEADERS)
 	@$(call MKDIR_P,build)
 	$(CC) $(CFLAGS) -ffunction-sections -fdata-sections $(filter %.c,$^) \
 	      -Wl,--gc-sections -o $@ $(LIBS)

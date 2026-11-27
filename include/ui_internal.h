@@ -361,6 +361,8 @@ void ui_debug_poke_toast(const char *text, bool bad);
 void ui_debug_poke_crisis(int env_id, float t);
 /* 直接把当前逻辑画布导出成 png */
 void ui_debug_capture(const GameState *game, const char *path);
+/* 生境样张：8 种大环境并排导出（只在 --shot 里用） */
+void ui_debug_capture_habitats(const char *path);
 /* 把“按钮 id → GameAction”的映射暴露给自检用 */
 bool ui_debug_map_button(int id, int target, int option, GameAction *out);
 

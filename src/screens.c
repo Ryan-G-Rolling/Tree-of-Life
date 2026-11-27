@@ -23,6 +23,7 @@
 #include "atmosphere.h"
 #include "buffs.h"
 #include "codex.h"
+#include "habitat.h"
 
 /* ================= 通用小工具 ================= */
 
@@ -97,11 +98,14 @@ static float hash01(unsigned int n)
 }
 
 /* ================= 物种身份色 =================
- * 20 个物种各有固定荧光色：只做填充、发光与色轨，永不做正文颜色。
- * 色相分散在整圈，相邻阶段不会撞色。 */
+ * 20 个主线物种各有固定荧光色：只做填充、发光与色轨，永不做正文颜色。
+ * 色相分散在整圈，相邻阶段不会撞色。
+ * v14 把物种扩到 264 之后，后 244 个物种按「阶段基色 + id 抖动」派生：
+ * 旧写法只填了 20 项，数组其余元素是 alpha=0 的透明黑，图鉴里一半以上的
+ * 生物会直接消失。派生色保持阶段内的色域，又让同阶段的不同物种能分开。 */
 static Color ecology_color(int species_id)
 {
-    static const Color palette[SPECIES_COUNT] = {
+    static const Color palette[20] = {
         { 118, 240, 190, 255 },  /*  0 原始细胞   薄荷 */
         { 196, 238, 104, 255 },  /*  1 蓝细菌     柠黄 */
         { 255, 176,  96, 255 },  /*  2 化能细菌   琥珀 */
@@ -123,8 +127,29 @@ static Color ecology_color(int species_id)
         { 200, 140, 255, 255 },  /* 18 奇点       紫罗兰 */
         { 255, 240, 200, 255 },  /* 19 超越       白金 */
     };
+    /* 12 个阶段的色域锚点：派生色只在同阶段的相邻两色之间取，读起来仍成体系 */
+    static const Color stage_hue[12] = {
+        { 118, 240, 190, 255 }, { 196, 238, 104, 255 }, {  88, 224, 210, 255 },
+        { 172, 150, 255, 255 }, { 150, 220, 130, 255 }, { 120, 190, 255, 255 },
+        { 210, 180, 120, 255 }, { 160, 235, 170, 255 }, { 255, 214, 140, 255 },
+        { 180, 200, 255, 255 }, { 140, 220, 255, 255 }, { 255, 240, 200, 255 },
+    };
     if (species_id < 0 || species_id >= SPECIES_COUNT) return COL_DIM;
-    return palette[species_id];
+    if (species_id < 20) return palette[species_id];
+
+    int st = ua_species_stage(species_id);
+    if (st < 0) st = 0;
+    if (st > 11) st = 11;
+    Color a = stage_hue[st];
+    Color b = stage_hue[(st + 3) % 12];
+    float u = hash01((unsigned int)species_id * 2654435761u + 17u);
+    Color c = ui_color_mix(a, b, 0.12f + 0.38f * u);
+    float k = 0.90f + 0.24f * hash01((unsigned int)species_id * 40503u + 7u);
+    int r = (int)((float)c.r * k), g = (int)((float)c.g * k), bl = (int)((float)c.b * k);
+    if (r > 255) r = 255;
+    if (g > 255) g = 255;
+    if (bl > 255) bl = 255;
+    return (Color){ (unsigned char)r, (unsigned char)g, (unsigned char)bl, 255 };
 }
 
 /* ================= 生物形态引擎 =================
@@ -1929,6 +1954,9 @@ static void draw_dish(const GameState *game)
 
     int sid = game->run.active_species_count > 0 ? game->run.active_species[0].species_id : 0;
     int stage = ua_species_stage(sid);
+    /* 皿里的"样品"来自哪片生境：液体与沉积跟着变，左右两块不会打架 */
+    int dhab = habitat_for_species(sid, stage);
+    Color hab_col = habitat_accent(dhab);
 
     ui_text("生命体", r.x + S_PAD, r.y + 10.0f, F_BODY, COL_DIM);
     char lab[32];
@@ -1986,12 +2014,27 @@ static void draw_dish(const GameState *game)
     /* 背后环境光（在液体之前画，才不会被不透明皿底盖掉） */
     ui_glow(c, R * 1.44f, ui_color_mix(accent, (Color){ 70, 140, 210, 255 }, 0.72f), 0.12f + 0.08f * S->punch);
 
-    /* 皿底：中心偏亮的液体。染色只留一点点，保住深空的冷调 */
-    DrawCircleGradient((int)c.x, (int)c.y, R, Fade(ui_color_mix(COL_BG_DEEP, COL_TEAL, 0.10f), 0.95f),
+    /* 皿底：中心偏亮的液体。染色只留一点点，保住深空的冷调；
+     * 色相取自当前生境，陆地阶段的样品皿不再是海水蓝。 */
+    DrawCircleGradient((int)c.x, (int)c.y, R,
+                       Fade(ui_color_mix(COL_BG_DEEP, ui_color_mix(COL_TEAL, hab_col, 0.55f), 0.16f), 0.95f),
                        Fade(COL_BG_DEEP, 0.98f));
     DrawCircleV(c, R * 0.985f, Fade(COL_STAGE, 0.22f));
     /* 液体弯月面：贴内壁的一圈冷光，让皿里“有水” */
     DrawRing(c, R * 0.93f, R * 0.955f, 0.0f, 360.0f, 84, Fade(COL_TEAL, 0.10f));
+    /* 沉积带：贴底部的一段弧。水下的皿是细沙，陆生样品是土壤，
+     * 轨道阶段几乎不留——同一个皿，读起来都像"取自某个地方的样本"。 */
+    {
+        float dep = dhab == HABITAT_ORBIT || dhab == HABITAT_SINGULARITY ? 0.18f : 0.42f;
+        DrawRing(c, R * 0.60f, R * 0.80f, 32.0f, 148.0f, 56, Fade(COL_BG_DEEP, dep));
+        for (int i = 0; i < 7; ++i) {
+            unsigned int s = (unsigned int)i * 37u + 11u;
+            float ang = (40.0f + 100.0f * hash01(s)) * DEG2RAD;
+            float rr = R * (0.62f + 0.16f * hash01(s + 7u));
+            Vector2 p = { c.x + cosf(ang) * rr, c.y + sinf(ang) * rr };
+            DrawCircleV(p, 1.0f + 1.2f * hash01(s + 13u), Fade(hab_col, 0.20f));
+        }
+    }
 
     /* 液体自身的内辉（ADDITIVE，必须画在液体之后） */
     ui_glow(c, R * 0.72f, accent, 0.20f + 0.12f * S->punch);
@@ -2209,6 +2252,15 @@ static void draw_countdown_ring(Vector2 c, float radius, float progress, Color c
     ui_text_center(text, c.x, c.y - 7.0f, F_CAPTION, COL_TEXT);
 }
 
+/* 当前大环境：只看主谱系。展台、环境横幅、全屏色晕都从这里取，
+ * 避免三处各算一遍、出现"展台是森林、横幅还写着海洋"的错位。 */
+static int current_habitat(const GameState *game)
+{
+    if (game->run.active_species_count <= 0) return HABITAT_HYDROTHERMAL;
+    int sid = game->run.active_species[0].species_id;
+    return habitat_for_species(sid, ua_species_stage(sid));
+}
+
 static void draw_env_banner(const GameState *game)
 {
     Rectangle r = { 388.0f, 84.0f, 516.0f, 56.0f };
@@ -2231,7 +2283,19 @@ static void draw_env_banner(const GameState *game)
     draw_countdown_ring((Vector2){ r.x + 32.0f, r.y + 28.0f }, 21.0f, prog,
                         crisis ? COL_BAD : COL_ACCENT, tbuf);
 
-    ui_text_strong(ua_environment_name(env), r.x + 64.0f, r.y + 6.0f, F_LABEL, COL_TEXT);
+    /* 常态期不再一律叫“常态海洋”：上岸之后横幅继续写海洋会直接推翻展台的画面。
+     * 危机 / 丰饶事件仍用规则层的名字与说明。 */
+    int hab = current_habitat(game);
+    const char *ename = ua_environment_name(env);
+    const char *edesc = NULL;
+    char ebuf[64];
+    if (!in_event && env == ENV_NORMAL_OCEAN &&
+        hab != HABITAT_SUNLIT_SEA && hab != HABITAT_REEF) {
+        snprintf(ebuf, sizeof(ebuf), "常态 · %s", habitat_name(hab));
+        ename = ebuf;
+        edesc = habitat_note(hab);
+    }
+    ui_text_strong(ename, r.x + 64.0f, r.y + 6.0f, F_LABEL, COL_TEXT);
 
     const char *chip = in_event ? (crisis ? "危机中" : "丰饶期") : "稳定期";
     float cw = ui_text_w(chip, F_CAPTION) + 14.0f;
@@ -2240,7 +2304,8 @@ static void draw_env_banner(const GameState *game)
     ui_text_center(chip, chipr.x + cw * 0.5f, chipr.y + 4.0f, F_CAPTION, accent);
 
     char desc[128];
-    ua_environment_desc(env, desc, (int)sizeof(desc));
+    if (edesc) snprintf(desc, sizeof(desc), "%s", edesc);
+    else ua_environment_desc(env, desc, (int)sizeof(desc));
     ui_text(desc, r.x + 64.0f, r.y + 28.0f, F_CAPTION, COL_DIM);
 
     if (game->legacy.levels[LEGACY_ADAPTATION] >= 3 && game->run.next_environment_id != env) {
@@ -2268,14 +2333,19 @@ static void draw_stage(const GameState *game)
     UIState *S = &g_ui;
     Rectangle r = { 388.0f, 148.0f, 516.0f, 284.0f };
 
-    ui_panel(r, R_CARD, COL_STAGE, Fade(COL_LINE, 0.45f));
-    /* 背景：一片深水 / 星尘中的培养区（内缩 6px 保证渐变不会露出方角） */
-    ui_gradient((Rectangle){ r.x + 6.0f, r.y + 6.0f, r.width - 12.0f, r.height - 12.0f },
-                Fade(COL_BG_LIFT, 0.55f), Fade(COL_BG_DEEP, 0.75f));
-    ui_panel((Rectangle){ r.x + 8.0f, r.y + 8.0f, r.width - 16.0f, r.height - 16.0f },
-             R_CARD - 4.0f, Fade(COL_STAGE, 0.86f), BLANK);
+    /* 生境：由主谱系的阶段 + 中文名线索决定；没有物种时退回原始海洋。
+     * 大环境跟着时代走，玩家一眼能看出自己已经离开水里多久了。 */
+    int hab = current_habitat(game);
 
-    atm_draw_live_in(r);
+    ui_panel(r, R_CARD, COL_STAGE, Fade(COL_LINE, 0.45f));
+    /* 展台内是一块"取样窗口"：先铺满不透明底色保住圆角，再把生境画在里面。
+     * 旧代码在这里调 atm_draw_live_in()，会把全屏星云重绘一遍并整块盖住背景；
+     * 现在微尘由生境层自己出，水下是气泡、陆地是孢子、城市是灯点。 */
+    Rectangle win = { r.x + 6.0f, r.y + 6.0f, r.width - 12.0f, r.height - 12.0f };
+    ui_panel(win, R_CARD - 4.0f, COL_STAGE, BLANK);
+    ui_clip_begin(win);
+    habitat_draw(win, hab, S->time, 1.0f);
+    ui_clip_end();
 
     if (game->run.active_species_count <= 0) {
         ui_text_center("等待初始化", r.x + r.width * 0.5f, r.y + r.height * 0.5f, F_LABEL, COL_DIM);
@@ -2283,6 +2353,16 @@ static void draw_stage(const GameState *game)
     }
 
     ui_text("生命体展台", r.x + 14.0f, r.y + 8.0f, F_CAPTION, COL_FAINT);
+    /* 生境 chip：环境名直接写在标题旁边，不用玩家猜这片背景是什么 */
+    {
+        const char *hn = habitat_name(hab);
+        Color hc = habitat_accent(hab);
+        float tw = ui_text_w(hn, F_CAPTION);
+        Rectangle chip = { r.x + 84.0f, r.y + 6.0f, tw + 22.0f, 18.0f };
+        ui_panel(chip, 9.0f, Fade(hc, 0.12f), Fade(hc, 0.32f));
+        DrawCircleV((Vector2){ chip.x + 8.0f, chip.y + 9.0f }, 2.2f, Fade(hc, 0.85f));
+        ui_text(hn, chip.x + 15.0f, chip.y + 2.0f, F_CAPTION, hc);
+    }
     char lab[32];
     snprintf(lab, sizeof(lab), "样本 %02d · 40×", game->run.active_species[0].species_id + 1);
     ui_text_right(lab, r.x + r.width - 14.0f, r.y + 8.0f, F_CAPTION, COL_FAINT);
@@ -2441,9 +2521,10 @@ static void draw_stage(const GameState *game)
         }
     }
 
-    /* 底部一层地平线光，给展台“有纵深”的收尾 */
-    DrawRectangleGradientV((int)r.x, (int)(r.y + r.height - 40.0f), (int)r.width, 40,
-                           Fade(COL_BG_DEEP, 0.0f), Fade(COL_BG_DEEP, 0.55f));
+    /* 底部一层地平线光，给展台“有纵深”的收尾。
+     * 只压 32px 且很淡：再深一点就会把生境里的城市楼群 / 海床吃掉。 */
+    DrawRectangleGradientV((int)r.x, (int)(r.y + r.height - 32.0f), (int)r.width, 32,
+                           Fade(COL_BG_DEEP, 0.0f), Fade(COL_BG_DEEP, 0.32f));
 }
 
 /* ================= 里程碑 ================= */
@@ -3663,7 +3744,10 @@ static void draw_crisis_fx(const GameState *game, const UIState *S)
 static void draw_main(const GameState *game, const UIState *state, const ActionResult *last)
 {
     (void)last;
-    (void)state;
+
+    /* 全屏极淡的环境色晕：让整屏氛围跟着时代走（热泉偏青、陆地偏暖、轨道偏冷），
+     * 只压上下边缘，中心的星云与卡片不受影响。 */
+    habitat_bleed(current_habitat(game), state->time, 1.0f);
 
     draw_top_bar(game);
     draw_dish(game);
@@ -4723,7 +4807,17 @@ static void draw_codex_detail(const GameState *game, const UIState *S)
     Rectangle art = { panel.x + 20.0f, panel.y + 62.0f, panel.width - 40.0f, 254.0f };
     ui_panel(art, R_CARD, COL_BG_DEEP, Fade(accent, 0.25f));
     Vector2 center = { art.x + art.width * 0.5f, art.y + art.height * 0.5f };
+    int dhab = HABITAT_HYDROTHERMAL;
+    if (is_species) {
+        dhab = habitat_for_species(S->codex_detail_id, ua_species_stage(S->codex_detail_id));
+    }
     if (found) {
+        /* 已发现的物种：大图里也给一片它自己的生境，和展台是同一套 */
+        if (is_species) {
+            ui_clip_begin(art);
+            habitat_draw(art, dhab, S->time, 0.72f);
+            ui_clip_end();
+        }
         ui_glow(center, 100.0f, accent, 0.25f);
         if (is_species)
             draw_organism_in(art, center, 66.0f, S->codex_detail_id,
@@ -4733,8 +4827,15 @@ static void draw_codex_detail(const GameState *game, const UIState *S)
             draw_mutation_sigil_scaled(center, S->codex_detail_id, accent,
                                        ua_mutation_is_rare(S->codex_detail_id), S->time, 3.0f);
     } else ui_text_center("?", center.x, center.y - 25.0f, F_HERO, COL_FAINT);
-    ui_text_center(is_species ? "物种图鉴" : "突变图鉴", panel.x + panel.width * 0.5f,
-                   panel.y + 340.0f, F_CAPTION, accent);
+    {
+        char tag[64];
+        if (is_species && found) {
+            snprintf(tag, sizeof(tag), "物种图鉴 · %s", habitat_name(dhab));
+        } else {
+            snprintf(tag, sizeof(tag), "%s", is_species ? "物种图鉴" : "突变图鉴");
+        }
+        ui_text_center(tag, panel.x + panel.width * 0.5f, panel.y + 340.0f, F_CAPTION, accent);
+    }
     draw_codex_quote(found ? entry->tagline : "继续探索，故事还在前面。",
                      (Rectangle){ panel.x + 40.0f, panel.y + 376.0f, panel.width - 80.0f, 112.0f });
     UiButton *back = btn_find(S, UI_BTN_CODEX_BACK, -1);
