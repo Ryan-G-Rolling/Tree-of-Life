@@ -81,7 +81,9 @@ bot 实买 15 张（P90 18，含 16 张自限）· 物种覆盖 **54/264**（100
 python tools/validate_content.py
 mingw32-make SHELL=cmd.exe test
 python tools/reports/run_report.py                 # 1000 / 1000 / 1000
-python tools/reports/gate_check.py tools/reports/batch3_scan_round15.csv tools/reports/batch3_explore_round15.csv
+# 覆盖率是「所有跑到过的物种」的并集，三个批次一起传：
+python tools/reports/gate_check.py tools/reports/batch3_scan_round15.csv \
+    tools/reports/batch3_scan_round15.csv,tools/reports/batch3_explore_round15.csv,tools/reports/batch2_scan_round15.csv
 python tools/reports/compare_strategy.py 200
 ```
 

@@ -51,9 +51,14 @@ def main(path, explore_path=None):
 
     coverage = ""
     if explore_path:
+        # 允许逗号分隔多个批次：覆盖率是「所有跑到过的物种」的并集，
+        # 只给探索批次会低报（实测探索 36 / 三批并集 54）。
         try:
-            seen = {line.split(",")[2] for line in open(explore_path, encoding="utf-8")
-                    if line.startswith("BSPEC")}
+            seen = set()
+            for path_i in explore_path.split(","):
+                for line in open(path_i, encoding="utf-8"):
+                    if line.startswith("BSPEC"):
+                        seen.add(line.split(",")[2])
             coverage = f"{len(seen)}/264"
         except OSError:
             coverage = "n/a"
