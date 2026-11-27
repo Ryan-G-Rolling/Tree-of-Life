@@ -172,6 +172,40 @@ static void test_old_save_rejected(void)
     remove(path);
 }
 
+/* v14：旧档被拒绝时不许“顺手清档”——文件必须逐字节不变，内存状态也不许被改写。
+ * 与上一条的区别：上一条只看长度，这条比对完整字节。 */
+static void test_old_save_not_cleared(void)
+{
+    const char *path = "build/old_v9_keep.sav";
+    enum { BODY = 3216, TOTAL = 16 + BODY };
+    unsigned char original[TOTAL];
+    memset(original, 0x5A, sizeof original);
+    memcpy(original, "TOLSV001", 8);
+    uint32_t version = 9;
+    uint32_t payload = BODY;
+    memcpy(original + 8, &version, sizeof version);
+    memcpy(original + 12, &payload, sizeof payload);
+    FILE *f = fopen(path, "wb");
+    assert(f != NULL);
+    assert(fwrite(original, 1, sizeof original, f) == sizeof original);
+    assert(fclose(f) == 0);
+
+    GameState game;
+    seeded(&game);
+    GameState before = game;
+    assert(save_read(path, &game) == SAVE_BAD_VERSION);
+    assert(memcmp(&game, &before, sizeof before) == 0);
+
+    unsigned char after[TOTAL];
+    FILE *check = fopen(path, "rb");
+    assert(check != NULL);
+    assert(fread(after, 1, sizeof after, check) == sizeof after);
+    assert(fgetc(check) == EOF);
+    assert(fclose(check) == 0);
+    assert(memcmp(original, after, sizeof original) == 0);
+    remove(path);
+}
+
 static void test_save_continuation(void)
 {
     GameState game, expected, restored;
@@ -222,6 +256,7 @@ int main(void)
     test_rewards_insight_and_save();
     test_save_continuation();
     test_old_save_rejected();
+    test_old_save_not_cleared();
     test_mutation_refresh();
     test_invalid_save();
     remove("build/gameplay.sav");

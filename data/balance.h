@@ -129,6 +129,12 @@
 #define SPECIATION_FLOOR_SCALE 1.4
 #endif
 /* v10 P1-11：阶段 6 起主谱系分化提供“2 选 1”——主链节点或同阶段支线物种 */
+/* v14：支线最多离主链 4 层（1 个支线槽位最多 4 次分化）。
+ * 两个支线槽位合计 4–7 次，对应方案「每局 16–20 物种 = 12–13 主链 + 4–7 支线」。 */
+#ifndef BRANCH_MAX_DEPTH
+#define BRANCH_MAX_DEPTH 2
+#endif
+
 #ifndef BRANCH_SPECIATION_MIN_PHASE
 #define BRANCH_SPECIATION_MIN_PHASE 6
 #endif

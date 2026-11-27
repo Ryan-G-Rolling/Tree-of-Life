@@ -1529,6 +1529,31 @@ static bool mutation_legacy_requirement_met(const GameState *game, const Mutatio
     return game->legacy.levels[def->requires_branch] >= def->requires_level;
 }
 
+/* v14 共享基因组：额外分支与主谱系同源，主谱系已购的突变对支线同样有效。
+ * 只用于“是否满足分化前置 / 是否还能再买”的判定，不改写 SpeciesState.mutations，
+ * 因此存档布局不变，也不会让支线重复买同一张卡。 */
+bool evolution_slot_owns_mutation(const GameState *game, int species_slot, int mutation_id)
+{
+    if (!game || mutation_id < 0 || mutation_id >= MUTATION_COUNT) {
+        return false;
+    }
+    if (!valid_slot(game, species_slot)) {
+        return false;
+    }
+    const SpeciesState *species = &game->run.active_species[species_slot];
+    if (species_owns(species, mutation_id)) {
+        return true;
+    }
+    if (species->is_main_lineage) {
+        return false;
+    }
+    int main_slot = evolution_main_slot(game);
+    if (main_slot < 0 || main_slot == species_slot) {
+        return false;
+    }
+    return game->run.active_species[main_slot].mutations[mutation_id];
+}
+
 bool evolution_mutation_available(const GameState *game, int species_slot, int mutation_id)
 {
     const SpeciesState *species = slot_species(game, species_slot);
@@ -1536,7 +1561,7 @@ bool evolution_mutation_available(const GameState *game, int species_slot, int m
     if (!species || !def) {
         return false;
     }
-    if (species_owns(species, mutation_id)) {
+    if (evolution_slot_owns_mutation(game, species_slot, mutation_id)) {
         return false;
     }
     int phase = species_phase(species->species_id);
@@ -1546,7 +1571,8 @@ bool evolution_mutation_available(const GameState *game, int species_slot, int m
     if (def->max_phase >= 0 && phase > def->max_phase) {
         return false;
     }
-    if (def->requires_mutation >= 0 && !species_owns(species, def->requires_mutation)) {
+    if (def->requires_mutation >= 0 &&
+        !evolution_slot_owns_mutation(game, species_slot, def->requires_mutation)) {
         return false;
     }
     return mutation_legacy_requirement_met(game, def);
@@ -2037,11 +2063,19 @@ ActionCode evolution_validate_speciation(const GameState *game, int species_slot
         return ACTION_REQUIREMENT_NOT_MET;
     }
 
-    int required[4];
-    int required_count = species_required_mutations(target_species_id, required, 4);
-    for (int i = 0; i < required_count; ++i) {
-        if (!parent->mutations[required[i]]) {
-            return ACTION_REQUIREMENT_NOT_MET;
+    /* v14 共享基因组：额外分支与主谱系同源，不额外消耗前置突变——
+     * 支线只付生物量门票（×1.25）与纪元阶段上限，不再为每个支线物种重复买卡。
+     * 若不这样，每多一个支线物种就多 1–2 张突变，“张数”与“物种数”永远对冲。 */
+    if (!parent->is_main_lineage && species_branch_depth(target_species_id) > BRANCH_MAX_DEPTH) {
+        return ACTION_REQUIREMENT_NOT_MET;
+    }
+    if (parent->is_main_lineage) {
+        int required[4];
+        int required_count = species_required_mutations(target_species_id, required, 4);
+        for (int i = 0; i < required_count; ++i) {
+            if (!evolution_slot_owns_mutation(game, species_slot, required[i])) {
+                return ACTION_REQUIREMENT_NOT_MET;
+            }
         }
     }
     int branch = -1;

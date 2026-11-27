@@ -92,7 +92,7 @@ static double target_atp_reserve(void)
     double reserve = 0.0;
     bool first = true;
     for (int i = 0; i < count; ++i) {
-        if (g.run.active_species[slot].mutations[required[i]]) {
+        if (evolution_slot_owns_mutation(&g, slot, required[i])) {
             continue;
         }
         double cost = evolution_mutation_atp_cost(&g, required[i]);
@@ -403,11 +403,15 @@ static int extra_chain_next(int species_id)
  * 一旦选中一个门票突变没凑齐的侧支就永久卡住（阶段 10 的横向落点因此全是 0）。 */
 static bool slot_owns_required(int slot, int target)
 {
-    const SpeciesState *species = &g.run.active_species[slot];
+    /* v14 共享基因组：额外分支不消耗前置突变，只看生物量门票 */
+    if (!g.run.active_species[slot].is_main_lineage) {
+        return true;
+    }
     int required[4];
     int count = species_required_mutations(target, required, 4);
     for (int i = 0; i < count; ++i) {
-        if (!species->mutations[required[i]]) {
+        /* v14 共享基因组：支线继承主谱系的突变，不必自己再买一遍 */
+        if (!evolution_slot_owns_mutation(&g, slot, required[i])) {
             return false;
         }
     }
@@ -515,11 +519,11 @@ static void choose_mutation(int slot)
     /* 第十五轮：只要主线目标还缺前置，就只买前置，不拿旁支消耗 DNA。 */
     bool target_missing = false;
     int target = planned_target(slot);
-    if (target >= 0) {
+    if (target >= 0 && g.run.active_species[slot].is_main_lineage) {
         int required[4];
         int count = species_required_mutations(target, required, 4);
         for (int i = 0; i < count; ++i) {
-            if (!g.run.active_species[slot].mutations[required[i]]) {
+            if (!evolution_slot_owns_mutation(&g, slot, required[i])) {
                 target_missing = true;
                 break;
             }
@@ -619,6 +623,10 @@ static void choose_mutation(int slot)
 
 static bool slot_target_missing(int slot)
 {
+    /* v14 共享基因组：支线不消耗前置突变，永远不需要为分化买卡 */
+    if (!g.run.active_species[slot].is_main_lineage) {
+        return false;
+    }
     int target = planned_target(slot);
     if (target < 0) {
         return false;

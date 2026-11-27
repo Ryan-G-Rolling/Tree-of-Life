@@ -409,3 +409,38 @@ A/B/C 可运行整合版已在此前完成，Git 基线为 `44e2c0d`；既有结
 
 **补记（同日）**：上面写的「`git push` 未执行」已作废——`AGENTS.md` 已授权直接同步 main，
 本轮提交 `10e6edc` 已 push 到 `origin/main`（变基到远端 `9441e93` 之上，冲突仅 `WORK_LOG.md`，双方记录均已保留）。
+
+## 2026-11-27 夜（续）· v14 机制修正：支线共享基因组 + 分位门槛 + 字形/文档补齐
+
+执行者：WorkBuddy（Agent）。承接上一条，按用户指示放弃“放宽区间”，改做机制修正后重推门槛。
+
+- **支线共享基因组**（`src/evolution.c` 新增 `evolution_slot_owns_mutation`）：额外分支与主谱系同源，
+  主谱系已购的突变对支线同样有效；支线分化只付生物量门票（×1.25）与纪元阶段上限，
+  **不再为每个支线物种重复购买前置突变**。`evolution_mutation_available` 也按此口径过滤，
+  支线不会重复买同一张卡；`demo/demo_b.c` 的 `slot_owns_required / slot_target_missing` 同步。
+- **方向卡次数结构化**：`src/species.c` 新增 `species_branch_depth()`（物种离主链的层数），
+  `BRANCH_MAX_DEPTH 2`（`data/balance.h`）封顶支线深度。实测每局支线分化 4 次，
+  单局物种 17（P10 16 / P90 17），不再出现此前中位 21 的失控。
+- **门槛改成分位口径**（`tools/reports/design.csv` + `make_report_table.py`）：
+  单局物种数中位 16–18 / P10 ≥14 / P90 ≤20；era3 突变购买中位 12–14 / P90 ≤16。
+  删掉此前为包住实测而写的 `coverage_run 14–18`、`mutations_era3 10–19` 两行，**没有放宽任何区间**。
+  同时修掉一个口径错误：`run_species` 原先把 B2 的纪元 1/2 与 B3 按种子下标并集，同一个下标其实是两局不同的 run，
+  取并集会系统性抬高物种数；改为只看 `BSPEC3`（纪元 3 那一局）。
+- **字形补到 1,638**（`tools/gen_glyphs.py`）：新增高频汉字底表 `GLYPH_SUPPLEMENT`，只进图集不改文案；
+  重跑后 `include/ui_glyphs.h` 由 1,423 → 1,638 个非 ASCII 字形，启动日志 `UI font: 1733 glyphs loaded`、无缺字。
+- **docs 去只读并改口径**：`docs/README.md`、`docs/00/01` 去掉只读属性；`docs/README.md` 的
+  “186 物种 / 204 突变 / 20 共振 / 存档 v8” 全部改到 264 / 282 / 29 / v10，ID 段说明补到 186–263（突变 204–281）；
+  `docs/02-数据与计算规则.md` 的“204 个突变、185 个非初始物种”改 282 / 263。
+- **存档策略**：维持 `SAVE_BAD_VERSION` 拒绝（方案里“v8 读入填 0”那句作废）；`tests/test_gameplay.c`
+  新增 `test_old_save_not_cleared`：旧 v9 档被拒后，文件必须逐字节不变、内存 `GameState` 也不许被改写。
+
+**验证（1000 种子，`make report` + `tools/oneshot_check.ps1` 九步全 PASS）**
+
+- 硬门槛 1：0 warning / 27 组 130,892 项 0 失败 / 接线 36 项 / 回归 / gameplay / codex 264+282 / 布局与 264 节点星图 全通过。
+- 硬门槛 2：era3 突变购买中位 **13 张**（ATP 门票 4 张）、P90 **13 张** —— 目标 12–14 / ≤16，**达标**。
+- 硬门槛 3：单局物种中位 **17**、P10 **16**、P90 **17** —— 目标 16–18 / ≥14 / ≤20，**达标**。
+- 记录项：EP 45 / 62 / 69（纪元 3 σ 2.12）；阶段 p50 7 / 10 / 12；阶段 12 抵达 79.0%、13 抵达 0.7%；
+  首分化 179.6 s、首突变 60.1 s；纪元 3 支出 1.79e7 ATP、未花 12.0%；容量 8 级、储备 16 级；存档 v10 3,936 B。
+  其中 EP σ、阶段 13 抵达率、洞见等级等仍是“只打印”项，未按门槛处理。
+
+**清理**：删除临时探针 `build/probe_main.c/.exe`、`build/b3_100.csv`；构建日志留在 `build/`（git 忽略）。

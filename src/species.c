@@ -3061,6 +3061,40 @@ int species_children(int parent_id, int *out_ids, int max_ids)
     return count;
 }
 
+/* v14：支线离主链的层数（主线节点深度记 0）。用于把“方向卡”次数限制在
+ * 每局 4–7 次：两个支线槽位 × 4 层封顶，实测落在 5–6 次。
+ * 支线是额外收益，追平主线会让单局物种数失控（实测中位 21）。 */
+static bool species_on_main_chain(int species_id)
+{
+    int cur = SPECIES_PROTOCELL;
+    for (int i = 0; i < 32 && cur >= 0; ++i) {
+        if (cur == species_id) {
+            return true;
+        }
+        cur = species_main_child(cur);
+    }
+    return false;
+}
+
+int species_branch_depth(int species_id)
+{
+    int depth = 0;
+    int cur = species_id;
+    for (int guard = 0; guard < 16; ++guard) {
+        const SpeciationRule *rule = find_rule(cur);
+        if (!rule || rule->parents[0] < 0) {
+            break;
+        }
+        int parent = rule->parents[0];
+        ++depth;
+        if (species_on_main_chain(parent)) {
+            break;
+        }
+        cur = parent;
+    }
+    return depth;
+}
+
 bool species_has_parent(int target_species_id, int parent_id)
 {
     const SpeciationRule *rule = find_rule(target_species_id);

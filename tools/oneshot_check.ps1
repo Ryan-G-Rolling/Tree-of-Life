@@ -55,21 +55,31 @@ Step "6 era3 1000 种子（打印硬门槛 2/3 实测值）" {
         $spc += [int]$f[8]
         $ticket += [int]$f[22]
     }
+    function Percentile($values, $p) {
+        $sorted = $values | Sort-Object
+        $idx = [int]($p * $sorted.Count)
+        if ($idx -ge $sorted.Count) { $idx = $sorted.Count - 1 }
+        return $sorted[$idx]
+    }
     function Median($values) {
         $sorted = $values | Sort-Object
         $mid = [int]($sorted.Count / 2)
         if ($sorted.Count % 2 -eq 1) { return $sorted[$mid] }
         return [int](($sorted[$mid - 1] + $sorted[$mid]) / 2)
     }
-    $mut = Median $mut
-    $spc = Median $spc
-    $ticket = Median $ticket
-    $stage = Median $stage
-    Write-Host ("era3 中位：阶段 {0} · 突变 {1} 张（ATP 门票 {2} 张）· 单局物种 {3} 个" -f $stage, $mut, $ticket, $spc)
-    $gate2 = if ($mut -ge 10 -and $mut -le 16) { "PASS" } else { "FAIL" }
-    $gate3 = if ($spc -ge 16 -and $spc -le 20) { "PASS" } else { "FAIL" }
-    Write-Host ("硬门槛 2（10–16 张）：{0}（实测 {1} 张）" -f $gate2, $mut)
-    Write-Host ("硬门槛 3（16–20 个）：{0}（实测 {1} 个）" -f $gate3, $spc)
+    $mMed = Median $mut
+    $mP90 = Percentile $mut 0.90
+    $sMed = Median $spc
+    $sP10 = Percentile $spc 0.10
+    $sP90 = Percentile $spc 0.90
+    $stageMed = Median $stage
+    $ticketMed = Median $ticket
+    Write-Host ("era3 中位：阶段 {0} · 突变 {1} 张（ATP 门票 {2} 张）· 单局物种 {3} 个" -f $stageMed, $mMed, $ticketMed, $sMed)
+    Write-Host ("物种分位：P10 {0} / 中位 {1} / P90 {2}；突变分位：P90 {3} 张" -f $sP10, $sMed, $sP90, $mP90)
+    $gate2 = if ($mMed -ge 12 -and $mMed -le 14 -and $mP90 -le 16) { "PASS" } else { "FAIL" }
+    $gate3 = if ($sMed -ge 16 -and $sMed -le 18 -and $sP10 -ge 14 -and $sP90 -le 20) { "PASS" } else { "FAIL" }
+    Write-Host ("硬门槛 2（突变中位 12–14 / P90 ≤16）：{0}（中位 {1} / P90 {2}）" -f $gate2, $mMed, $mP90)
+    Write-Host ("硬门槛 3（物种中位 16–18 / P10 ≥14 / P90 ≤20）：{0}（P10 {1} / 中位 {2} / P90 {3}）" -f $gate3, $sP10, $sMed, $sP90)
 }
 
 Step "7 布局检查" { mingw32-make SHELL=cmd.exe test-layout }

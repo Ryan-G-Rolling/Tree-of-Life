@@ -200,6 +200,7 @@ def meteor_min(type1, type2, type3):
 
 NON_BALANCE_KEYS = {
     "compile", "selftest_failures", "content_playable", "save_bytes", "coverage_run",
+    "species_median", "species_p10", "species_p90", "mutations_median", "mutations_p90",
     # 结构项：上界就是硬顶/零容忍，实测必然贴边，不算“目标贴实测”
     "reserve_max_era3", "low_tail", "ep3_gt_ep2",
     # v9 P2：台账口径项，不是平衡目标
@@ -272,12 +273,20 @@ def build_metrics():
 
     # v9 P1-11：覆盖口径统一到 BSPEC。COVER_S 只在探索模式展开，与 BSPEC 不一致，
     # 两个口径混用会让“单局物种数”既不可复现也不可比较。
+    # v14：单局物种数只看纪元 3 的那一局（BSPEC3）。此前把 B2 的纪元 1/2 与 B3
+    # 按种子下标并在一起，同一个下标其实是两局不同的 run，取并集会系统性抬高物种数。
     seen = {}
-    for name in (B2, B3):
-        for prefix in ("BSPEC1,", "BSPEC2,", "BSPEC3,"):
-            for r in rows(name, prefix):
-                seen.setdefault(int(r[1]), set()).add(int(r[2]))
-    run_species = statistics.median(len(v) for v in seen.values()) if seen else 0
+    for r in rows(B3, "BSPEC3,"):
+        seen.setdefault(int(r[1]), set()).add(int(r[2]))
+    sp_counts = sorted(len(v) for v in seen.values())
+    run_species = statistics.median(sp_counts) if sp_counts else 0
+    spc_med = run_species
+    spc_p10 = sp_counts[min(int(0.10 * len(sp_counts)), len(sp_counts) - 1)] if sp_counts else 0
+    spc_p90 = sp_counts[min(int(0.90 * len(sp_counts)), len(sp_counts) - 1)] if sp_counts else 0
+    mut_values = sorted(int(r[7]) for r in b3)
+    mut_med = statistics.median(mut_values) if mut_values else 0
+    mut_p90 = mut_values[min(int(0.90 * len(mut_values)), len(mut_values) - 1)] if mut_values else 0
+    atp_med = statistics.median(int(r[22]) for r in b3) if (b3 and len(b3[0]) > 22) else 0
 
     species_seeds = set()
     for name in (B2, B3, B3X):
@@ -365,6 +374,17 @@ def build_metrics():
         "content_playable": (1.0, "264 物种（含原始细胞）、282 突变", "test_every_content_playable"),
         "save_bytes": (float(self_test.get("game_state_bytes", 0)),
                        f"v10，{self_test.get('game_state_bytes', 0)} B", "test_b --json"),
+        # v14 分位门槛（硬门槛 2/3）：不用“每局都在区间内”，改用中位与 10/90 分位，
+        # 因为单局物种数与突变张数在内容变多后天然有分布，卡死区间等于逼着调参。
+        "species_median": (float(spc_med), f"中位 {spc_med:.0f} 个（P10 {spc_p10:.0f} / P90 {spc_p90:.0f}）",
+                           "BSPEC 1/2/3"),
+        "species_p10": (float(spc_p10), f"P10 {spc_p10:.0f} 个", "BSPEC 10 分位"),
+        "species_p90": (float(spc_p90), f"P90 {spc_p90:.0f} 个", "BSPEC 90 分位"),
+        "mutations_median": (float(mut_med),
+                             f"中位 {mut_med:.0f} 张"
+                             + (f"（其中 ATP 门票 {atp_med:.0f} 张）" if b3 and len(b3[0]) > 22 else ""),
+                             "BATCH3 第 8 列"),
+        "mutations_p90": (float(mut_p90), f"P90 {mut_p90:.0f} 张", "BATCH3 90 分位"),
         "coverage_run": (float(run_species),
                          f"单局中位 {run_species} 个；随机策略覆盖 "
                          f"{len([i for i in range(1, 264) if i in species_seeds])}/263 物种、"
