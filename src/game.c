@@ -43,7 +43,6 @@ static void reset_run(GameState *game, unsigned int seed)
     legacy_apply_new_run_bonuses(game);
     if (era > 0) game->run.dna = LEGACY_STARTING_DNA;
     game->run.max_biomass = game->run.biomass;
-    game->run.highest_biomass_milestone = economy_biomass_milestone(game->run.max_biomass);
     environment_init_run(game);
     game->legacy.codex_species[0] = true;
     game->phase = PHASE_RUNNING;
@@ -122,7 +121,6 @@ static bool fixed_step(GameState *game)
         || environment.instant_population_loss_ratio < 0.0
         || environment.instant_population_loss_ratio > 1.0) return false;
     environment_apply_step(&next, &environment);
-    next.run.highest_biomass_milestone = economy_biomass_milestone(next.run.max_biomass);
     *game = next;
     return true;
 }
@@ -161,7 +159,9 @@ ActionResult game_apply_action(GameState *game, GameAction action)
         int level = game->run.run_upgrade_levels[action.target_id];
         double cost = economy_upgrade_cost((RunUpgradeType)action.target_id, level);
         double *wallet = action.target_id == UPGRADE_GENOME ? &next.run.biomass : &next.run.atp;
-        if (!isfinite(cost) || level >= RUN_UPGRADE_MAX_LEVEL) return result(ACTION_LEVEL_MAXED, 0.0, -1);
+        if (!isfinite(cost) ||
+            (RUN_UPGRADE_MAX_LEVEL >= 0 && level >= RUN_UPGRADE_MAX_LEVEL))
+            return result(ACTION_LEVEL_MAXED, 0.0, -1);
         if (*wallet < cost)
             return result(action.target_id == UPGRADE_GENOME ? ACTION_NOT_ENOUGH_BIOMASS
                                                               : ACTION_NOT_ENOUGH_ATP, 0.0, -1);

@@ -1,20 +1,30 @@
-# 构建产物与实验数据（可由 build.ps1 -Report 重新生成）
-TreeOfLife/build/*
-!TreeOfLife/build/*.py
+build/
 *.exe
-*.obj
 *.o
+*.obj
 *.pdb
 *.ilk
+*.sav
+*.sav.tmp
+shot_*.png
+.local/
+.vs/
+tests/.vs/
+saves/
+deliverables/
+data.zip
+claude-ds.ps1
+CLAUDE_DS.md
+assets/fonts/
 
 # 实验/调试输出
 *.csv
 *.log
 
 # 验收台账：目标与实测必须可审计
-!TreeOfLife/build/design.csv
-!TreeOfLife/build/observed.csv
-!TreeOfLife/build/design.lock
+!tools/reports/design.csv
+!tools/reports/observed.csv
+!tools/reports/design.lock
 
 # 临时目录
 .screenshots/
