@@ -1273,6 +1273,12 @@ static int run_mutations_owned(const GameState *game)
     return owned;
 }
 
+/* v16 F2：给自动策略用的只读计数（本纪元已购张数，三槽合计） */
+int evolution_mutations_owned(const GameState *game)
+{
+    return run_mutations_owned(game);
+}
+
 double evolution_mutation_atp_cost(const GameState *game, int mutation_id)
 {
     const MutationDef *def = mutation_get(mutation_id);
@@ -1843,7 +1849,11 @@ MutationOfferState evolution_generate_mutation_offer_rng(const GameState *game, 
     if (!affordable && chosen_n > 0) {
         int cheapest = -1;
         double cheapest_cost = 0.0;
-        for (int i = 0; i < pool_n; ++i) {
+        /* v16 性能：F1（min_phase 8→0）让候选池从几十条涨到两百多条，
+         * 这里对整池逐条算价（每条又要扫一遍分化规则表），实测把探索模式拖慢 9 倍。
+         * 这只是“至少给一张买得起”的启发式，扫前 48 条足够，结果差异可忽略。 */
+        int scan = pool_n < 48 ? pool_n : 48;
+        for (int i = 0; i < scan; ++i) {
             if (used[pool[i]]) {
                 continue;
             }

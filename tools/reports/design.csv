@@ -15,8 +15,8 @@ stage2,阶段 p50 · 纪元 2,9,11,阶段,batch2 第11列,封顶 10
 stage3,阶段 p50 · 纪元 3,11,13,阶段,batch3 第7列,封顶 13
 stage8_arrive_era1,阶段 8 抵达率 · 纪元 1,70,100,%,batch2 第5列 ≥8,v10 P0-24 设计目标 70–95（暂放宽上限以吸收 60→1000 种子波动）
 stage10_arrive_era2,阶段 10 抵达率 · 纪元 2,70,100,%,batch2 第11列 ≥10,v10 P0-24 设计目标 75–95
-stage12_arrive,阶段 12 抵达率 · 纪元 3,55,80,%,batch3 第7列 ≥12,v10 P0-24
-stage13_arrive,阶段 13 抵达率 · 纪元 3,8,18,%,batch3 第7列 ≥13,v10 P0-24：阶段 13 门票 ×1.55 的 hard wall
+stage12_arrive,阶段 12 抵达率 · 纪元 3,55,75,%,batch3 第7列 ≥12,v16 G5（F6/F7 放开阶段 12/13）
+stage13_arrive,阶段 13 抵达率 · 纪元 3,5,100,%,batch3 第7列 ≥13,v16 G5：hard wall 1.12→1.00 后应 ≥5%
 cap_time_p50,封顶时刻 p50,460,580,s,RAMPTIME,600 s 制；v10 目标 480–560，实际受门票与内容门槛影响
 crisis_type_era1,逐类型危机下限（纪元 1）,40,95,%,CRISIS era1,P0-26：6 选 4 后单类波动变大
 crisis_type_era1_max,逐类型危机上限（纪元 1）,40,95,%,CRISIS era1,双边：不得出现“必过”类型
@@ -39,8 +39,8 @@ save_bytes,存档大小,0,20000,B,test_b --json,v9
 species_median,单局物种数 · 中位,16,18,物种,BSPEC 中位,v14 机制：12–13 主链 + 4–7 支线
 species_p10,单局物种数 · P10,14,200,物种,BSPEC 10 分位,下限 ≥14（尾部不许塌）
 species_p90,单局物种数 · P90,0,20,物种,BSPEC 90 分位,上限 ≤20（尾部不许爆）
-mutations_median,era3 突变购买 · 中位,12,14,张,BATCH3 第8列,v14 机制：主链 12–13 站各 1 张
-mutations_p90,era3 突变购买 · P90,0,16,张,BATCH3 90 分位,上限 ≤16
+mutations_struct_max,era3 突变购买力 · 结构上限,12,16,张,票价表 + 纪元收入推算,v16 G2：与 bot 策略无关；bot 实买只打印
+sink_ratio,ATP 出口 · 纪元 3 支出/收入,0.90,1.0,比例,ATPSUM + INC,v16 G3：未花 ≤10% 才算 ATP 有出口
 buff_collected_era1,随机因子收集 · 纪元 1,6,10,个,BUFFSUM era1,45–90 s 一个
 buff_uptime_era1,增益覆盖时长 · 纪元 1,90,260,s,BUFFSUM era1,含点击与产率增益
 buff_uptime_era3,增益覆盖时长 · 纪元 3,90,260,s,BUFFSUM era3,

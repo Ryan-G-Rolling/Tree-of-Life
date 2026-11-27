@@ -164,6 +164,8 @@ bool evolution_mutation_is_required(int mutation_id);
  * 支线因此不再为分化重复购买前置（否则每多一个支线物种就多 1–2 张突变，
  * “突变张数”与“单局物种数”两条门槛互相打架）。 */
 bool evolution_slot_owns_mutation(const GameState *game, int species_slot, int mutation_id);
+/* v16 F2：本纪元已购突变张数（三个槽位合计），自动策略用它做自限 */
+int evolution_mutations_owned(const GameState *game);
 /* v14：物种离主链的层数（主线 0）。支线用它封顶，保证方向卡每局 4–7 次。 */
 int species_branch_depth(int species_id);
 double evolution_mutation_cost_for_slot(const GameState *game, int species_slot,

@@ -330,10 +330,16 @@ const char *ua_mutation_desc(int mutation_id, char *buf, int buf_size)
         { def->cap_bonus, "上限" },
         { def->growth_bonus, "增速" },
     };
+    /* v16 F3：id >= ROUND15_MUTATION_FIRST_ID 的突变在结算时统一乘
+     * ROUND15_MUTATION_BONUS_SCALE（防 218 条新卡叠乘爆炸）。界面此前按账面值打印，
+     * 玩家看到「ATP +15%」实际只有 5.25%——这里是玩家可见的假数字，必须按同一系数显示。
+     * 抗性与理念不参与该缩放，维持原样。 */
+    const double bonus_scale =
+        mutation_id >= ROUND15_MUTATION_FIRST_ID ? ROUND15_MUTATION_BONUS_SCALE : 1.0;
     for (int i = 0; i < 5; ++i) {
         if (gains[i].v < 0.0005) continue;
         snprintf(piece, sizeof(piece), " · %s +%d%%", gains[i].label,
-                 (int)(gains[i].v * 100.0 + 0.5));
+                 (int)(gains[i].v * bonus_scale * 100.0 + 0.5));
         text_append(buf, buf_size, &used, piece);
         ++shown;
     }

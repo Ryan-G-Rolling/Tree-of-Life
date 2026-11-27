@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "balance.h"
 #include "game.h"
 #include "evolution.h"
 #include "ui_adapter.h"
@@ -161,12 +162,40 @@ static void test_routes(GameState *game)
     assert(ua_speciation_children(game, NULL, 4) == 0);
 }
 
+/* v16 F3：id ≥ ROUND15_MUTATION_FIRST_ID 的突变在结算时乘 ROUND15_MUTATION_BONUS_SCALE，
+ * 界面必须按同一系数显示，否则就是玩家可见的假数字。这里直接比字符串里的百分比。 */
+static void test_mutation_desc_scaling(void)
+{
+    int scaled_id = -1, plain_id = -1;
+    for (int id = 0; id < MUTATION_COUNT; ++id) {
+        const MutationDef *def = mutation_get(id);
+        if (!def || def->atp_bonus < 0.01) continue;
+        if (id >= ROUND15_MUTATION_FIRST_ID && scaled_id < 0) scaled_id = id;
+        if (id < ROUND15_MUTATION_FIRST_ID && plain_id < 0) plain_id = id;
+    }
+    assert(scaled_id >= 0 && plain_id >= 0);
+
+    const MutationDef *scaled = mutation_get(scaled_id);
+    char expect[96];
+    snprintf(expect, sizeof expect, "ATP +%d%%",
+             (int)(scaled->atp_bonus * ROUND15_MUTATION_BONUS_SCALE * 100.0 + 0.5));
+    char buf[256];
+    ua_mutation_desc(scaled_id, buf, (int)sizeof buf);
+    assert(strstr(buf, expect) != 0);
+
+    const MutationDef *plain = mutation_get(plain_id);
+    snprintf(expect, sizeof expect, "ATP +%d%%", (int)(plain->atp_bonus * 100.0 + 0.5));
+    ua_mutation_desc(plain_id, buf, (int)sizeof buf);
+    assert(strstr(buf, expect) != 0);
+}
+
 int main(void)
 {
     GameState game;
     game_init(&game);
     test_routes(&game);
     test_codex_navigation();
+    test_mutation_desc_scaling();
     memset(&g_ui, 0, sizeof g_ui);
     g_ui.overlay = UI_OVL_TREE;
     screens_build(&g_ui.layout, &game, &g_ui);

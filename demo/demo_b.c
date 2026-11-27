@@ -61,6 +61,12 @@ static double g_last_purchase_time = -1.0;
 static int g_sub_upgrade_buys = 0;
 static int g_insight_buys = 0;
 static int g_batch_index = 0;
+/* v16 F2：默认恢复“买得起就买一张属性卡”，--lean 走旧的不买属性卡策略，
+ * 用于方案第 4 节要求的对照跑（两组必须在同一份报告里对比）。 */
+static bool g_no_stat = false;
+#define BOT_STAT_MUTATION_LIMIT 16   /* v16 F2：超过 16 张就停手，防止又滑回扫货 */
+static double g_cap_full_time = -1.0;
+static double g_reserve_full_time = -1.0;
 static double g_first_mutation = -1.0;
 static int g_last_stage = -1;
 /* v10 P0-22/P0-26：单级耗时台账与“逐类型一条记录”的危机台账 */
@@ -580,9 +586,34 @@ static void choose_mutation(int slot)
                 evolution_refresh_mutation_offer(&g, slot) == ACTION_OK) {
                 return;
             }
-            g_slot_cooldown[slot] = g_time + 30.0;
-            evolution_dismiss_mutation_offer(&g);
-            return;
+            /* v16 F2：撤销“绝不买纯属性卡”。那段注释的依据是旧固定 8 秒价时代
+             * 的“扫货会把门票链推到 150+ 张”；换成 10 s × 1.12^k 后它是自限的
+             * （1.12^40 ≈ 93 倍，40 张就要 930 秒产率），硬过滤只会让 bot 曲线
+             * 脱离真实玩家。这里改成“买得起就买最便宜的一张”，并用
+             * BOT_STAT_MUTATION_LIMIT 自限，防止又滑回扫货。 */
+            if (!g_no_stat && evolution_mutations_owned(&g) < BOT_STAT_MUTATION_LIMIT) {
+                int cheapest = -1;
+                for (int i = 0; i < offer->choice_count; ++i) {
+                    int mid = offer->mutation_ids[i];
+                    if (g.run.discovered_mutations[mid]) continue;
+                    if (g.run.dna < offer->dna_costs[i]) continue;
+                    if (g.run.atp < evolution_mutation_atp_cost(&g, mid)) continue;
+                    if (cheapest < 0 || offer->dna_costs[i] < offer->dna_costs[cheapest]) {
+                        cheapest = i;
+                    }
+                }
+                if (cheapest >= 0) {
+                    pick = cheapest;
+                    target_missing = false;
+                }
+            }
+            if (pick >= 0) {
+                /* 已选中属性卡，落到下面的统一购买流程 */
+            } else {
+                g_slot_cooldown[slot] = g_time + 30.0;
+                evolution_dismiss_mutation_offer(&g);
+                return;
+            }
         }
     }
     if (pick < 0) {
@@ -1180,6 +1211,8 @@ typedef struct {
     int insight_levels;
     int capacity_levels;
     int reserve_levels;
+    double capacity_full_time;
+    double reserve_full_time;
     int upgrade_buys;
 } EraSummary;
 
@@ -1202,6 +1235,8 @@ static EraSummary simulate_era(int steps)
     g_last_stage = -1;
     g_upgrade_buys = 0;
     g_crisis_logged = 0;
+    g_cap_full_time = -1.0;
+    g_reserve_full_time = -1.0;
     double atp_start = g.run.atp;
     for (int step = 1; step <= steps; ++step) {
         g_era = g.run.era;
@@ -1209,6 +1244,14 @@ static EraSummary simulate_era(int steps)
         simulate_step(FIXED_STEP_SECONDS);
         if (g_cap_reached_time < 0.0 && evolution_main_stage(&g) >= evolution_era_stage_cap(&g)) {
             g_cap_reached_time = g_time;
+        }
+        /* v16 F10：ATP 出口饱和的时间点。RUN_UPGRADE_MAX_LEVEL 是 -1（无硬顶），
+         * 所以“升级买满”没有意义，这里记录两条真实天花板：容量 20 级、储备 16 级。 */
+        if (g_cap_full_time < 0.0 && g.run.capacity_levels >= CAPACITY_MAX_LEVEL) {
+            g_cap_full_time = g_time;
+        }
+        if (g_reserve_full_time < 0.0 && g.run.reserve_levels >= RESERVE_MAX_LEVEL) {
+            g_reserve_full_time = g_time;
         }
     }
     /* v10 P0-26：纪元结束仍未通过的危机类型补一条 survived=0，
@@ -1255,6 +1298,10 @@ static EraSummary simulate_era(int steps)
     summary.dna = g.run.dna;
     summary.knowledge = g.run.knowledge;
     summary.sub_upgrades = g_sub_upgrade_buys;
+    summary.capacity_levels = g.run.capacity_levels;
+    summary.reserve_levels = g.run.reserve_levels;
+    summary.capacity_full_time = g_cap_full_time;
+    summary.reserve_full_time = g_reserve_full_time;
     summary.first_mutation = g_first_mutation;
     summary.atp_residual = atp_start + g_atp_income - g_atp_spent - g.run.atp;
     summary.atp_spent = g_atp_spent;
@@ -1380,6 +1427,8 @@ static void run_batch3(int count, int steps)
                era1.sub_upgrades, era2.sub_upgrades, era3.sub_upgrades,
                era1.first_mutation, era2.first_mutation, era3.first_mutation,
                era3.atp_mutations);
+        printf("SATFULL,%d,%d,%.1f,%d,%.1f\n", index, era3.capacity_levels,
+               era3.capacity_full_time, era3.reserve_levels, era3.reserve_full_time);
         printf("RAMPTIME,%d,1,%.1f,%d\n", index, era1.cap_reached_time,
                era1.first_speciation_instant);
         printf("RAMPTIME,%d,2,%.1f,%d\n", index, era2.cap_reached_time,
@@ -1636,6 +1685,8 @@ int main(int argc, char **argv)
             g_csv = true;
         } else if (strcmp(argv[i], "--explore") == 0) {
             g_explore = true;
+        } else if (strcmp(argv[i], "--lean") == 0) {
+            g_no_stat = true; /* 对照跑：不买属性卡的老策略 */
         } else if (strcmp(argv[i], "--batch") == 0 && i + 1 < argc) {
             batch_count = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--batch2") == 0 && i + 1 < argc) {

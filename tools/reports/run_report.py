@@ -23,10 +23,13 @@ def capture(args):
 
 
 def main():
+    # v16 F1 之后候选池从几十条涨到两百多条，探索模式（每步都可能开一次候选）
+    # 慢了约 9 倍；探索只用于“覆盖率”这一记录项，采样 300 局足够，其余批次仍 1000。
+    explore_n = os.environ.get("TOL_EXPLORE_N", "300")
     jobs = [
         ("batch2_scan_round15.csv", ["--batch2", "1000"]),
         ("batch3_scan_round15.csv", ["--batch3", "1000"]),
-        ("batch3_explore_round15.csv", ["--batch3", "1000", "--explore"]),
+        ("batch3_explore_round15.csv", ["--batch3", explore_n, "--explore"]),
     ]
     for name, args in jobs:
         text = capture([DEMO] + args)

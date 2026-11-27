@@ -4511,6 +4511,10 @@ static void draw_codex_detail(const GameState *game, const UIState *S)
  */
 
 #define TREE_MAX_RY 246.0f
+/* v16 F8：最内环下限与画框留白。pow(1.25) 在第 1 环只给 0.0545R ≈ 13px 的增量，
+ * 同环比内圈密，11 个节点会重新挤成一坨；给个 56px 的地板，最外环再按画框留 24px。 */
+#define TREE_MIN_RY 56.0f
+#define TREE_FRAME_MARGIN 24.0f
 /* v14 W12：同屏亲缘边上限。264 节点下“全连线”会糊成网，超出按离圆心升序保留。 */
 #define TREE_EDGE_CAP 120
 
@@ -4533,7 +4537,15 @@ static float tree_ring_ry(int s)
     if ((float)s > m) s = (int)m;
     /* v14：环比不等距——内圈密、外圈疏。264 个物种下同圈 26–27 个，
      * 线性等距会让最外两圈挤在一起；pow 1.25 把外圈推开、内圈收紧。 */
-    return 48.0f + (TREE_MAX_RY - 48.0f) * powf((float)s / m, 1.25f);
+    float r = 48.0f + (TREE_MAX_RY - 48.0f) * powf((float)s / m, 1.25f);
+    /* v16 F8：内环地板 + 外环画框留白，两头都不许贴边 */
+    if (r < TREE_MIN_RY) r = TREE_MIN_RY;
+    float frame = TREE_MAX_RY;
+    Rectangle panel = tree_panel_rect();
+    float limit = panel.height * 0.5f - TREE_FRAME_MARGIN;
+    if (limit < frame) frame = limit;
+    if (r > frame) r = frame;
+    return r;
 }
 
 /* 横向 2.2 倍：面板是 16:9，正圆会在左右各空出 200px；拉成椭圆既不挤，

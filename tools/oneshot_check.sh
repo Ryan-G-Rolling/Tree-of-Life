@@ -45,31 +45,12 @@ build/demo_oneshot.exe --batch3 1000 > build/batch3_oneshot.csv || {
     echo "FAIL: era3 批次"
     exit 1
 }
-python - <<'PY'
-import statistics
-rows = [l.strip().split(",") for l in open("build/batch3_oneshot.csv", encoding="utf-8")
-        if l.startswith("BATCH3,")]
-spc = sorted(int(r[8]) for r in rows)
-mut = sorted(int(r[7]) for r in rows)
-ticket = statistics.median(int(r[22]) for r in rows)
-stage = statistics.median(int(r[6]) for r in rows)
-
-
-def q(values, p):
-    return values[min(int(p * len(values)), len(values) - 1)]
-
-
-s_med, s_p10, s_p90 = statistics.median(spc), q(spc, 0.10), q(spc, 0.90)
-m_med, m_p90 = statistics.median(mut), q(mut, 0.90)
-print("era3 中位：阶段 %d · 突变 %d 张（ATP 门票 %d 张）· 单局物种 %d 个"
-      % (stage, m_med, ticket, s_med))
-print("物种分位：P10 %d / 中位 %d / P90 %d" % (s_p10, s_med, s_p90))
-print("突变分位：P90 %d 张" % m_p90)
-print("硬门槛 2（突变中位 12–14 / P90 ≤16）：%s"
-      % ("PASS" if 12 <= m_med <= 14 and m_p90 <= 16 else "FAIL"))
-print("硬门槛 3（物种中位 16–18 / P10 ≥14 / P90 ≤20）：%s"
-      % ("PASS" if 16 <= s_med <= 18 and s_p10 >= 14 and s_p90 <= 20 else "FAIL"))
-PY
+if python tools/reports/gate_check.py build/batch3_oneshot.csv; then
+    printf 'PASS: 6 硬门槛\n'
+else
+    printf 'FAIL: 6 硬门槛\n'
+    FAILED="$FAILED / 6 硬门槛"
+fi
 
 step "7 布局检查" $MAKE test-layout
 step "8 存档往返（新档写读 + 旧 v9 档拒绝）" build/test_gameplay.exe

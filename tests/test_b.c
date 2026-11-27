@@ -264,8 +264,10 @@ static void test_mutation_offer(void)
     CHECK(!game.run.active_species[0].mutations[chosen]);
     CHECK(game.run.mutation_offer.active);
 
-    /* 成功选择后扣费、记录图鉴并清空候选 */
+    /* 成功选择后扣费、记录图鉴并清空候选。
+     * v16 F1：阶段 0 起的突变也收 ATP 门票，这里把门票补足再买。 */
     game.run.dna = cost + 5.0;
+    game.run.atp += evolution_mutation_atp_cost(&game, chosen);
     CHECK(evolution_apply_mutation(&game, 0, chosen) == ACTION_OK);
     CHECK_NEAR(game.run.dna, 5.0, 0.001);
     CHECK(game.run.active_species[0].mutations[chosen]);
@@ -2009,10 +2011,11 @@ static void test_round15_content(void)
         CHECK(mutation_per_stage[stage] >= 10);
     }
 
-    /* 高阶突变收 ATP（N 秒产率；v10 起地板改为 3 秒产率，不再有 1e7 绝对值），低阶不收 */
+    /* 突变票（N 秒产率；地板 3 秒产率）。v16 F1：MUTATION_ATP_MIN_PHASE 8 → 0，
+     * 阶段 0 的突变同样收门票，不再有“低阶免费”的例外。 */
     GameState atp_game;
     reset_game(&atp_game, SPECIES_PROTOCELL);
-    CHECK_NEAR(evolution_mutation_atp_cost(&atp_game, MUTATION_CELL_MEMBRANE), 0.0, 1e-9);
+    CHECK(evolution_mutation_atp_cost(&atp_game, MUTATION_CELL_MEMBRANE) > 0.0);
     double atp_low = evolution_mutation_atp_cost(&atp_game, MUTATION_ION_DRIVE);
     double atp_high = evolution_mutation_atp_cost(&atp_game, MUTATION_ENTROPY_REVERSAL);
     CHECK(atp_low > 0.0);

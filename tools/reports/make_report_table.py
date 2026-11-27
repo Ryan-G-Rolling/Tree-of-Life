@@ -200,7 +200,8 @@ def meteor_min(type1, type2, type3):
 
 NON_BALANCE_KEYS = {
     "compile", "selftest_failures", "content_playable", "save_bytes", "coverage_run",
-    "species_median", "species_p10", "species_p90", "mutations_median", "mutations_p90",
+    "species_median", "species_p10", "species_p90", "mutations_struct_max",
+    "sink_ratio", "mutations_median", "mutations_p90",
     # 结构项：上界就是硬顶/零容忍，实测必然贴边，不算“目标贴实测”
     "reserve_max_era3", "low_tail", "ep3_gt_ep2",
     # v9 P2：台账口径项，不是平衡目标
@@ -288,6 +289,50 @@ def build_metrics():
     mut_p90 = mut_values[min(int(0.90 * len(mut_values)), len(mut_values) - 1)] if mut_values else 0
     atp_med = statistics.median(int(r[22]) for r in b3) if (b3 and len(b3[0]) > 22) else 0
 
+    # v16 G2：结构上限——只用「票价表 + 纪元 3 收入」，与 bot 策略无关。
+    # 单张票价 = 10 s × 1.12^i（data/balance.h 的 E1/E2），用纪元末产率折算成秒数预算
+    # T = 纪元 3 总收入 / 纪元末 ATP 产率；取满足 Σ 10·1.12^i ≤ T 的最大张数。
+    def ticket_seconds(k):
+        return 10.0 * (1.12 ** k - 1.0) / 0.12
+
+    def struct_max(income, rate):
+        if rate <= 0 or income <= 0:
+            return 0
+        budget = income / rate
+        k = 0
+        while ticket_seconds(k + 1) <= budget and k < 200:
+            k += 1
+        return k
+
+    rate3 = {}
+    for r in rows(B3, "INC,"):
+        if int(r[2]) == 3:
+            rate3[int(r[1])] = float(r[3])
+    spent3, bal3 = {}, {}
+    for r in rows(B3, "ATPSUM,"):
+        if int(r[2]) == 3:
+            spent3[int(r[1])] = float(r[3])
+            bal3[int(r[1])] = float(r[4])
+    struct_vals, sink_vals = [], []
+    for index, rate in rate3.items():
+        if index not in spent3:
+            continue
+        income = spent3[index] + bal3[index]
+        sink_vals.append(spent3[index] / income if income > 0 else 0.0)
+        struct_vals.append(struct_max(income, rate))
+    struct_vals.sort()
+    struct_med = statistics.median(struct_vals) if struct_vals else 0
+    struct_p10 = struct_vals[min(int(0.10 * len(struct_vals)), len(struct_vals) - 1)] if struct_vals else 0
+    struct_p90 = struct_vals[min(int(0.90 * len(struct_vals)), len(struct_vals) - 1)] if struct_vals else 0
+    sink_med = statistics.median(sink_vals) if sink_vals else 0.0
+
+    # v16 记录项：饱和度时间（覆盖率在 species_seeds 之后计算）
+    sat = rows(B3, "SATFULL,")
+    cap_full = [float(r[3]) for r in sat if float(r[3]) > 0]
+    res_full = [float(r[5]) for r in sat if float(r[5]) > 0]
+    cap_full_med = statistics.median(cap_full) if cap_full else 0.0
+    res_full_med = statistics.median(res_full) if res_full else 0.0
+
     species_seeds = set()
     for name in (B2, B3, B3X):
         for prefix in ("BSPEC1,", "BSPEC2,", "BSPEC3,"):
@@ -297,6 +342,7 @@ def build_metrics():
     for name in (B3, B3X):
         for r in rows(name, "COVER_M,"):
             mutation_counts[int(r[3])] = mutation_counts.get(int(r[3]), 0) + 1
+    coverage_species = len(species_seeds)
 
     try:
         proc = subprocess.run([os.path.join(HERE, "..", "..", "build", "test_b.exe"), "--json"],
@@ -380,6 +426,18 @@ def build_metrics():
                            "BSPEC 1/2/3"),
         "species_p10": (float(spc_p10), f"P10 {spc_p10:.0f} 个", "BSPEC 10 分位"),
         "species_p90": (float(spc_p90), f"P90 {spc_p90:.0f} 个", "BSPEC 90 分位"),
+        "mutations_struct_max": (
+            float(struct_med),
+            f"中位 {struct_med:.0f} 张（P10 {struct_p10:.0f} / P90 {struct_p90:.0f}）",
+            "票价表 + 纪元 3 收入/末端产率"),
+        # 记录项（不作门槛，只打印）：bot 实买 / 覆盖率 / 饱和时间
+        "bot_mutations": (float(mut_med), f"中位 {mut_med:.0f} 张（P90 {mut_p90:.0f}）", "BATCH3 第 8 列"),
+        "coverage_species": (float(coverage_species), f"{coverage_species}/264 物种", "BSPEC/COVER_S"),
+        "saturate_cap": (float(cap_full_med), f"容量满级 {cap_full_med:.0f} s", "SATFULL"),
+        "saturate_reserve": (float(res_full_med), f"储备满级 {res_full_med:.0f} s", "SATFULL"),
+        "sink_ratio": (float(sink_med),
+                       f"中位 {sink_med * 100:.1f}%（未花 {100 - sink_med * 100:.1f}%）",
+                       "ATPSUM 支出/收入"),
         "mutations_median": (float(mut_med),
                              f"中位 {mut_med:.0f} 张"
                              + (f"（其中 ATP 门票 {atp_med:.0f} 张）" if b3 and len(b3[0]) > 22 else ""),
@@ -499,6 +557,15 @@ def main():
 
     for row in acceptance:
         print(f"{row['status']:6s} {row['item']}: {row['actual']} (目标 {row['target']})")
+
+    # v16：记录项只打印，不作门槛
+    print("\n记录项（不作门槛）：")
+    for key, label in (("bot_mutations", "bot 实买突变（含属性卡）"),
+                       ("coverage_species", "1000 局物种覆盖"),
+                       ("saturate_cap", "容量满级时间"),
+                       ("saturate_reserve", "储备满级时间")):
+        if key in metrics:
+            print(f"  {label}: {metrics[key][1]}")
     if changed:
         print("\n注意：design.csv 与 design.lock 不一致，状态已降级为「目标已变更」。")
         print("确认新目标后运行：python build/make_report_table.py --lock")

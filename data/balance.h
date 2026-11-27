@@ -109,13 +109,14 @@
 #define SPECIATION_HARD_WALL_PHASE 13
 #endif
 #ifndef SPECIATION_HARD_WALL_MULT
-#define SPECIATION_HARD_WALL_MULT 1.12
+#define SPECIATION_HARD_WALL_MULT 1.00
 #endif
 /* v10 收口：阶段 12 单独加一道溢价。阶段 13 的门票已经由 hard wall 卡住，
  * 但 11→12 此前对所有人都是“按时到达”（100% 抵达），验收要求 55–80% 的抵达率，
- * 需要让阶段 12 本身成为一次真正的取舍：多付 1.35 倍门票，慢下来的局就停在 11。 */
+ * 需要让阶段 12 本身成为一次真正的取舍：多付 1.10 倍门票（v16 F6：1.25 → 1.10，
+ * 与 hard wall 1.12 → 1.00 一起放开阶段 12/13 的抵达），慢下来的局就停在 11。 */
 #ifndef SPECIATION_PHASE12_MULT
-#define SPECIATION_PHASE12_MULT 1.25
+#define SPECIATION_PHASE12_MULT 1.10
 #endif
 /* v14 E7：纪元 2 的分化门票 ×1.18。era2 阶段 10 抵达率实测 100%，
  * 需要一个唯一的阻力；纪元 1/3 不乘，避免把首分化与最终阶段一起推高。 */
@@ -390,7 +391,9 @@ static inline unsigned int era_crisis_pool(int era)
 /* v9 P0-20：储备减伤 0.94^n 在第 26 级触底（0.94^26 ≈ 0.199 < 0.20），
  * 第 27 级起是“花钱买 0 收益”。显式截断在 26 级，游戏内不再允许继续购买。 */
 #ifndef RESERVE_MAX_LEVEL
-#define RESERVE_MAX_LEVEL 26
+/* v16 F4：0.90^15 = 0.206 > 0.20、0.90^16 = 0.185 < 0.20，第 16 级即触底满级。
+ * 旧的 26 是死常量（购买逻辑触底即停），游戏内永远买不到第 17 级。 */
+#define RESERVE_MAX_LEVEL 16
 #endif
 
 /* 储备减伤系数：0.94^levels，最低 0.20。环境与产率两处共用同一实现。 */
@@ -562,7 +565,7 @@ static inline double reserve_damage_scale(int levels)
 #ifndef MUTATION_ATP_COST_MIN
 #define MUTATION_ATP_COST_MIN 10000000.0
 #endif
-#define MUTATION_ATP_MIN_PHASE 8
+#define MUTATION_ATP_MIN_PHASE 0
 /* 第十五轮：新增 140 条突变数量大，单条百分比按 0.35 计入产率，
  * 避免“买满后叠乘爆炸”把后期节奏再次压平。只作用于 ID ≥ 64 的新内容。 */
 #ifndef ROUND15_MUTATION_BONUS_SCALE
