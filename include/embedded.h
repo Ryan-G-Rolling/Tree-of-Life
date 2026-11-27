@@ -20,8 +20,15 @@ typedef enum {
     EMB_CLICK,        /* assets/sfx/click.wav    */
     EMB_BUY,          /* assets/sfx/buy.wav      */
     EMB_EVOLVE,       /* assets/sfx/evolve.wav   */
+    /* 19 张形态族插画，顺序必须与 tex.h 的 TexMorph 一致；
+     * 用 emb_morph_id() 把形态族号换算成资源 id。 */
+    EMB_TEXM_FIRST,
+    EMB_TEXM_LAST = EMB_TEXM_FIRST + 18,
     EMB_COUNT
 } EmbId;
+
+#define EMB_MORPH_COUNT 19
+#define emb_morph_id(morph) ((EmbId)(EMB_TEXM_FIRST + (int)(morph)))
 
 /* 取内嵌资源。取到则 *data 指向只读数据、*size 是字节数，返回 true。
  * 编译时没内嵌（普通构建）就返回 false。 */

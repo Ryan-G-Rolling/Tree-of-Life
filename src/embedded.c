@@ -26,6 +26,22 @@ extern const unsigned char _binary_buy_wav_end[];
 extern const unsigned char _binary_evolve_wav_start[];
 extern const unsigned char _binary_evolve_wav_end[];
 
+/* 19 张形态族插画：objcopy 符号取自 build/emb/ 下的短文件名。
+ * 列表顺序必须与 tex.h 的 TexMorph 完全对应。 */
+#define EMB_MORPH_LIST(X) \
+    X(coccus)    X(rod)       X(eukaryote) X(colony) X(tissue) \
+    X(symbio)    X(neural)    X(techno)    X(diatom) X(ciliate) \
+    X(amoeba)    X(filament)  X(spiral)    X(fish)   X(jelly) \
+    X(fern)      X(fungus)    X(coral)     X(hive)
+
+#define EMB_MORPH_DECL(name) \
+    extern const unsigned char _binary_morph_##name##_png_start[]; \
+    extern const unsigned char _binary_morph_##name##_png_end[];
+EMB_MORPH_LIST(EMB_MORPH_DECL)
+
+#define EMB_MORPH_START(name) _binary_morph_##name##_png_start,
+#define EMB_MORPH_END(name)   _binary_morph_##name##_png_end,
+
 static const unsigned char *const k_start[EMB_COUNT] = {
     _binary_font_ttf_start,
     _binary_nebula_png_start,
@@ -33,6 +49,7 @@ static const unsigned char *const k_start[EMB_COUNT] = {
     _binary_click_wav_start,
     _binary_buy_wav_start,
     _binary_evolve_wav_start,
+    EMB_MORPH_LIST(EMB_MORPH_START)
 };
 
 static const unsigned char *const k_end[EMB_COUNT] = {
@@ -42,6 +59,7 @@ static const unsigned char *const k_end[EMB_COUNT] = {
     _binary_click_wav_end,
     _binary_buy_wav_end,
     _binary_evolve_wav_end,
+    EMB_MORPH_LIST(EMB_MORPH_END)
 };
 
 #endif /* EMBED_ASSETS */

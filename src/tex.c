@@ -97,10 +97,17 @@ static void morph_ensure(int id)
     if (g_morph_tried[id]) return;
     g_morph_tried[id] = true;
 
-    const char *path = TextFormat("%s/%s", MORPH_DIR, k_morph_file[id]);
-    if (!FileExists(path)) return;
-
-    Image img = LoadImage(path);
+    /* 单文件版从内存解码；开发版仍从 assets/ 读盘，方便热替换。 */
+    Image img;
+    const unsigned char *emb = NULL;
+    int emb_size = 0;
+    if (emb_get(emb_morph_id(id), &emb, &emb_size)) {
+        img = LoadImageFromMemory(".png", emb, emb_size);
+    } else {
+        const char *path = TextFormat("%s/%s", MORPH_DIR, k_morph_file[id]);
+        if (!FileExists(path)) return;
+        img = LoadImage(path);
+    }
     if (!IsImageValid(img)) return;
 
     if (img.width > MORPH_MAX_TEX || img.height > MORPH_MAX_TEX) {

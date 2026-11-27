@@ -32,8 +32,14 @@ TARGET  := treeoflife.exe
 DIST_DIR   := dist
 DIST_EXE   := $(DIST_DIR)/TreeOfLife.exe
 EMB_DIR    := build/emb
+# 19 张形态族插画（第 18 版标本摄影风）也要进单文件 exe，
+# 否则脱离 assets/tex/morph/ 后生物会整片消失。
+MORPH_EMB_NAMES := coccus rod eukaryote colony tissue symbio neural techno \
+                   diatom ciliate amoeba filament spiral fish jelly fern fungus coral hive
+MORPH_EMB_OBJS  := $(addprefix $(EMB_DIR)/morph_,$(addsuffix .o,$(MORPH_EMB_NAMES)))
 EMB_OBJS   := $(EMB_DIR)/font.o $(EMB_DIR)/nebula.o $(EMB_DIR)/specimen.o \
-              $(EMB_DIR)/click.o $(EMB_DIR)/buy.o $(EMB_DIR)/evolve.o
+              $(EMB_DIR)/click.o $(EMB_DIR)/buy.o $(EMB_DIR)/evolve.o \
+              $(MORPH_EMB_OBJS)
 EMB_OBJCOPY = objcopy -I binary -O pe-x86-64 -B i386:x86-64
 DIST_LDFLAGS = -static -static-libgcc
 
@@ -178,6 +184,16 @@ $(EMB_DIR)/evolve.o: assets/sfx/evolve.wav
 	@$(call MKDIR_P,$(EMB_DIR))
 	$(EMB_COPY) $< $(EMB_DIR)/evolve.wav
 	$(call CDDIR,$(EMB_DIR)) && $(EMB_OBJCOPY) evolve.wav evolve.o
+
+# 形态族插画：objcopy 的符号从短文件名生成（morph_coccus.png →
+# _binary_morph_coccus_png_start），与 embedded.c 的声明一一对应。
+define MORPH_EMB_RULE
+$(EMB_DIR)/morph_$(1).o: assets/tex/morph/$(1).png
+	@$$(call MKDIR_P,$$(EMB_DIR))
+	$$(EMB_COPY) $$< $$(EMB_DIR)/morph_$(1).png
+	$$(call CDDIR,$$(EMB_DIR)) && $$(EMB_OBJCOPY) morph_$(1).png morph_$(1).o
+endef
+$(foreach m,$(MORPH_EMB_NAMES),$(eval $(call MORPH_EMB_RULE,$(m))))
 
 # embedded.c 编两份：普通版（无宏，全部退回文件路径）与内嵌版（-DEMBED_ASSETS）。
 build/emb_obj/embedded.o: src/embedded.c include/embedded.h

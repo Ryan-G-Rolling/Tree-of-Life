@@ -71,11 +71,11 @@ mingw32-make dist          # 单文件版：资源编进 exe → dist/TreeOfLife
 
 ### 单文件版（免安装、不用旁边的资源目录）
 
-`mingw32-make dist` 产出 `dist/TreeOfLife.exe`（约 22 MB）：用 `objcopy -I binary` 把
-`assets/` 里的等线字体、两张纹理、三个音效编成目标文件链进可执行文件，运行时由
+`mingw32-make dist` 产出 `dist/TreeOfLife.exe`（约 71 MB）：用 `objcopy -I binary` 把
+`assets/` 里的等线字体、两张纹理、三个音效、19 张形态族插画编成目标文件链进可执行文件，运行时由
 `src/embedded.c` 从内存解码（`LoadFontFromMemory` / `LoadImageFromMemory` /
 `LoadWaveFromMemory`），并用 `-static -static-libgcc` 静态链接 raylib 与 GCC 运行时。
-拷到任何目录双击即可开玩，只依赖系统自带的 user32/gdi32/opengl32 等 DLL。
+拷到任何目录双击即可开玩，只依赖系统自带的 user32/gdi32/opengl32 等 DLL。19 张标本图按 1536px 原尺寸进显存，4K 截图里与 UI 文字接近 1:1，空目录实测导出 25 张截图、生物贴图正常。
 
 普通构建（`mingw32-make`）不带 `-DEMBED_ASSETS`，`emb_get()` 恒返回 false，仍按
 `assets/` 相对路径读盘 —— 开发期换图、换字体立刻生效，不用重编内嵌数据。
