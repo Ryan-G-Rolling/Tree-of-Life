@@ -47,29 +47,7 @@ Step "5 era2 1000 种子" { build/demo_oneshot.exe --batch2 1000 | Out-Null }
 
 Step "6 era3 1000 种子（打印硬门槛 2/3 实测值）" {
     build/demo_oneshot.exe --batch3 1000 | Set-Content -Encoding UTF8 build/batch3_oneshot.csv
-    $stage = @(); $mut = @(); $spc = @(); $ticket = @()
-    foreach ($line in (Get-Content build/batch3_oneshot.csv | Where-Object { $_ -like "BATCH3,*" })) {
-        $f = $line.Split(",")
-        $stage += [int]$f[6]
-        $mut += [int]$f[7]
-        $spc += [int]$f[8]
-        $ticket += [int]$f[22]
-    }
-    function Median($values) {
-        $sorted = $values | Sort-Object
-        $mid = [int]($sorted.Count / 2)
-        if ($sorted.Count % 2 -eq 1) { return $sorted[$mid] }
-        return [int](($sorted[$mid - 1] + $sorted[$mid]) / 2)
-    }
-    $mut = Median $mut
-    $spc = Median $spc
-    $ticket = Median $ticket
-    $stage = Median $stage
-    Write-Host ("era3 中位：阶段 {0} · 突变 {1} 张（ATP 门票 {2} 张）· 单局物种 {3} 个" -f $stage, $mut, $ticket, $spc)
-    $gate2 = if ($mut -ge 10 -and $mut -le 16) { "PASS" } else { "FAIL" }
-    $gate3 = if ($spc -ge 16 -and $spc -le 20) { "PASS" } else { "FAIL" }
-    Write-Host ("硬门槛 2（10–16 张）：{0}（实测 {1} 张）" -f $gate2, $mut)
-    Write-Host ("硬门槛 3（16–20 个）：{0}（实测 {1} 个）" -f $gate3, $spc)
+    python tools/reports/gate_check.py build/batch3_oneshot.csv
 }
 
 Step "7 布局检查" { mingw32-make SHELL=cmd.exe test-layout }

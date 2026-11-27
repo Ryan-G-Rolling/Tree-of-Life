@@ -45,19 +45,12 @@ build/demo_oneshot.exe --batch3 1000 > build/batch3_oneshot.csv || {
     echo "FAIL: era3 批次"
     exit 1
 }
-python - <<'PY'
-import statistics
-rows = [l.strip().split(",") for l in open("build/batch3_oneshot.csv", encoding="utf-8")
-        if l.startswith("BATCH3,")]
-mut = statistics.median(int(r[7]) for r in rows)
-spc = statistics.median(int(r[8]) for r in rows)
-ticket = statistics.median(int(r[22]) for r in rows)
-stage = statistics.median(int(r[6]) for r in rows)
-print("era3 中位：阶段 %d · 突变 %d 张（其中 ATP 门票 %d 张）· 单局物种 %d 个"
-      % (stage, mut, ticket, spc))
-print("硬门槛 2（10–16 张）：%s（实测 %d 张）" % ("PASS" if 10 <= mut <= 16 else "FAIL", mut))
-print("硬门槛 3（16–20 个）：%s（实测 %d 个）" % ("PASS" if 16 <= spc <= 20 else "FAIL", spc))
-PY
+if python tools/reports/gate_check.py build/batch3_oneshot.csv; then
+    printf 'PASS: 6 硬门槛\n'
+else
+    printf 'FAIL: 6 硬门槛\n'
+    FAILED="$FAILED / 6 硬门槛"
+fi
 
 step "7 布局检查" $MAKE test-layout
 step "8 存档往返（新档写读 + 旧 v9 档拒绝）" build/test_gameplay.exe

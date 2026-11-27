@@ -1049,21 +1049,21 @@ static const SpeciesDef k_species[SPECIES_COUNT] = {
     { "真空花园", "在真空里培育自持的生态泡。",
       12, ECO_EXTREMOPHILE, 26.310, 13.155, 3.540, 2.225, 0.010, 9108, 8073000,
       { 0, 0, 0, 0, 1 } },
-    /* v14：阶段 13 · main · 熵光织网 */
+    /* v14：阶段 12 · main · 熵光织网 */
     { "熵光织网", "把熵梯度编成可收割的光网。",
-      13, ECO_PHOTOSYNTHETIC, 35.200, 17.600, 4.752, 2.816, 0.009, 11880, 10972500,
+      12, ECO_PHOTOSYNTHETIC, 35.200, 17.600, 4.752, 2.816, 0.009, 11880, 10972500,
       { 0, 0, 0, 0, 1 } },
-    /* v14：阶段 13 · branch · 终末拾荒者 */
+    /* v14：阶段 12 · branch · 终末拾荒者 */
     { "终末拾荒者", "在宇宙末段打捞残余结构。",
-      13, ECO_HETEROTROPHIC, 36.800, 18.400, 4.968, 2.944, 0.009, 12420, 9975000,
+      12, ECO_HETEROTROPHIC, 36.800, 18.400, 4.968, 2.944, 0.009, 12420, 9975000,
       { 0, 0, 0, 0, 1 } },
-    /* v14：阶段 13 · branch · 万有议会 */
+    /* v14：阶段 12 · branch · 万有议会 */
     { "万有议会", "所有可能的分支在此投票。",
-      13, ECO_MULTICELLULAR, 38.400, 19.200, 5.184, 3.072, 0.010, 12960, 9975000,
+      12, ECO_MULTICELLULAR, 38.400, 19.200, 5.184, 3.072, 0.010, 12960, 9975000,
       { 0, 0, 0, 0, 1 } },
-    /* v14：阶段 13 · deep · 虚空孢子 */
+    /* v14：阶段 12 · deep · 虚空孢子 */
     { "虚空孢子", "把自身压缩成可以穿越虚空的孢子。",
-      13, ECO_EXTREMOPHILE, 40.000, 20.000, 5.400, 3.200, 0.010, 13500, 11970000,
+      12, ECO_EXTREMOPHILE, 40.000, 20.000, 5.400, 3.200, 0.010, 13500, 11970000,
       { 0, 0, 0, 0, 1 } },
 };
 
@@ -2977,13 +2977,23 @@ int evolution_speciation_offers(const GameState *game, int species_slot, int *ou
         if (!dup) pool[count++] = branches[i];
     }
 
+    /* v19 D6：方向池「未发现优先」——覆盖率只有 45/264 的直接原因是方向卡总是
+     * 从同一批已发现物种里挑。排序键最前加“未发现”，其余（阶段、轮转位移）不动。 */
+    int ordered[SPECIES_COUNT];
+    int ordered_n = 0;
+    for (int pass = 0; pass < 2; ++pass) {
+        for (int i = 0; i < count; ++i) {
+            int id = pool[(game->run.era * 3 + parent + i) % count];
+            bool seen = game->run.discovered_species[id] || game->legacy.codex_species[id];
+            if ((pass == 0) == seen) {
+                ordered[ordered_n++] = id;
+            }
+        }
+    }
     int total = 0;
     out_ids[total++] = main_child;
-    if (count > 0) {
-        int shift = (parent + game->run.era * 3) % count;
-        for (int i = 0; i < count && total < max_ids && total < 4; ++i) {
-            out_ids[total++] = pool[(shift + i) % count];
-        }
+    for (int i = 0; i < ordered_n && total < max_ids && total < 4; ++i) {
+        out_ids[total++] = ordered[i];
     }
     return total;
 }
@@ -3059,6 +3069,40 @@ int species_children(int parent_id, int *out_ids, int max_ids)
      * 一旦主槽分化进去就永远停在这个阶段（60 分钟回归里“阶段 0 卡死”就是这样来的）。
      * 没有任何子物种的物种，允许沿主线再上一个阶段，避免把玩家关进死胡同。 */
     return count;
+}
+
+/* v14：支线离主链的层数（主线节点深度记 0）。用于把“方向卡”次数限制在
+ * 每局 4–7 次：两个支线槽位 × 4 层封顶，实测落在 5–6 次。
+ * 支线是额外收益，追平主线会让单局物种数失控（实测中位 21）。 */
+static bool species_on_main_chain(int species_id)
+{
+    int cur = SPECIES_PROTOCELL;
+    for (int i = 0; i < 32 && cur >= 0; ++i) {
+        if (cur == species_id) {
+            return true;
+        }
+        cur = species_main_child(cur);
+    }
+    return false;
+}
+
+int species_branch_depth(int species_id)
+{
+    int depth = 0;
+    int cur = species_id;
+    for (int guard = 0; guard < 16; ++guard) {
+        const SpeciationRule *rule = find_rule(cur);
+        if (!rule || rule->parents[0] < 0) {
+            break;
+        }
+        int parent = rule->parents[0];
+        ++depth;
+        if (species_on_main_chain(parent)) {
+            break;
+        }
+        cur = parent;
+    }
+    return depth;
 }
 
 bool species_has_parent(int target_species_id, int parent_id)

@@ -20,12 +20,16 @@ TARGET_SPECIES = 264
 TARGET_MUTATIONS = 282
 FIRST_V14 = 186
 LAST_ORIGINAL_MUTATION = 203
-PHASE_SPECIES = [11, 22, 26, 25, 26, 27, 24, 23, 12, 13, 12, 12, 16, 15]
-ADDED_PER_PHASE = {1: 10, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10, 7: 10, 12: 4, 13: 4}
+# v16 F7：阶段 13 的 4 个 v14 物种下移到阶段 12（13 抵达率仅 0.7%，挂在那儿等于没加）
+PHASE_SPECIES = [11, 22, 26, 25, 26, 27, 24, 23, 12, 13, 12, 12, 20, 11]
+ADDED_PER_PHASE = {1: 10, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10, 7: 10, 12: 8, 13: 0}
 QUOTA_10 = {'ECO_PHOTOSYNTHETIC': 3, 'ECO_CHEMOSYNTHETIC': 2,
             'ECO_HETEROTROPHIC': 3, 'ECO_MULTICELLULAR': 1, 'ECO_EXTREMOPHILE': 1}
 QUOTA_4 = {'ECO_PHOTOSYNTHETIC': 1, 'ECO_CHEMOSYNTHETIC': 0,
            'ECO_HETEROTROPHIC': 1, 'ECO_MULTICELLULAR': 1, 'ECO_EXTREMOPHILE': 1}
+# v16 F7：阶段 12 现在是两批 4 个合并，配额 = QUOTA_4 × 2
+QUOTA_8 = {'ECO_PHOTOSYNTHETIC': 2, 'ECO_CHEMOSYNTHETIC': 0,
+           'ECO_HETEROTROPHIC': 2, 'ECO_MULTICELLULAR': 2, 'ECO_EXTREMOPHILE': 2}
 BANNED_WORDS = ('最强', '唯一', '必选', '无敌', '完美', '碾压')
 
 failures = []
@@ -167,6 +171,8 @@ for p, expected in enumerate(PHASE_SPECIES):
 
 # 3. 生态位配额（只看 v14 新增）
 for p, added in ADDED_PER_PHASE.items():
+    if added == 0:
+        continue
     group = [s for s in species if s['id'] >= FIRST_V14 and s['phase'] == p]
     if len(group) != added:
         fail('3 生态位', f'阶段 {p} 新增 {len(group)} != {added}')
@@ -174,7 +180,7 @@ for p, added in ADDED_PER_PHASE.items():
     counts = {}
     for s in group:
         counts[s['eco']] = counts.get(s['eco'], 0) + 1
-    quota = QUOTA_10 if added == 10 else QUOTA_4
+    quota = QUOTA_10 if added == 10 else (QUOTA_8 if added == 8 else QUOTA_4)
     for eco, want in quota.items():
         if counts.get(eco, 0) != want:
             fail('3 生态位', f'阶段 {p} {eco} = {counts.get(eco, 0)} != {want}')
@@ -204,20 +210,26 @@ for s in species:
     for p in parents:
         if p < 0 or p >= TARGET_SPECIES:
             fail('5 分化规则', f'{s["name"]} 父节点 {p} 不存在')
-        elif species[p]['phase'] >= s['phase']:
-            fail('5 分化规则', f'{s["name"]} 父节点阶段 {species[p]["phase"]} >= 自身 {s["phase"]}')
+        elif species[p]['phase'] > s['phase']:
+            # v16 F7：方向卡本来就是「同阶段侧支」，父与子同阶段合法；
+            # 只有父节点比子节点更深才是坏数据（目标永远到不了）。
+            fail('5 分化规则', f'{s["name"]} 父节点阶段 {species[p]["phase"]} > 自身 {s["phase"]}')
 
 # 6. 3/5/2 角色配额（按注释解析）
 roles = {}
 for m in re.finditer(r'/\* v14：阶段 (\d+) · (main|branch|deep) · ([^*]+) \*/', text_sp):
     roles[m.group(3).strip()] = (int(m.group(1)), m.group(2))
 for p, added in ADDED_PER_PHASE.items():
+    if added == 0:
+        continue
     group = [s for s in species if s['id'] >= FIRST_V14 and s['phase'] == p]
     seen = {}
     for s in group:
         role = roles.get(s['name'], (None, None))[1]
         seen[role] = seen.get(role, 0) + 1
-    want = {'main': 3, 'branch': 5, 'deep': 2} if added == 10 else {'main': 1, 'branch': 2, 'deep': 1}
+    want = ({'main': 3, 'branch': 5, 'deep': 2} if added == 10 else
+            {'main': 2, 'branch': 4, 'deep': 2} if added == 8 else
+            {'main': 1, 'branch': 2, 'deep': 1})
     for role, count in want.items():
         if seen.get(role, 0) != count:
             fail('6 角色配额', f'阶段 {p} {role} = {seen.get(role, 0)} != {count}')

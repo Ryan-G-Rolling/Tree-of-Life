@@ -2284,15 +2284,13 @@ static void draw_env_banner(const GameState *game)
                         crisis ? COL_BAD : COL_ACCENT, tbuf);
 
     /* 常态期不再一律叫“常态海洋”：上岸之后横幅继续写海洋会直接推翻展台的画面。
+     * 名称只写「常态环境」，生境名交给展台的 chip —— 同屏出现两次“城市与技术圈”太啰嗦。
      * 危机 / 丰饶事件仍用规则层的名字与说明。 */
     int hab = current_habitat(game);
     const char *ename = ua_environment_name(env);
     const char *edesc = NULL;
-    char ebuf[64];
-    if (!in_event && env == ENV_NORMAL_OCEAN &&
-        hab != HABITAT_SUNLIT_SEA && hab != HABITAT_REEF) {
-        snprintf(ebuf, sizeof(ebuf), "常态 · %s", habitat_name(hab));
-        ename = ebuf;
+    if (!in_event && env == ENV_NORMAL_OCEAN) {
+        ename = "常态环境";
         edesc = habitat_note(hab);
     }
     ui_text_strong(ename, r.x + 64.0f, r.y + 6.0f, F_LABEL, COL_TEXT);
@@ -4860,6 +4858,10 @@ static void draw_codex_detail(const GameState *game, const UIState *S)
  */
 
 #define TREE_MAX_RY 246.0f
+/* v16 F8：最内环下限与画框留白。pow(1.25) 在第 1 环只给 0.0545R ≈ 13px 的增量，
+ * 同环比内圈密，11 个节点会重新挤成一坨；给个 56px 的地板，最外环再按画框留 24px。 */
+#define TREE_MIN_RY 56.0f
+#define TREE_FRAME_MARGIN 24.0f
 /* v14 W12：同屏亲缘边上限。264 节点下“全连线”会糊成网，超出按离圆心升序保留。 */
 #define TREE_EDGE_CAP 120
 
@@ -4882,7 +4884,15 @@ static float tree_ring_ry(int s)
     if ((float)s > m) s = (int)m;
     /* v14：环比不等距——内圈密、外圈疏。264 个物种下同圈 26–27 个，
      * 线性等距会让最外两圈挤在一起；pow 1.25 把外圈推开、内圈收紧。 */
-    return 48.0f + (TREE_MAX_RY - 48.0f) * powf((float)s / m, 1.25f);
+    float r = 48.0f + (TREE_MAX_RY - 48.0f) * powf((float)s / m, 1.25f);
+    /* v16 F8：内环地板 + 外环画框留白，两头都不许贴边 */
+    if (r < TREE_MIN_RY) r = TREE_MIN_RY;
+    float frame = TREE_MAX_RY;
+    Rectangle panel = tree_panel_rect();
+    float limit = panel.height * 0.5f - TREE_FRAME_MARGIN;
+    if (limit < frame) frame = limit;
+    if (r > frame) r = frame;
+    return r;
 }
 
 /* 横向 2.2 倍：面板是 16:9，正圆会在左右各空出 200px；拉成椭圆既不挤，

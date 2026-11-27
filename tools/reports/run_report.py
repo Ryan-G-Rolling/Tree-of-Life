@@ -23,10 +23,13 @@ def capture(args):
 
 
 def main():
+    # v19 D9：候选池按 (物种, 已购前置位掩码) 缓存后，探索模式恢复到 v16 之前的量级，
+    # 覆盖率回到 1000 局口径（此前为了绕开 9 倍耗时降到 300，两套口径不可比）。
+    explore_n = os.environ.get("TOL_EXPLORE_N", "1000")
     jobs = [
         ("batch2_scan_round15.csv", ["--batch2", "1000"]),
         ("batch3_scan_round15.csv", ["--batch3", "1000"]),
-        ("batch3_explore_round15.csv", ["--batch3", "1000", "--explore"]),
+        ("batch3_explore_round15.csv", ["--batch3", explore_n, "--explore"]),
     ]
     for name, args in jobs:
         text = capture([DEMO] + args)

@@ -109,13 +109,14 @@
 #define SPECIATION_HARD_WALL_PHASE 13
 #endif
 #ifndef SPECIATION_HARD_WALL_MULT
-#define SPECIATION_HARD_WALL_MULT 1.12
+#define SPECIATION_HARD_WALL_MULT 1.00
 #endif
 /* v10 收口：阶段 12 单独加一道溢价。阶段 13 的门票已经由 hard wall 卡住，
  * 但 11→12 此前对所有人都是“按时到达”（100% 抵达），验收要求 55–80% 的抵达率，
- * 需要让阶段 12 本身成为一次真正的取舍：多付 1.35 倍门票，慢下来的局就停在 11。 */
+ * 需要让阶段 12 本身成为一次真正的取舍：多付 1.10 倍门票（v16 F6：1.25 → 1.10，
+ * 与 hard wall 1.12 → 1.00 一起放开阶段 12/13 的抵达），慢下来的局就停在 11。 */
 #ifndef SPECIATION_PHASE12_MULT
-#define SPECIATION_PHASE12_MULT 1.25
+#define SPECIATION_PHASE12_MULT 1.18
 #endif
 /* v14 E7：纪元 2 的分化门票 ×1.18。era2 阶段 10 抵达率实测 100%，
  * 需要一个唯一的阻力；纪元 1/3 不乘，避免把首分化与最终阶段一起推高。 */
@@ -129,6 +130,12 @@
 #define SPECIATION_FLOOR_SCALE 1.4
 #endif
 /* v10 P1-11：阶段 6 起主谱系分化提供“2 选 1”——主链节点或同阶段支线物种 */
+/* v14：支线最多离主链 4 层（1 个支线槽位最多 4 次分化）。
+ * 两个支线槽位合计 4–7 次，对应方案「每局 16–20 物种 = 12–13 主链 + 4–7 支线」。 */
+#ifndef BRANCH_MAX_DEPTH
+#define BRANCH_MAX_DEPTH 2
+#endif
+
 #ifndef BRANCH_SPECIATION_MIN_PHASE
 #define BRANCH_SPECIATION_MIN_PHASE 6
 #endif
@@ -362,8 +369,12 @@ static inline unsigned int era_crisis_pool(int era)
 #define CAPACITY_BIOMASS_FLOOR 10.0
 #endif
 #define CAPACITY_GAIN_PER_LEVEL 0.05
-/* v10 P0-23：容量倍率保持线性（1 + 0.15×L），但 L 封顶 20（实测上限曾到 42） */
-#define CAPACITY_MAX_LEVEL 20
+/* v10 P0-23：容量倍率保持线性（1 + 0.05×L），L 封顶 26（v19 D4；实测旧上限曾到 42） */
+#define CAPACITY_MAX_LEVEL 26
+/* v19 D4：容量第 L 级的 ATP 半边 × CAPACITY_PRICE_GROWTH^L（校准区间 1.04–1.08）。 */
+#ifndef CAPACITY_PRICE_GROWTH
+#define CAPACITY_PRICE_GROWTH 1.06
+#endif
 /* v10 P0-22：储备改时间本位——每级 120 s 被动 ATP 产率（≈30 s 墙钟，含点击收入），
  * 每纪元 5–7 级，到 26 级要跨 3–4 个纪元；RESERVE_COST_ATP 保留为地板。 */
 #define RESERVE_COST_ATP 1000.0
@@ -384,7 +395,13 @@ static inline unsigned int era_crisis_pool(int era)
 /* v9 P0-20：储备减伤 0.94^n 在第 26 级触底（0.94^26 ≈ 0.199 < 0.20），
  * 第 27 级起是“花钱买 0 收益”。显式截断在 26 级，游戏内不再允许继续购买。 */
 #ifndef RESERVE_MAX_LEVEL
-#define RESERVE_MAX_LEVEL 26
+/* v16 F4：0.90^15 = 0.206 > 0.20、0.90^16 = 0.185 < 0.20，第 16 级即触底满级。
+ * 旧的 26 是死常量（购买逻辑触底即停），游戏内永远买不到第 17 级。 */
+#define RESERVE_MAX_LEVEL 16
+/* v19 D3：储备第 L 级的价格 = 45 s 产率 × RESERVE_PRICE_GROWTH^L（校准区间 1.06–1.12）。 */
+#ifndef RESERVE_PRICE_GROWTH
+#define RESERVE_PRICE_GROWTH 1.09
+#endif
 #endif
 
 /* 储备减伤系数：0.94^levels，最低 0.20。环境与产率两处共用同一实现。 */
@@ -556,7 +573,7 @@ static inline double reserve_damage_scale(int levels)
 #ifndef MUTATION_ATP_COST_MIN
 #define MUTATION_ATP_COST_MIN 10000000.0
 #endif
-#define MUTATION_ATP_MIN_PHASE 8
+#define MUTATION_ATP_MIN_PHASE 0
 /* 第十五轮：新增 140 条突变数量大，单条百分比按 0.35 计入产率，
  * 避免“买满后叠乘爆炸”把后期节奏再次压平。只作用于 ID ≥ 64 的新内容。 */
 #ifndef ROUND15_MUTATION_BONUS_SCALE

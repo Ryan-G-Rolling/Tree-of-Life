@@ -200,6 +200,8 @@ def meteor_min(type1, type2, type3):
 
 NON_BALANCE_KEYS = {
     "compile", "selftest_failures", "content_playable", "save_bytes", "coverage_run",
+    "species_median", "species_p10", "species_p90", "gate_mutations",
+    "sink_ratio", "sink_late_ratio", "mutations_median", "mutations_p90",
     # 结构项：上界就是硬顶/零容忍，实测必然贴边，不算“目标贴实测”
     "reserve_max_era3", "low_tail", "ep3_gt_ep2",
     # v9 P2：台账口径项，不是平衡目标
@@ -272,12 +274,58 @@ def build_metrics():
 
     # v9 P1-11：覆盖口径统一到 BSPEC。COVER_S 只在探索模式展开，与 BSPEC 不一致，
     # 两个口径混用会让“单局物种数”既不可复现也不可比较。
+    # v14：单局物种数只看纪元 3 的那一局（BSPEC3）。此前把 B2 的纪元 1/2 与 B3
+    # 按种子下标并在一起，同一个下标其实是两局不同的 run，取并集会系统性抬高物种数。
     seen = {}
-    for name in (B2, B3):
-        for prefix in ("BSPEC1,", "BSPEC2,", "BSPEC3,"):
-            for r in rows(name, prefix):
-                seen.setdefault(int(r[1]), set()).add(int(r[2]))
-    run_species = statistics.median(len(v) for v in seen.values()) if seen else 0
+    for r in rows(B3, "BSPEC3,"):
+        seen.setdefault(int(r[1]), set()).add(int(r[2]))
+    sp_counts = sorted(len(v) for v in seen.values())
+    run_species = statistics.median(sp_counts) if sp_counts else 0
+    spc_med = run_species
+    spc_p10 = sp_counts[min(int(0.10 * len(sp_counts)), len(sp_counts) - 1)] if sp_counts else 0
+    spc_p90 = sp_counts[min(int(0.90 * len(sp_counts)), len(sp_counts) - 1)] if sp_counts else 0
+    mut_values = sorted(int(r[7]) for r in b3)
+    mut_med = statistics.median(mut_values) if mut_values else 0
+    mut_p90 = mut_values[min(int(0.90 * len(mut_values)), len(mut_values) - 1)] if mut_values else 0
+    atp_med = statistics.median(int(r[22]) for r in b3) if (b3 and len(b3[0]) > 22) else 0
+
+    # v19 G2：门票卡口径（demo_b 的 GATEMUT 行），与 1.12^k 的定价对象一致。
+    gate_vals = sorted(int(r[2]) for r in rows(B3, "GATEMUT,"))
+    gate_med = statistics.median(gate_vals) if gate_vals else 0
+    gate_p10 = gate_vals[min(int(0.10 * len(gate_vals)), len(gate_vals) - 1)] if gate_vals else 0
+    gate_p90 = gate_vals[min(int(0.90 * len(gate_vals)), len(gate_vals) - 1)] if gate_vals else 0
+
+    # v19 G3：三段窗口支出率（前 20% / 中 60% / 后 20%），判据是「末段 ≥ 0.8× 中段」。
+    win_early, win_mid, win_late = [], [], []
+    for r in rows(B3, "SINKWIN,"):
+        i0, s0, i1, s1, i2, s2 = (float(x) for x in r[2:8])
+        if i0 > 0:
+            win_early.append(s0 / i0)
+        if i1 > 0:
+            win_mid.append(s1 / i1)
+        if i2 > 0:
+            win_late.append(s2 / i2)
+    mid_rate = statistics.median(win_mid) if win_mid else 0.0
+    late_rate = statistics.median(win_late) if win_late else 0.0
+    late_ratio = late_rate / mid_rate if mid_rate > 0 else 0.0
+
+    # 记录项：全局支出/收入（被前期抬高，只记录，不作门槛）
+    spent3 = {int(r[1]): float(r[3]) for r in rows(B3, "ATPSUM,") if int(r[2]) == 3}
+    bal3 = {int(r[1]): float(r[4]) for r in rows(B3, "ATPSUM,") if int(r[2]) == 3}
+    sink_vals = [spent3[i] / (spent3[i] + bal3[i]) for i in spent3 if spent3[i] + bal3[i] > 0]
+    sink_med = statistics.median(sink_vals) if sink_vals else 0.0
+
+    # v16 记录项：饱和度时间（覆盖率在 species_seeds 之后计算）
+    # SATFULL,index,cap_level,cap_hit,cap_time,res_level,res_time（v19 D10 起多一列触顶标志）
+    sat = rows(B3, "SATFULL,")
+    cap_levels = [int(float(r[2])) for r in sat]
+    cap_hits = [int(r[3]) for r in sat]
+    cap_full = [float(r[4]) for r in sat if float(r[4]) > 0]
+    res_full = [float(r[6]) for r in sat if float(r[6]) > 0]
+    cap_full_med = statistics.median(cap_full) if cap_full else 0.0
+    res_full_med = statistics.median(res_full) if res_full else 0.0
+    cap_level_med = statistics.median(cap_levels) if cap_levels else 0
+    cap_hit_pct = 100.0 * sum(cap_hits) / len(cap_hits) if cap_hits else 0.0
 
     species_seeds = set()
     for name in (B2, B3, B3X):
@@ -288,6 +336,7 @@ def build_metrics():
     for name in (B3, B3X):
         for r in rows(name, "COVER_M,"):
             mutation_counts[int(r[3])] = mutation_counts.get(int(r[3]), 0) + 1
+    coverage_species = len(species_seeds)
 
     try:
         proc = subprocess.run([os.path.join(HERE, "..", "..", "build", "test_b.exe"), "--json"],
@@ -365,6 +414,40 @@ def build_metrics():
         "content_playable": (1.0, "264 物种（含原始细胞）、282 突变", "test_every_content_playable"),
         "save_bytes": (float(self_test.get("game_state_bytes", 0)),
                        f"v10，{self_test.get('game_state_bytes', 0)} B", "test_b --json"),
+        # v14 分位门槛（硬门槛 2/3）：不用“每局都在区间内”，改用中位与 10/90 分位，
+        # 因为单局物种数与突变张数在内容变多后天然有分布，卡死区间等于逼着调参。
+        "species_median": (float(spc_med), f"中位 {spc_med:.0f} 个（P10 {spc_p10:.0f} / P90 {spc_p90:.0f}）",
+                           "BSPEC 1/2/3"),
+        "species_p10": (float(spc_p10), f"P10 {spc_p10:.0f} 个", "BSPEC 10 分位"),
+        "species_p90": (float(spc_p90), f"P90 {spc_p90:.0f} 个", "BSPEC 90 分位"),
+        "gate_mutations": (float(gate_med),
+                           f"中位 {gate_med:.0f} 张（P10 {gate_p10:.0f} / P90 {gate_p90:.0f}）",
+                           "GATEMUT"),
+        # 记录项（不作门槛，只打印）：bot 实买 / 覆盖率 / 饱和时间
+        "bot_mutations": (float(mut_med), f"中位 {mut_med:.0f} 张（P90 {mut_p90:.0f}）", "BATCH3 第 8 列"),
+        "coverage_species": (float(coverage_species), f"{coverage_species}/264 物种", "BSPEC/COVER_S"),
+        "saturate_cap": (float(cap_level_med),
+                         f"结束时 {cap_level_med:.0f} 级，触顶 26 级占 {cap_hit_pct:.1f}%"
+                         + (f"，满级时间 {cap_full_med:.0f} s" if cap_full else ""),
+                         "SATFULL"),
+        "saturate_reserve": (float(res_full_med),
+                             f"满级时间 {res_full_med:.0f} s（{res_full_med / 600:.2f}×T）",
+                             "SATFULL"),
+        "win_early": (float(statistics.median(win_early) if win_early else 0.0),
+                      f"{statistics.median(win_early) if win_early else 0:.3f}", "SINKWIN 前 20%"),
+        "win_mid": (float(mid_rate), f"{mid_rate:.3f}", "SINKWIN 中 60%"),
+        "win_late": (float(late_rate), f"{late_rate:.3f}", "SINKWIN 后 20%"),
+        "sink_late_ratio": (float(late_ratio),
+                            f"{late_rate:.3f} / {mid_rate:.3f} = {late_ratio:.3f}",
+                            "SINKWIN 三段"),
+        "sink_ratio": (float(sink_med),
+                       f"中位 {sink_med * 100:.1f}%（未花 {100 - sink_med * 100:.1f}%）",
+                       "ATPSUM 支出/收入（记录）"),
+        "mutations_median": (float(mut_med),
+                             f"中位 {mut_med:.0f} 张"
+                             + (f"（其中 ATP 门票 {atp_med:.0f} 张）" if b3 and len(b3[0]) > 22 else ""),
+                             "BATCH3 第 8 列"),
+        "mutations_p90": (float(mut_p90), f"P90 {mut_p90:.0f} 张", "BATCH3 90 分位"),
         "coverage_run": (float(run_species),
                          f"单局中位 {run_species} 个；随机策略覆盖 "
                          f"{len([i for i in range(1, 264) if i in species_seeds])}/263 物种、"
@@ -479,6 +562,18 @@ def main():
 
     for row in acceptance:
         print(f"{row['status']:6s} {row['item']}: {row['actual']} (目标 {row['target']})")
+
+    # v16：记录项只打印，不作门槛
+    print("\n记录项（不作门槛）：")
+    if "win_early" in metrics:
+        print(f"  三段支出率：前 20% {metrics['win_early'][1]} / 中 60% {metrics['win_mid'][1]} / "
+              f"后 20% {metrics['win_late'][1]}（后段参考线 0.40）")
+    for key, label in (("bot_mutations", "bot 实买突变（含属性卡）"),
+                       ("coverage_species", "1000 局物种覆盖"),
+                       ("saturate_cap", "容量级数 / 满级时间"),
+                       ("saturate_reserve", "储备满级时间")):
+        if key in metrics:
+            print(f"  {label}: {metrics[key][1]}")
     if changed:
         print("\n注意：design.csv 与 design.lock 不一致，状态已降级为「目标已变更」。")
         print("确认新目标后运行：python build/make_report_table.py --lock")

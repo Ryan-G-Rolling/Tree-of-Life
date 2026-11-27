@@ -15,8 +15,8 @@ stage2,阶段 p50 · 纪元 2,9,11,阶段,batch2 第11列,封顶 10
 stage3,阶段 p50 · 纪元 3,11,13,阶段,batch3 第7列,封顶 13
 stage8_arrive_era1,阶段 8 抵达率 · 纪元 1,70,100,%,batch2 第5列 ≥8,v10 P0-24 设计目标 70–95（暂放宽上限以吸收 60→1000 种子波动）
 stage10_arrive_era2,阶段 10 抵达率 · 纪元 2,70,100,%,batch2 第11列 ≥10,v10 P0-24 设计目标 75–95
-stage12_arrive,阶段 12 抵达率 · 纪元 3,55,80,%,batch3 第7列 ≥12,v10 P0-24
-stage13_arrive,阶段 13 抵达率 · 纪元 3,8,18,%,batch3 第7列 ≥13,v10 P0-24：阶段 13 门票 ×1.55 的 hard wall
+stage12_arrive,阶段 12 抵达率 · 纪元 3,55,80,%,batch3 第7列 ≥12,v19 G5（D1/D2 解耦后重定）
+stage13_arrive,阶段 13 抵达率 · 记录,0,100,%,batch3 第7列 ≥13,v19：阶段 13 仍是彩蛋区，本轮不作门槛
 cap_time_p50,封顶时刻 p50,460,580,s,RAMPTIME,600 s 制；v10 目标 480–560，实际受门票与内容门槛影响
 crisis_type_era1,逐类型危机下限（纪元 1）,40,95,%,CRISIS era1,P0-26：6 选 4 后单类波动变大
 crisis_type_era1_max,逐类型危机上限（纪元 1）,40,95,%,CRISIS era1,双边：不得出现“必过”类型
@@ -36,7 +36,12 @@ reserve_max_era3,储备最大等级 · 纪元 3,0,26,级,SINKSUM era3,P0-25：26
 reserve26_share,储备 26 级占比,0,40,%,SINKSUM,P0-25 验收：≤40%（v9 为 100%）
 content_playable,构造态可玩,1,1,bool,test_every_content_playable,264 物种（含原始细胞）、282 突变
 save_bytes,存档大小,0,20000,B,test_b --json,v9
-coverage_run,单局物种覆盖（BSPEC 口径）,12,18,物种,BSPEC1/2/3,P1-11：主链 12 + 支线
+species_median,单局物种数 · 中位,16,18,物种,BSPEC 中位,v14 机制：12–13 主链 + 4–7 支线
+species_p10,单局物种数 · P10,14,200,物种,BSPEC 10 分位,下限 ≥14（尾部不许塌）
+species_p90,单局物种数 · P90,0,20,物种,BSPEC 90 分位,上限 ≤20（尾部不许爆）
+gate_mutations,门票卡张数 · 中位,12,16,张,GATEMUT,v19 G2：1.12^k 的 k 只数门票卡；总张数只记录
+sink_late_ratio,末期支出率 / 中段支出率,0.8,10.0,倍,SINKWIN 三段,v19 G3：末 20% 不比中段 60% 更花不动
+sink_ratio,ATP 出口 · 全局支出/收入,0,1.0,比例,ATPSUM + INC,v19：全局比例被前期抬高，只记录
 buff_collected_era1,随机因子收集 · 纪元 1,6,10,个,BUFFSUM era1,45–90 s 一个
 buff_uptime_era1,增益覆盖时长 · 纪元 1,90,260,s,BUFFSUM era1,含点击与产率增益
 buff_uptime_era3,增益覆盖时长 · 纪元 3,90,260,s,BUFFSUM era3,
