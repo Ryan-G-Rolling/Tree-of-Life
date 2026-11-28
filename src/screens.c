@@ -4526,9 +4526,53 @@ static void trim_row_tail(char *s)
     }
 }
 
+/* UTF-8 起始字节 + 长度 → 码点。只用于判断能否落在行首。 */
+static unsigned int utf8_cp(const char *s, int bytes)
+{
+    const unsigned char *u = (const unsigned char *)s;
+    switch (bytes) {
+    case 1: return u[0];
+    case 2: return ((unsigned int)(u[0] & 0x1Fu) << 6) | (u[1] & 0x3Fu);
+    case 3: return ((unsigned int)(u[0] & 0x0Fu) << 12) | ((unsigned int)(u[1] & 0x3Fu) << 6) |
+                   (u[2] & 0x3Fu);
+    default: return ((unsigned int)(u[0] & 0x07u) << 18) | ((unsigned int)(u[1] & 0x3Fu) << 12) |
+                    ((unsigned int)(u[2] & 0x3Fu) << 6) | (u[3] & 0x3Fu);
+    }
+}
+
+/* 行首禁则（避头尾）：这些标点不能出现在一行的开头，中文正文里尤其明显。
+ * 破折号与省略号同属禁则：贴在行首读起来像上一句还没说完。 */
+static bool no_line_start(unsigned int cp)
+{
+    switch (cp) {
+    case ',': case '.': case ';': case ':': case '?': case '!':
+    case ')': case ']': case '}': case '%':
+    case 0x00B7: /* · */  case 0x2014: /* — */
+    case 0x2019: /* ’ */  case 0x201D: /* ” */
+    case 0x2026: /* … */  case 0x3001: /* 、 */  case 0x3002: /* 。 */
+    case 0x300D: /* 」 */  case 0x300F: /* 』 */  case 0x3011: /* 】 */
+    case 0xFF01: /* ！ */  case 0xFF09: /* ） */  case 0xFF0C: /* ， */
+    case 0xFF1A: /* ： */  case 0xFF1B: /* ； */  case 0xFF1F: /* ？ */
+        return true;
+    default:
+        return false;
+    }
+}
+
+/* 给布局测试的入口：拆出码点再判定，测试里不必装字形 */
+bool screens_line_start_forbidden(const char *utf8_char)
+{
+    if (!utf8_char || !utf8_char[0]) return false;
+    int bytes = 1;
+    while (utf8_char[bytes] && ((unsigned char)utf8_char[bytes] & 0xC0u) == 0x80u) ++bytes;
+    return no_line_start(utf8_cp(utf8_char, bytes));
+}
+
 /* 按实测像素宽度折行（中文逐字宽、数字/百分号更窄，不能按字数估）。
  * 行数用尽时在末行补省略号，必要时从尾部退到 UTF-8 边界再补 —— 卡片是硬边框，
- * 宁可少读两个效果项，也不能让字冲出框外。返回实际行数。 */
+ * 宁可少读两个效果项，也不能让字冲出框外。返回实际行数。
+ * 断行处若正好是「，。、）」这类标点，把本行最后一个字一起带到下一行：
+ * 否则科普正文会出现一行以「，」开头的排版错误。 */
 static int wrap_text_limited(const char *text, float width, float size, int max_rows,
                              char rows[][192])
 {
@@ -4546,9 +4590,31 @@ static int wrap_text_limited(const char *text, float width, float size, int max_
         trial[used + bytes] = '\0';
         if (used > 0 && ui_text_w(trial, size) > width) {
             if (row + 1 >= max_rows) break;   /* 行数用尽：剩下的不要了 */
+            /* 避头尾：下一个字符是标点就别让它顶到行首。把本行末字带下去，
+             * 只有本行仅剩一个字时才放弃（那时怎么断都不好看）。 */
+            char carry[8] = { 0 };
+            int carry_len = 0;
+            if (no_line_start(utf8_cp(p, bytes)) && used > 1) {
+                int k = used - 1;
+                while (k > 0 && ((unsigned char)rows[row][k] & 0xC0u) == 0x80u) --k;
+                if (k > 0) {
+                    carry_len = used - k;
+                    if (carry_len < (int)sizeof(carry)) {
+                        memcpy(carry, rows[row] + k, (size_t)carry_len);
+                        rows[row][k] = '\0';
+                    } else {
+                        carry_len = 0;
+                    }
+                }
+            }
             trim_row_tail(rows[row]);
             ++row;
             used = 0;
+            if (carry_len > 0) {
+                memcpy(rows[row], carry, (size_t)carry_len);
+                used = carry_len;
+                rows[row][used] = '\0';
+            }
         }
         memcpy(rows[row] + used, p, (size_t)bytes);
         used += bytes;

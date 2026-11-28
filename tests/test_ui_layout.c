@@ -522,6 +522,34 @@ static void test_next_event_preview(void)
     puts("Next-event preview: no Unknown during events, name forwarded from rules");
 }
 
+/* 避头尾：折行不许把「，。、」这类标点顶到行首。
+ * 图鉴科普正文改版后第一次上屏，「，主要产出 ATP」整行以逗号开头。
+ * 像素宽度在测试环境量不出来（没装字形），所以锁的是判定表本身。 */
+static void test_line_start_forbidden(void)
+{
+    static const char *forbidden[] = {
+        "，", "。", "、", "；", "：", "？", "！", "）", "」", "』", "】", "…", "·", "—", "”",
+        ",", ".", ":", ";", "?", "!", ")", "%"
+    };
+    for (size_t i = 0; i < sizeof(forbidden) / sizeof(forbidden[0]); ++i) {
+        assert(screens_line_start_forbidden(forbidden[i]));
+    }
+
+    /* 正文里的普通字、数字、字母、开括号与开引号都可以起行 */
+    static const char *allowed[] = {
+        "藻", "类", "A", "1", "（", "「", "《", "“", "长"
+    };
+    for (size_t i = 0; i < sizeof(allowed) / sizeof(allowed[0]); ++i) {
+        assert(!screens_line_start_forbidden(allowed[i]));
+    }
+
+    /* 空串与 NULL 不能崩 */
+    assert(!screens_line_start_forbidden(""));
+    assert(!screens_line_start_forbidden(NULL));
+
+    puts("Line-start rule: CJK closing punctuation never starts a row");
+}
+
 int main(void)
 {
     GameState game;
@@ -536,6 +564,7 @@ int main(void)
     test_crisis_pass_line();
     test_ep_rule_text();
     test_next_event_preview();
+    test_line_start_forbidden();
     memset(&g_ui, 0, sizeof g_ui);
     g_ui.overlay = UI_OVL_TREE;
     screens_build(&g_ui.layout, &game, &g_ui);

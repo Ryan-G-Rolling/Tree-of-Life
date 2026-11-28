@@ -361,6 +361,11 @@ typedef struct {
 
 MutListScroll screens_mut_list_scroll_target(const GameState *game, Vector2 mouse);
 
+/* 折行的行首禁则（避头尾）判定：给定一个 UTF-8 字符，问它能否落在行首。
+ * 单独暴露给布局测试用 —— 测试环境没有字形，量不出像素宽度，
+ * 但"哪些标点不许顶行首"这条契约是纯逻辑，可以直接锁住。 */
+bool screens_line_start_forbidden(const char *utf8_char);
+
 /* 调试/截图用：强制切到某个页面或弹层（只在 --shot 模式下由 main.c 调用） */
 void ui_debug_force(UiScreen screen, UiOverlay overlay);
 void ui_debug_set_codex_tab(int tab);
