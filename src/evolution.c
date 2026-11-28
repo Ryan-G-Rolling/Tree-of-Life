@@ -1726,10 +1726,35 @@ double evolution_mutation_cost_for_slot(const GameState *game, int species_slot,
             first_discount = 1.0 - FIRST_MUTATION_DISCOUNT;
         }
     }
-    /* 第十轮：基价随阶段缩放（早便宜、晚贵），并叠加晚期补课加价 */
+    /* 第十轮：基价随阶段缩放（早便宜、晚贵），并叠加晚期补课加价。
+     * 核价时必须记住三条事实，否则会系统性高估或错位：
+     * 1. mutation_id >= MUTATION_CELL_DIFFERENTIATION 的基价已乘 0.70（EXPANSION_MUTATION_COST_SCALE），
+     *    漏乘会把新增内容的价格高估约 43%。
+     * 2. late_mutation_multiplier 只对光合/化学合成（id 1、2）且 phase >= 2 生效，与本轮阶段 9+ 无关。
+     * 3. required_mutation_count 是“下一子物种所需前置里已拥有的数量 0–4”，与上面的 1.45^n 同源；
+     *    下面 1.12^n 的指数也必须用它，不能换成已购总张数。 */
     double phase_scale = MUTATION_PHASE_COST_BASE + MUTATION_PHASE_COST_SLOPE * (double)phase;
-    return ceil(base_cost * phase_scale * late_mutation_multiplier(mutation_id, phase) *
-                (1.0 - discount) * growth * first_discount);
+    double fixed = base_cost * phase_scale * late_mutation_multiplier(mutation_id, phase) *
+                   (1.0 - discount) * growth * first_discount;
+
+    /* v26：后期 DNA 门票不再按固定基价，改为“不低于 N 秒产率”，与 ATP 门票同口径。
+     * 用归一化产率（除以环境与限时增益），避免增益开关时同一张票价格抖动。
+     * 原公式保留为 fixed：阶段 1–8 与低于下限的票仍按原价结算。 */
+    if (phase >= DNA_TICKET_MIN_PHASE && valid_slot(game, species_slot)) {
+        const SpeciesState *sp = &game->run.active_species[species_slot];
+        SpeciesRates r = evolution_calculate_species_rates(game, species_slot);
+        double env = r.environment_multiplier > 1e-9 ? r.environment_multiplier : 1.0;
+        double buff = buffs_production_multiplier(game);
+        double dna_rate = r.dna_per_second / (env * (buff > 1e-9 ? buff : 1.0));
+        if (dna_rate > 1e-9) {
+            double floor_price = DNA_TICKET_SECONDS * dna_rate *
+                                 pow(DNA_TICKET_GROWTH, (double)required_mutation_count(sp));
+            if (floor_price > fixed) {
+                fixed = floor_price;
+            }
+        }
+    }
+    return ceil(fixed);
 }
 
 double evolution_mutation_cost(const GameState *game, int mutation_id)
@@ -2047,8 +2072,15 @@ ActionCode evolution_refresh_mutation_offer(GameState *game, int species_slot)
         return ACTION_NOT_ENOUGH_DNA;
     }
     unsigned int rng = game->run.rng_state;
+    /* v25 修复：evolution_generate_mutation_offer_rng 有一条缓存——
+     * 「已有候选且同槽位」时直接原样返回。刷新正好命中这条缓存，
+     * 于是 DNA 被扣、次数 +1，候选却一模一样（实测三次刷新均为 1、64）。
+     * 这里先把 active 置假绕过缓存，失败时再还原，保证「换一批」真的换。 */
+    MutationOfferState saved = game->run.mutation_offer;
+    game->run.mutation_offer.active = false;
     MutationOfferState fresh = evolution_generate_mutation_offer_rng(game, species_slot, &rng);
     if (!fresh.active) {
+        game->run.mutation_offer = saved;
         return ACTION_REQUIREMENT_NOT_MET;
     }
     game->run.dna -= cost;

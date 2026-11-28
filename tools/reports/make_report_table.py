@@ -91,6 +91,24 @@ def atp_unspent(name, era):
     return pct(statistics.median(ratios), 1.0) if ratios else 0.0
 
 
+def dna_summary(name, era):
+    """era 的 DNA 收支中位：支出/收入、期末余额/收入、阶段 12 余额/累计支出。"""
+    spend_ratios, stock_ratios, s12_ratios = [], [], []
+    for r in rows(name, "DNASUM,"):
+        if int(r[2]) != era:
+            continue
+        income, spent, stock = float(r[3]), float(r[4]), float(r[5])
+        if income <= 0.0:
+            continue
+        spend_ratios.append(spent / income)
+        stock_ratios.append(stock / income)
+        s12_stock, s12_spent = float(r[6]), float(r[7])
+        if s12_stock >= 0.0:
+            s12_ratios.append(s12_stock / s12_spent if s12_spent > 0.0 else 0.0)
+    pick = lambda values: statistics.median(values) if values else 0.0
+    return pick(spend_ratios), pick(stock_ratios), pick(s12_ratios)
+
+
 def buff_stat(name, era, column):
     values = [float(r[column]) for r in rows(name, "BUFFSUM,") if int(r[2]) == era]
     return round(statistics.median(values), 1) if values else 0.0
@@ -201,7 +219,7 @@ def meteor_min(type1, type2, type3):
 NON_BALANCE_KEYS = {
     "compile", "selftest_failures", "content_playable", "save_bytes", "coverage_run",
     "species_median", "species_p10", "species_p90", "gate_mutations",
-    "sink_ratio", "sink_late_ratio", "mutations_median", "mutations_p90",
+    "sink_ratio", "sink_late_ratio", "dna_s12_ratio", "mutations_median", "mutations_p90",
     # 结构项：上界就是硬顶/零容忍，实测必然贴边，不算“目标贴实测”
     "reserve_max_era3", "low_tail", "ep3_gt_ep2",
     # v9 P2：台账口径项，不是平衡目标
@@ -314,6 +332,7 @@ def build_metrics():
     bal3 = {int(r[1]): float(r[4]) for r in rows(B3, "ATPSUM,") if int(r[2]) == 3}
     sink_vals = [spent3[i] / (spent3[i] + bal3[i]) for i in spent3 if spent3[i] + bal3[i] > 0]
     sink_med = statistics.median(sink_vals) if sink_vals else 0.0
+    dna_spend_med, dna_stock_med, dna_s12_med = dna_summary(B3, 3)
 
     # v16 记录项：饱和度时间（覆盖率在 species_seeds 之后计算）
     # SATFULL,index,cap_level,cap_hit,cap_time,res_level,res_time（v19 D10 起多一列触顶标志）
@@ -443,6 +462,12 @@ def build_metrics():
         "sink_ratio": (float(sink_med),
                        f"中位 {sink_med * 100:.1f}%（未花 {100 - sink_med * 100:.1f}%）",
                        "ATPSUM 支出/收入（记录）"),
+        "dna_spend_era3": (round(dna_spend_med, 4),
+                           f"中位 {dna_spend_med * 100:.1f}%", "DNASUM era3 支出/收入"),
+        "dna_stock_era3": (round(dna_stock_med, 4),
+                           f"中位 {dna_stock_med * 100:.1f}%", "DNASUM era3 余额/收入"),
+        "dna_s12_ratio": (round(dna_s12_med, 2),
+                          f"中位 {dna_s12_med:.2f}×", "DNASUM era3 阶段 12 余额/累计支出"),
         "mutations_median": (float(mut_med),
                              f"中位 {mut_med:.0f} 张"
                              + (f"（其中 ATP 门票 {atp_med:.0f} 张）" if b3 and len(b3[0]) > 22 else ""),

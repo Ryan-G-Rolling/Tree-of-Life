@@ -295,6 +295,60 @@ static void test_mutation_offer(void)
     }
 }
 
+static void test_mutation_refresh_changes_offer(void)
+{
+    /* v25：刷新必须真的换一批候选。
+     * 旧实现会命中 evolution_generate_mutation_offer_rng 的「同槽已有候选就原样返回」缓存，
+     * 结果是 DNA 被扣、刷新次数 +1，候选却一模一样（实测连刷三次都是同一组 ID）。 */
+    int sid = -1;
+    for (int id = 0; id < SPECIES_COUNT; ++id) {
+        if (species_phase(id) == 6) {
+            sid = id;
+            break;
+        }
+    }
+    CHECK(sid >= 0);
+
+    GameState game;
+    reset_game(&game, sid);
+    game.run.era = 3;
+    game.run.active_species_count = 1;
+    game.run.active_species[0].population = 200.0;
+    game.run.dna = 1e9;
+    game.run.atp = 1e9;
+
+    CHECK(evolution_open_mutation_offer(&game, 0) == ACTION_OK);
+    CHECK(game.run.mutation_offer.choice_count > 0);
+
+    int changed = 0;
+    for (int step = 0; step < MUTATION_REFRESH_LIMIT; ++step) {
+        MutationOfferState before = game.run.mutation_offer;
+        double dna_before = game.run.dna;
+        int count_before = game.run.mutation_refresh_count;
+
+        CHECK(evolution_refresh_mutation_offer(&game, 0) == ACTION_OK);
+        CHECK(game.run.mutation_refresh_count == count_before + 1);
+        CHECK(game.run.dna < dna_before);
+
+        int same = game.run.mutation_offer.choice_count == before.choice_count;
+        for (int i = 0; i < before.choice_count && same; ++i) {
+            if (game.run.mutation_offer.mutation_ids[i] != before.mutation_ids[i]) {
+                same = 0;
+            }
+        }
+        if (!same) {
+            ++changed;
+        }
+    }
+    /* 阶段 6 的可用池远大于候选数，三次刷新至少换到一次 */
+    CHECK(changed >= 1);
+
+    /* 达到每批上限后拒绝，且不扣 DNA */
+    double dna_now = game.run.dna;
+    CHECK(evolution_refresh_mutation_offer(&game, 0) == ACTION_LEVEL_MAXED);
+    CHECK(game.run.dna == dna_now);
+}
+
 static void test_key_mutation_guarantee(void)
 {
     GameState game;
@@ -2158,6 +2212,7 @@ int main(int argc, char **argv)
         test_species_data,
         test_mutation_rules,
         test_mutation_offer,
+        test_mutation_refresh_changes_offer,
         test_key_mutation_guarantee,
         test_speciation,
         test_rates,

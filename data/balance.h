@@ -529,6 +529,19 @@ static inline double reserve_damage_scale(int levels)
 #ifndef MUTATION_TICKET_GROWTH
 #define MUTATION_TICKET_GROWTH 1.12
 #endif
+/* v26：DNA 门票秒本位下限。阶段 >= MIN_PHASE 时，票面价不低于 N 秒归一化 DNA 产率。
+ * 实测（20 局×3 纪元）：era3 支出占比 5% → 47%（16s）/ 51%（24s）/ 44%（32s）。
+ * 只约束阶段 9+：era1 阶段上限是 8，一条票都不受影响。
+ * 增长指数与 ATP 门票同源，用“下一子物种还缺几张前置”（0–4），而非已购总张数。 */
+#ifndef DNA_TICKET_SECONDS
+#define DNA_TICKET_SECONDS 24.0
+#endif
+#ifndef DNA_TICKET_MIN_PHASE
+#define DNA_TICKET_MIN_PHASE 9
+#endif
+#ifndef DNA_TICKET_GROWTH
+#define DNA_TICKET_GROWTH 1.12
+#endif
 /* v14 E3：DNA 换一批突变候选。
  * 价格 = min(0.40×DNA 余额, max(10, 0.30×本批最便宜卡价)) × 1.7^n，n = 本批已刷新次数。
  * 锚“最便宜卡价”而不是绝对值：DNA 余额/卡价跨 5 个数量级，只有相对锚才稳。每批 ≤3 次。 */

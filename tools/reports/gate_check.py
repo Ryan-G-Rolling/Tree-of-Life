@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
-"""v19 门槛自检：读 demo_b --batch3 的原始输出，打印 G3–G5 与全部记录项。
+"""v26 门槛自检：读 demo_b --batch3 的原始输出，打印 G3–G6 与全部记录项。
 
 G2（门票卡张数）已降为记录项：它测的是 bot 自限，不是经济约束。
 这里额外打印一条与 bot 无关的结构口径（第 12 张门票的秒产率），只打印不判定。
 
 v25 定稿：G5 改为下限判定（≥55% 即达标），撤销 80% 上限——阶段 12 已有 20 个物种，
 抵达率越高内容越容易被看到；「12 是取舍点」是 D1 之前的旧意图，已不成立。
+
+v26：G6 看 era3 的 DNA 收支闭合。支出/收入 < 0.40 说明后期 DNA 又变成纯攒，
+期末余额 > 0.60×收入说明钱没花在该花的地方；两项都按逐局比值取中位。
 
 用法：python tools/reports/gate_check.py build/batch3_oneshot.csv [探索批次 csv]
 退出码：0 全部门槛达标；1 有门槛不达标（人工看输出即可）。
@@ -44,6 +47,16 @@ def main(path, explore_path=None):
     gate = [int(r[2]) for r in rows if r[0] == "GATEMUT"]
     if not gate:
         raise SystemExit("没有 GATEMUT 行（demo_b 未编译 v19 版本？）")
+
+    # G6：era3 的 DNA 收支。DNASUM = index,era,income,spent,stock,s12_stock,s12_spent
+    dna_spend_ratios, dna_stock_ratios = [], []
+    for r in (r for r in rows if r[0] == "DNASUM" and r[2] == "3"):
+        income, spent, stock = float(r[3]), float(r[4]), float(r[5])
+        if income > 0.0:
+            dna_spend_ratios.append(spent / income)
+            dna_stock_ratios.append(stock / income)
+    dna_spend = statistics.median(dna_spend_ratios) if dna_spend_ratios else 0.0
+    dna_stock = statistics.median(dna_stock_ratios) if dna_stock_ratios else 1.0
 
     # G3：三段窗口（前 20% / 中 60% / 后 20%）
     early, mid, late = [], [], []
@@ -98,6 +111,9 @@ def main(path, explore_path=None):
         # 旧口径 55–80% 的上限来自「希望 12 是取舍点」，D1 之后该意图已不成立。
         ("G5 阶段 12 抵达 ≥ 55%（下限）", stage12 >= 55,
          f"12 {stage12:.1f}% / 13 {stage13:.1f}%"),
+        ("G6 era3 DNA 支出/收入 ≥ 0.40 且 期末余额 ≤ 0.60×收入",
+         bool(dna_spend_ratios) and dna_spend >= 0.40 and dna_stock <= 0.60,
+         f"支出 {dna_spend * 100:.1f}% / 余额 {dna_stock * 100:.1f}%"),
     ]
     print(f"样本 {len(b3)} 局")
     failed = 0
@@ -116,6 +132,8 @@ def main(path, explore_path=None):
     print(f"  三段支出率：前 20% {statistics.median(early) if early else 0:.3f} / 中 60% {mid_rate:.3f} / "
           f"后 20% {late_rate:.3f}（后段绝对值参考线 0.40）")
     print(f"  全局 支出/收入 {statistics.median(sink) * 100:.1f}%")
+    print(f"  era3 DNA 支出/收入 中位 {dna_spend * 100:.1f}%，期末余额/收入 中位 "
+          f"{dna_stock * 100:.1f}%（G6）")
     print(f"  bot 实买突变 中位 {statistics.median(total_mut):.0f} 张"
           f"（P90 {quantile(total_mut, 0.9):.0f}，含 16 张自限）")
     if coverage:

@@ -783,3 +783,34 @@ ATP 产率，k 只数门票卡，地板 3 秒产率）。ATP 不够时只弹一�
   与标题不撞；星图侧先按公式复算了节点坐标（几丁质礁与弧线末端同为 (810, 200)，zoom 2），
   再核对 4K 裁切——弧线两端确实落在节点上；演示态里目标物种原本未被点亮、节点不画，
   看着像悬空，已在 `fill_demo_capped` 一带补上点亮。
+
+## 2026-11-28 · WorkBuddy · v26 DNA 收支对齐
+
+- **原因**：执行 `TreeOfLife-DNA收支对齐方案-最终版.md`。后期 DNA 门票按固定基价 `1.45^n`，
+  era3 只花掉 5.1% 收入，期末余额 98,642；目标是让后期 DNA 真正形成支出。
+- **机制修正**：`src/evolution.c` 的 `evolution_mutation_cost_for_slot()` 在原公式后加秒本位下限：
+  阶段 ≥ 9 时票面价不低于 `DNA_TICKET_SECONDS × 归一化 DNA/s × 1.12^n`。归一化除以环境与限时增益；
+  `n` 与 `1.45^n` 同源（下一步所需前置中已拥有数 0–4）。`data/balance.h` 新增
+  `DNA_TICKET_SECONDS=24`、`DNA_TICKET_MIN_PHASE=9`、`DNA_TICKET_GROWTH=1.12`。
+  容量/储备收费、分化门票、`1.45` 补课惩罚、`offer.dna_costs` 冻结均未改。
+- **1000 局选点**（同种子；era3 比值取逐局中位）：S=16 支出 48.2% / s12 94.8%；S=24 支出 49.8% /
+  s12 94.7%；S=32 支出 48.8% / s12 95.0%。按“最接近 50% 且 s12 ≥ 90%”选 **24**。
+  三组门票卡中位均 15 张，期末余额/收入 50–52%，G6 均 PASS。
+- **台账与门禁**：`demo/demo_b.c` 新增 `DNASUM,index,era,income,spent,stock,s12_stock,s12_spent`，
+  收入按生产与瞬时增益实际入账，支出按每步净减少反推；`gate_check.py` 新增
+  `G6 era3 DNA 支出/收入 ≥ 0.40 且 期末余额 ≤ 0.60×收入`。
+- **报表链**：`design.csv` 新增 `dna_spend_era3` / `dna_stock_era3` / `dna_s12_ratio`，重锁
+  `design.lock`，重生成 `tree-of-life-b/assets/acceptance.js` 与 `observed.csv`；
+  `make_report_table.py` 解析 DNASUM。文档同步 `README.md`、`docs/README.md`、
+  `docs/02` §3/§6.3、`docs/CHANGELOG-v19.md` 第十二节；`gen_constants.py` 纳入 3 个新常量（48 个）。
+- **验证**：主程序与 demo 0 warning / 0 error；`make test` 28 组 / 130,907 项 0 失败，36 项接线、
+  60 分钟回归、gameplay、codex、`test-layout`（390 详情 + 滚动/报价）全通过；内容校验 11 项 PASS。
+  另用改动前 `evolution.c` 编译同源审计程序，阶段 1–8 × 282 条突变及空槽位价格逐条完全一致；
+  限时增益开/关 282 条票价 0 差异。1000 局最终 G3 1.055、G4 中位 17、G5 12 抵达 94.7%、
+  G6 支出 49.8% / 余额 50.2%，全部 PASS，`gate_check.py` 退出码 0。
+- **提交范围说明**：工作区在本轮开始前已有未提交的 v25 突变刷新修复与回归测试（`src/evolution.c`
+  同一函数文件、`tests/test_b.c`）；为让方案要求的 28 组 / 130,907 项闭环，本轮一并验证并提交。
+  `include/codex.h`、`src/codex.c`、`src/screens.c`、`tools/gen_codex_science.py` 属另一项图鉴/UI 工作，
+  **未纳入本次提交**，保持原样。
+- **未完成**：P1-13 `src/screens.c` 拆分仍未做；本轮未重跑 `--shot` 截图与 60 分钟以外的长线探索。
+- **同步结果**：本条随本轮提交推送 `origin/main`。

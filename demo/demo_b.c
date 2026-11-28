@@ -46,6 +46,12 @@ static double g_atp_spent = 0.0;
 /* v9 P2：本轮 ATP 收入（生产 + 点击 + 瞬时增益），用来闭合台账：
  * 期初 + 收入 − 支出 应当等于期末，残差不为 0 就说明有出口没记进账。 */
 static double g_atp_income = 0.0;
+/* v26：DNA 收支台账。收入按实际入账（生产 + 瞬时增益），支出按每步净减少反推，
+ * 避免漏记“换一批”这类非突变扣款；阶段 12 余额在首次跨入时冻结。 */
+static double g_dna_spent = 0.0;
+static double g_dna_income = 0.0;
+static double g_dna_stage12_stock = -1.0;
+static double g_dna_stage12_spent = -1.0;
 static double g_first_speciation = -1.0;
 /* v9 P2：首次分化发生在纪元第一步时为 true。纪元 3 带着满级跨轮物资开局，
  * 第 0.1 s 就能买下光合 + 完成第一次分化，这个值贴住时钟分辨率下限，
@@ -877,10 +883,13 @@ static EnvironmentStep simulate_step(double dt)
     double biomass = 0.0;
     double dna = 0.0;
     double knowledge = 0.0;
+    const double dna_at_step_start = g.run.dna;
+    const double dna_income_at_step_start = g_dna_income;
 
     /* 第十六轮：先推进增益倒计时；演示策略 100% 点击出现的因子 */
     buffs_update(&g, dt);
     double atp_before_buff = g.run.atp;
+    double dna_before_buff = g.run.dna;
     if (buffs_factor_visible(&g)) {
         int buff_type = g.run.buff_visible_type;
         int buff_icon = g.run.buff_visible_icon;
@@ -894,6 +903,9 @@ static EnvironmentStep simulate_step(double dt)
         }
     }
     g_atp_income += g.run.atp - atp_before_buff;
+    if (g.run.dna > dna_before_buff) {
+        g_dna_income += g.run.dna - dna_before_buff;
+    }
 
     for (int i = 0; i < g.run.active_species_count; ++i) {
         rates[i] = evolution_calculate_species_rates(&g, i);
@@ -918,6 +930,7 @@ static EnvironmentStep simulate_step(double dt)
     g_atp_income += atp * dt;
     g.run.biomass += biomass * dt;
     g.run.dna += dna * dt;
+    g_dna_income += dna * dt;
     g.run.knowledge += knowledge * dt;
     g.run.elapsed_time += dt; /* 与 game.c 固定步一致：DNA 起手斜坡依赖这个时钟 */
     if (g.run.biomass > g.run.max_biomass) {
@@ -946,6 +959,13 @@ static EnvironmentStep simulate_step(double dt)
      * （实测洞见长期 Lv.0，而目标是每纪元 6–14 级）。 */
     try_insight();
     try_sub_upgrades();
+
+    /* 收入已在上面逐笔记过；这一步的净减少就是实际 DNA 支出（突变 / 换一批）。 */
+    double dna_gain_step = g_dna_income - dna_income_at_step_start;
+    double dna_drop = dna_at_step_start + dna_gain_step - g.run.dna;
+    if (dna_drop > 0.0) {
+        g_dna_spent += dna_drop;
+    }
 
     {
         int window = 0;
@@ -989,6 +1009,11 @@ static EnvironmentStep simulate_step(double dt)
     if (stage_now != g_last_stage) {
         if (g_csv || g_quiet) {
             printf("STAGE,%d,%d,%.1f,%d\n", g_batch_index, g_era, g_time, stage_now);
+        }
+        /* v26：首次跨入阶段 12 时冻结 DNA 余额与累计支出，供 G6 表复核。 */
+        if (g_last_stage < 12 && stage_now >= 12 && g_dna_stage12_stock < 0.0) {
+            g_dna_stage12_stock = g.run.dna;
+            g_dna_stage12_spent = g_dna_spent;
         }
         g_last_stage = stage_now;
     }
@@ -1219,6 +1244,10 @@ typedef struct {
     double atp;
     double biomass;
     double dna;
+    double dna_income;
+    double dna_spent;
+    double dna_stage12_stock;
+    double dna_stage12_spent;
     double knowledge;
     int sub_upgrades;
     double first_mutation;
@@ -1254,6 +1283,10 @@ static EraSummary simulate_era(int steps)
     g_insight_buys = 0;
     g_atp_spent = 0.0;
     g_atp_income = 0.0;
+    g_dna_spent = 0.0;
+    g_dna_income = 0.0;
+    g_dna_stage12_stock = -1.0;
+    g_dna_stage12_spent = -1.0;
     g_last_stage = -1;
     g_upgrade_buys = 0;
     g_crisis_logged = 0;
@@ -1324,6 +1357,10 @@ static EraSummary simulate_era(int steps)
     summary.atp = g.run.atp;
     summary.biomass = g.run.biomass;
     summary.dna = g.run.dna;
+    summary.dna_income = g_dna_income;
+    summary.dna_spent = g_dna_spent;
+    summary.dna_stage12_stock = g_dna_stage12_stock;
+    summary.dna_stage12_spent = g_dna_stage12_spent;
     summary.knowledge = g.run.knowledge;
     summary.sub_upgrades = g_sub_upgrade_buys;
     summary.capacity_levels = g.run.capacity_levels;
@@ -1407,6 +1444,10 @@ static void run_batch2(int count, int steps)
                era1.atp_residual);
         printf("ATPSUM,%d,2,%.0f,%.0f,%.3f\n", index, era2.atp_spent, era2.atp,
                era2.atp_residual);
+        printf("DNASUM,%d,1,%.0f,%.0f,%.0f,%.0f,%.0f\n", index, era1.dna_income, era1.dna_spent,
+               era1.dna, era1.dna_stage12_stock, era1.dna_stage12_spent);
+        printf("DNASUM,%d,2,%.0f,%.0f,%.0f,%.0f,%.0f\n", index, era2.dna_income, era2.dna_spent,
+               era2.dna, era2.dna_stage12_stock, era2.dna_stage12_spent);
         printf("BUFFSUM,%d,1,%d,%d,%.1f,%d,%d\n", index, era1.buff_collected, era1.buff_rare,
                era1.buff_uptime, era1.insight_buys, era1.insight_levels);
         printf("BUFFSUM,%d,2,%d,%d,%.1f,%d,%d\n", index, era2.buff_collected, era2.buff_rare,
@@ -1483,6 +1524,12 @@ static void run_batch3(int count, int steps)
                era2.atp_residual);
         printf("ATPSUM,%d,3,%.0f,%.0f,%.3f\n", index, era3.atp_spent, era3.atp,
                era3.atp_residual);
+        printf("DNASUM,%d,1,%.0f,%.0f,%.0f,%.0f,%.0f\n", index, era1.dna_income, era1.dna_spent,
+               era1.dna, era1.dna_stage12_stock, era1.dna_stage12_spent);
+        printf("DNASUM,%d,2,%.0f,%.0f,%.0f,%.0f,%.0f\n", index, era2.dna_income, era2.dna_spent,
+               era2.dna, era2.dna_stage12_stock, era2.dna_stage12_spent);
+        printf("DNASUM,%d,3,%.0f,%.0f,%.0f,%.0f,%.0f\n", index, era3.dna_income, era3.dna_spent,
+               era3.dna, era3.dna_stage12_stock, era3.dna_stage12_spent);
         printf("BUFFSUM,%d,1,%d,%d,%.1f,%d,%d\n", index, era1.buff_collected, era1.buff_rare,
                era1.buff_uptime, era1.insight_buys, era1.insight_levels);
         printf("BUFFSUM,%d,2,%d,%d,%.1f,%d,%d\n", index, era2.buff_collected, era2.buff_rare,

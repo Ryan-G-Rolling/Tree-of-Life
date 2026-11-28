@@ -1,6 +1,6 @@
 ﻿key,label,min,max,unit,source,note
 compile,编译,0,0,项,gcc,0 warning / 0 error
-selftest_failures,自测失败数,0,0,项,test_b --json,27 组 / 92,600+ 项
+selftest_failures,自测失败数,0,0,项,test_b --json,28 组 / 130,907 项
 first_spec_p50,首分化 p50,150,210,s,batch2 第19列,v10：门票时间本位后保持
 first_spec_p90,首分化 p90,0,280,s,batch2 第19列,
 first_mutation_p50,首突变 p50,35,60,s,batch2 第28列,
@@ -42,6 +42,9 @@ species_p90,单局物种数 · P90,0,20,物种,BSPEC 90 分位,上限 ≤20（�
 gate_mutations,门票卡张数 · 中位,12,16,张,GATEMUT,v19 G2：1.12^k 的 k 只数门票卡；总张数只记录
 sink_late_ratio,末期支出率 / 中段支出率,0.8,10.0,倍,SINKWIN 三段,v19 G3：末 20% 不比中段 60% 更花不动
 sink_ratio,ATP 出口 · 全局支出/收入,0,1.0,比例,ATPSUM + INC,v19：全局比例被前期抬高，只记录
+dna_spend_era3,DNA 支出/收入 · 纪元 3,0.40,1.0,比例,DNASUM era3,v26 G6：后期 DNA 收支闭合
+dna_stock_era3,DNA 期末余额/收入 · 纪元 3,0,0.60,比例,DNASUM era3,v26 G6：余额不超过 0.6×收入
+dna_s12_ratio,进阶段 12 余额/累计支出,0,10,倍,DNASUM era3,v26：记录项，不作门槛
 buff_collected_era1,随机因子收集 · 纪元 1,6,10,个,BUFFSUM era1,45–90 s 一个
 buff_uptime_era1,增益覆盖时长 · 纪元 1,90,260,s,BUFFSUM era1,含点击与产率增益
 buff_uptime_era3,增益覆盖时长 · 纪元 3,90,260,s,BUFFSUM era3,
