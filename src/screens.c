@@ -4646,11 +4646,15 @@ static void draw_speciation_overlay(const GameState *game, const UIState *S)
         ui_text(req, r.x + 84.0f, r.y + 56.0f, F_CAPTION,
                check == ACTION_OK ? COL_FAINT : COL_BAD);
 
-        /* 与突变候选同一套提示：选这个分支之后还能走向哪里 */
+        /* 与突变候选同一套提示：选这个分支之后还能走向哪里。
+         * 三跳物种名在 264 物种里可能很长，按剩余宽度折一行 + 省略号兜底。 */
         char tail[128];
         ua_species_route(sid, tail, (int)sizeof(tail));
         ui_text("后续", r.x + 84.0f, r.y + 77.0f, F_CAPTION, COL_ACCENT);
-        ui_text(tail, r.x + 84.0f + ui_text_w("后续 ", F_CAPTION), r.y + 77.0f,
+        float tail_w = r.width - 84.0f - 18.0f - ui_text_w("后续 ", F_CAPTION);
+        char trow[2][192];
+        wrap_text_limited(tail, tail_w, F_CAPTION, 1, trow);
+        ui_text(trow[0], r.x + 84.0f + ui_text_w("后续 ", F_CAPTION), r.y + 77.0f,
                 F_CAPTION, COL_DIM);
 
         char price[64];
