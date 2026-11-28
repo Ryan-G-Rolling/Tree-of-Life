@@ -583,6 +583,22 @@ static void capture_screen(const GameState *base, const char *first_file)
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_MUT_LIST);
     ui_debug_capture(&game, "shot_05b_mutations.png");
 
+    /* 滚轮验证：给主谱系补到 21 项（超过 3 列 × 4 行 = 12 一屏的容量），
+     * 一张停在顶部、一张滚到底，对比同一栏里第 13 项之后能不能看到。 */
+    {
+        SpeciesState *m0 = &game.run.active_species[0];
+        int added = 0;
+        for (int m = 0; m < MUTATION_COUNT && added < 9; ++m) {
+            if (m0->mutations[m]) continue;
+            m0->mutations[m] = true;
+            ++added;
+        }
+        ui_debug_capture(&game, "shot_05d_mut_scroll.png");
+        ui_debug_set_mut_scroll(0, 9999.0f);   /* draw 侧会夹到真实最大值 */
+        ui_debug_capture(&game, "shot_05e_mut_scroll_end.png");
+        ui_debug_set_mut_scroll(0, 0.0f);
+    }
+
     game.phase = PHASE_END_ERA_PREVIEW;
     ui_debug_force(UI_SCREEN_END_ERA, UI_OVL_NONE);
     ui_debug_capture(&game, "shot_06_end_era.png");

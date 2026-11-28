@@ -652,3 +652,34 @@ G3 末/中 = 0.872/0.837 = **1.042** PASS；G4 物种中位 **17**（P10 17 / P9
   12 个提交全部落地，`main` 快进到 `c99ec4a`，临时分支 `_sync` 已删除。
   本地仅领先 0 / 落后 0，工作区干净；`deliverables/TreeOfLife.exe`（71 MB）空目录实测导出 27 张通过。
 
+
+---
+
+## 2026-11-28 下午 · 突变图谱滚轮（C 界面层）
+
+**问题**：突变图谱（V）每栏固定 3 列 × 4 行 = 12 格，晚期物种有 20 项以上突变时被截成
+「还有 N 项」，玩家无法核对第 13 项之后拿了什么。
+
+**改动**
+
+- `include/ui_internal.h`：`UIState` 加 `float mut_scroll[MAX_ACTIVE_SPECIES]`（逻辑像素偏移）；
+  新增 `MutListScroll { slot, row_h, max_scroll }` 与 `screens_mut_list_scroll_target()`。
+- `src/screens.c`：把栏位布局与网格区抽成 `mut_list_layout()` / `mut_box_rect()` / `mut_grid_rect()`，
+  绘制与滚轮命中**共用同一份几何**，不再出现「画在这、滚在那」；格子按 `scroll` 平移，
+  `ui_clip_begin(grid)` 硬裁防止压到表头与共振条；可滚时右缘画 4px 轨道 + 滑块、
+  上下各 12px 渐隐、表头补「· 滚轮看全部」；删掉原来「还有 N 项」的截断提示。
+- `src/ui.c`：`ui_update()` 增加 `UI_OVL_MUT_LIST` 分支——按指针所在栏位翻页，一格一行，
+  夹在 `[0, max_scroll]`；打开/关闭弹层与 `ui_debug_force()` 都清零，重开回到顶部。
+- `tests/test_ui_layout.c`：新增 `test_mut_list_scroll()`——第一栏 21 项可滚
+  （`max_scroll = (7-4) × row_h`）、第二栏 4 项不可滚、表头与面板外不命中。
+- 截图：新增 `shot_05d_mut_scroll.png`（21 项停顶部）与 `shot_05e_mut_scroll_end.png`（滚到底），
+  `--shot` 27 → 29 张；`ui_debug_set_mut_scroll()` 只在 `--shot` 下由 main.c 调用。
+- README 新增「突变图谱：滚轮查看全部」小节；补「常见疑问：容量只买到 4 级、物种只见到 54 个」，
+  把规则层 v19 记录在案的取舍（容量与分化抢生物量、`BRANCH_MAX_DEPTH 2` 的结构上限）写清楚。
+
+**验证**
+
+- 0 warning / 0 error；`make test` 27 组 130,892 项 0 失败 + 36 项接线 + 集成 + 60 分钟回归 +
+  gameplay + codex；`test-layout`（含新增命中测试）与 `test-ui`（25 次点击）通过。
+- 4K 核对：顶部帧显示第 1–12 项、第 5 行露出一半被裁掉；底部帧显示第 9–20 项、滑块贴底；
+  两帧均无格子越界，中文无缺字（字形集 1653 → 1654）。

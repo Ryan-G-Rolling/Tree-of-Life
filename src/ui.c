@@ -231,6 +231,7 @@ void ui_handle_local_button(const UiButton *b, const GameState *game)
     case UI_BTN_OPEN_MUT_LIST:
         g_ui.overlay = UI_OVL_MUT_LIST;
         g_ui.ovl_t = 0.0f;
+        memset(g_ui.mut_scroll, 0, sizeof(g_ui.mut_scroll));
         break;
     case UI_BTN_TREE_NODE:
         /* 再点一次已选中的节点 = 取消选中，回到跟随主谱系。
@@ -291,6 +292,8 @@ static void close_overlay_now(void)
 {
     g_ui.overlay = UI_OVL_NONE;
     g_ui.ovl_t = 0.0f;
+    /* 关掉就回到顶部：下次打开看到的是第一行，而不是上次停的位置 */
+    memset(g_ui.mut_scroll, 0, sizeof(g_ui.mut_scroll));
 }
 
 void ui_dismiss_overlay(void)
@@ -566,6 +569,22 @@ bool ui_update(const GameState *game, GameAction *pending_action)
                 g_ui.tree_pan_x += tx - tx * (nz / old);
                 g_ui.tree_pan_y += ty - ty * (nz / old);
                 g_ui.tree_zoom = nz;
+            }
+        }
+    }
+
+    /* ---- 滚轮：突变图谱翻格子。
+     * 指针必须落在某个物种盒子的网格里才生效 —— 两栏并排时，滚哪一栏由鼠标位置决定，
+     * 不会把另一栏一起滚走。这里只改 UI 侧偏移，不碰 GameState。 */
+    if (g_ui.overlay == UI_OVL_MUT_LIST) {
+        float wheel = input_wheel();
+        if (wheel != 0.0f) {
+            MutListScroll t = screens_mut_list_scroll_target(game, input_mouse_virtual());
+            if (t.slot >= 0 && t.slot < MAX_ACTIVE_SPECIES && t.max_scroll > 0.0f) {
+                float v = g_ui.mut_scroll[t.slot] - wheel * t.row_h;
+                if (v < 0.0f) v = 0.0f;
+                if (v > t.max_scroll) v = t.max_scroll;
+                g_ui.mut_scroll[t.slot] = v;
             }
         }
     }
@@ -950,6 +969,7 @@ void ui_debug_force(UiScreen screen, UiOverlay overlay)
     g_ui.screen = screen;
     g_ui.overlay = overlay;
     g_ui.ovl_t = overlay != UI_OVL_NONE ? 1.0f : 0.0f;
+    memset(g_ui.mut_scroll, 0, sizeof(g_ui.mut_scroll));
 }
 
 bool ui_debug_map_button(int id, int target, int option, GameAction *out)
@@ -968,6 +988,14 @@ void ui_debug_set_codex_tab(int tab) { g_ui.codex_tab = tab; }
 void ui_debug_set_keep_parent(int v) { g_ui.keep_parent = v; }
 void ui_debug_set_store_tab(int tab) { g_ui.store_tab = tab; }
 void ui_debug_set_info_tab(int tab) { g_ui.info_tab = tab; }
+
+/* 截图用：把某一栏的滚动偏移钉在指定像素（draw 侧仍会按内容夹取，
+ * 所以传一个很大的值就等于“滚到底”）。 */
+void ui_debug_set_mut_scroll(int slot, float v)
+{
+    if (slot < 0 || slot >= MAX_ACTIVE_SPECIES) return;
+    g_ui.mut_scroll[slot] = v;
+}
 
 /* 截图用：模拟一次采集成功。gain_t 固定在 0.62，浮字停在“刚冒出来”的高度；
  * 粒子的 t 也定格在半程，PNG 里能看到完整的星火形状。 */

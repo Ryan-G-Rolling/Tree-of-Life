@@ -5470,6 +5470,69 @@ static Rectangle mut_list_panel_rect(void)
     return (Rectangle){ 60.0f, 52.0f, 1160.0f, 612.0f };
 }
 
+/* 盒子区与列数：绘制和滚轮命中都从这里取，避免两套几何 */
+static void mut_list_layout(const GameState *game, Rectangle *area_out, int *cols_out,
+                            float *cw_out, float *ch_out)
+{
+    Rectangle panel = mut_list_panel_rect();
+    int slots = game->run.active_species_count;
+    int cols = slots <= 2 ? (slots < 1 ? 1 : slots) : 2;
+    Rectangle area = { panel.x + 20.0f, panel.y + 78.0f, panel.width - 40.0f, 366.0f };
+    float gap = 12.0f;
+    *area_out = area;
+    *cols_out = cols;
+    *cw_out = (area.width - gap * (float)(cols - 1)) / (float)cols;
+    *ch_out = (slots > 2) ? (area.height - gap) * 0.5f : area.height;
+}
+
+static Rectangle mut_box_rect(const GameState *game, int si)
+{
+    Rectangle area; int cols; float cw, ch;
+    mut_list_layout(game, &area, &cols, &cw, &ch);
+    float gap = 12.0f;
+    return (Rectangle){ area.x + (float)(si % cols) * (cw + gap),
+                        area.y + (float)(si / cols) * (ch + gap), cw, ch };
+}
+
+/* 盒子里真正放格子的区域：表头占 52px，底部留 4px */
+static Rectangle mut_grid_rect(Rectangle box)
+{
+    return (Rectangle){ box.x + 14.0f, box.y + 52.0f, box.width - 28.0f, box.height - 56.0f };
+}
+
+#define MUT_GRID_COLS 3
+#define MUT_GRID_ROW_H 26.0f
+
+static int mut_owned_count(const SpeciesState *sp)
+{
+    int n = 0;
+    for (int m = 0; m < MUTATION_COUNT; ++m) {
+        if (sp->mutations[m]) ++n;
+    }
+    return n;
+}
+
+/* 内容总高 - 可见高度 = 可滚距离；装得下时为 0 */
+
+MutListScroll screens_mut_list_scroll_target(const GameState *game, Vector2 m)
+{
+    MutListScroll out = { -1, MUT_GRID_ROW_H, 0.0f };
+    int slots = game->run.active_species_count;
+    if (slots > MAX_ACTIVE_SPECIES) slots = MAX_ACTIVE_SPECIES;
+    for (int si = 0; si < slots; ++si) {
+        Rectangle grid = mut_grid_rect(mut_box_rect(game, si));
+        if (!CheckCollisionPointRec(m, grid)) continue;
+        int rows = (mut_owned_count(&game->run.active_species[si]) + MUT_GRID_COLS - 1) / MUT_GRID_COLS;
+        int vis = (int)(grid.height / MUT_GRID_ROW_H);
+        if (vis < 1) vis = 1;
+        float maxs = (float)(rows - vis) * MUT_GRID_ROW_H;
+        out.slot = si;
+        out.max_scroll = maxs > 0.0f ? maxs : 0.0f;
+        return out;
+    }
+    return out;
+}
+
 static void draw_mut_list_overlay(const GameState *game, const UIState *S)
 {
     Rectangle panel = mut_list_panel_rect();
@@ -5477,19 +5540,16 @@ static void draw_mut_list_overlay(const GameState *game, const UIState *S)
     ui_panel(panel, R_PANEL, COL_PANEL, Fade(COL_DNA, 0.30f));
 
     ui_text_strong("突变图谱", panel.x + 24.0f, panel.y + 14.0f, F_TITLE, COL_TEXT);
-    ui_text("本轮已经获得的全部突变，按物种分栏；底部是本轮点亮的共振",
+    ui_text("本轮已经获得的全部突变，按物种分栏；格子多到装不下时，把鼠标放到那一栏上滚轮翻看",
             panel.x + 24.0f, panel.y + 44.0f, F_CAPTION, COL_DIM);
 
     UiButton *close = btn_find(S, UI_BTN_CLOSE_OVERLAY, -1);
     if (close) ui_btn_draw(close, "关闭", NULL, is_hot(S, close));
 
     int slots = game->run.active_species_count;
-    int cols = slots <= 2 ? (slots < 1 ? 1 : slots) : 2;
-
-    Rectangle area = { panel.x + 20.0f, panel.y + 78.0f, panel.width - 40.0f, 366.0f };
+    Rectangle area; int cols; float cw, ch;
+    mut_list_layout(game, &area, &cols, &cw, &ch);
     float gap = 12.0f;
-    float cw = (area.width - gap * (float)(cols - 1)) / (float)cols;
-    float ch = (slots > 2) ? (area.height - gap) * 0.5f : area.height;
 
     int total_owned = 0;
     for (int s = 0; s < slots; ++s) {
@@ -5528,30 +5588,41 @@ static void draw_mut_list_overlay(const GameState *game, const UIState *S)
                       ua_species_stage(sid), accent, S->time, true, true, 1.0f);
         ui_text_strong(ua_species_name(sid), box.x + 48.0f, box.y + 10.0f, F_LABEL, COL_TEXT);
 
-        int owned = 0;
-        for (int m = 0; m < MUTATION_COUNT; ++m) {
-            if (sp->mutations[m]) ++owned;
-        }
+        int owned = mut_owned_count(sp);
+        Rectangle grid = mut_grid_rect(box);
+        int rows_total = (owned + MUT_GRID_COLS - 1) / MUT_GRID_COLS;
+        int vis_rows = (int)(grid.height / MUT_GRID_ROW_H);
+        if (vis_rows < 1) vis_rows = 1;
+        float scroll_max = (float)(rows_total - vis_rows) * MUT_GRID_ROW_H;
+        if (scroll_max < 0.0f) scroll_max = 0.0f;
+        bool scrollable = scroll_max > 0.0f;
+        float scroll = S->mut_scroll[si];
+        if (scroll < 0.0f) scroll = 0.0f;
+        if (scroll > scroll_max) scroll = scroll_max;
+
         char line[160];
-        snprintf(line, sizeof(line), "%s · 阶段 %d · %d 项突变",
-                 ua_ecology_name(sid), ua_species_stage(sid), owned);
+        if (scrollable) {
+            snprintf(line, sizeof(line), "%s · 阶段 %d · %d 项突变 · 滚轮看全部",
+                     ua_ecology_name(sid), ua_species_stage(sid), owned);
+        } else {
+            snprintf(line, sizeof(line), "%s · 阶段 %d · %d 项突变",
+                     ua_ecology_name(sid), ua_species_stage(sid), owned);
+        }
         ui_text(line, box.x + 48.0f, box.y + 32.0f, F_CAPTION, COL_DIM);
 
-        /* 格子 3 列 × N 行：一屏装不下的按剩余数量标一句，不静默丢 */
-        float gx = box.x + 14.0f;
-        float gy = box.y + 52.0f;
-        float gw = (box.width - 28.0f - 12.0f) / 3.0f;
-        float gh = 26.0f;
-        int max_rows = (int)((box.height - 56.0f) / gh);
-        if (max_rows < 1) max_rows = 1;
-        int cap = 3 * max_rows;
+        /* 格子 3 列 × N 行；装不下时整块用滚轮翻，滚动条画在右缘。
+         * 必须裁剪：滚动中的格子会越出网格区，压到下面的表头/共振条上。 */
+        float sb_w = scrollable ? 10.0f : 0.0f;
+        float gw = (grid.width - 12.0f - sb_w) / (float)MUT_GRID_COLS;
+        ui_clip_begin(grid);
         int drawn = 0;
-
         for (int m = 0; m < MUTATION_COUNT; ++m) {
             if (!sp->mutations[m]) continue;
-            if (drawn >= cap) break;
-            int rr = drawn / 3, cc = drawn % 3;
-            Rectangle cell = { gx + (float)cc * (gw + 6.0f), gy + (float)rr * gh, gw, gh - 5.0f };
+            int rr = drawn / MUT_GRID_COLS, cc = drawn % MUT_GRID_COLS;
+            float cy = grid.y + (float)rr * MUT_GRID_ROW_H - scroll;
+            ++drawn;
+            if (cy + MUT_GRID_ROW_H <= grid.y || cy >= grid.y + grid.height) continue;
+            Rectangle cell = { grid.x + (float)cc * (gw + 6.0f), cy, gw, MUT_GRID_ROW_H - 5.0f };
             Color sig = ua_mutation_is_rare(m) ? COL_EP : COL_DNA;
             ui_panel(cell, 6.0f, Fade(sig, 0.07f), Fade(sig, 0.18f));
             /* 小尺寸纹章：半径 20 的 draw_mutation_sigil 放不进去，这里用
@@ -5562,17 +5633,35 @@ static void draw_mut_list_overlay(const GameState *game, const UIState *S)
             DrawCircleV((Vector2){ sc.x + 6.5f, sc.y - 3.0f }, 1.4f, Fade(sig, 0.55f));
             DrawCircleV((Vector2){ sc.x - 6.0f, sc.y + 3.5f }, 1.1f, Fade(sig, 0.45f));
             ui_text(ua_mutation_name(m), cell.x + 22.0f, cell.y + 4.0f, F_CAPTION, COL_TEXT);
-            ++drawn;
         }
+        ui_clip_end();
 
         if (owned == 0) {
             ui_text("还没有获得任何突变 · 按 M 打开突变面板",
-                    gx, gy + 6.0f, F_CAPTION, COL_FAINT);
-        } else if (owned > drawn) {
-            char more[32];
-            snprintf(more, sizeof(more), "还有 %d 项", owned - drawn);
-            int rr = drawn / 3;
-            ui_text(more, gx, gy + (float)rr * gh + 6.0f, F_CAPTION, COL_FAINT);
+                    grid.x, grid.y + 6.0f, F_CAPTION, COL_FAINT);
+        }
+
+        if (scrollable) {
+            /* 滚动条：轨道 + 滑块，滑块位置直接用 scroll/scroll_max，
+             * 与上面格子共用一个 offset，滚到哪就看到哪。 */
+            Rectangle track = { grid.x + grid.width - 5.0f, grid.y, 4.0f, grid.height };
+            DrawRectangleRounded(track, 2.0f, 4, Fade(COL_LINE, 0.35f));
+            float ratio = (float)vis_rows / (float)rows_total;
+            float thumb_h = grid.height * ratio;
+            if (thumb_h < 18.0f) thumb_h = 18.0f;
+            float thumb_y = grid.y + (grid.height - thumb_h) * (scroll / scroll_max);
+            DrawRectangleRounded((Rectangle){ track.x, thumb_y, 4.0f, thumb_h }, 2.0f, 4,
+                                 Fade(COL_DNA, 0.75f));
+            /* 首尾各一条渐隐边，暗示上下还有内容 */
+            if (scroll > 0.5f) {
+                DrawRectangleGradientV((int)grid.x, (int)grid.y, (int)grid.width, 12,
+                                       Fade(COL_BG_DEEP, 0.55f), Fade(COL_BG_DEEP, 0.0f));
+            }
+            if (scroll < scroll_max - 0.5f) {
+                DrawRectangleGradientV((int)grid.x, (int)(grid.y + grid.height - 12),
+                                       (int)grid.width, 12, Fade(COL_BG_DEEP, 0.0f),
+                                       Fade(COL_BG_DEEP, 0.55f));
+            }
         }
     }
 

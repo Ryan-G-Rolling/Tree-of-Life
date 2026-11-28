@@ -148,6 +148,10 @@ typedef struct {
     int codex_detail_id;
     int codex_detail_kind; /* 0 species / 1 mutation; transient, never saved */
 
+    /* 突变图谱每个物种格子的滚轮偏移（逻辑像素）。一屏装不下时靠它翻，
+     * 归零时机：打开/关闭弹层；格子少到装得下时绘制侧会夹回 0。 */
+    float mut_scroll[MAX_ACTIVE_SPECIES];
+
     /* 产出曲线：三条资源各自 72 点环形缓冲（每 0.25s 采一次 = 18 秒窗口）。
      * 只用于画面，不参与任何数值计算。 */
     float hist[3][72];
@@ -346,12 +350,24 @@ Vector2 screens_buff_factor_pos(const GameState *game, const UIState *state);
 Vector2 screens_tree_center(void);
 float screens_tree_pan_limit(const GameState *game);
 
+/* 突变图谱：鼠标落在哪个物种盒子的可滚动网格里。
+ * 绘制与滚轮共用同一套几何（盒子布局 + 网格区），避免两处各算一遍出现错位。
+ * slot = -1 表示没命中；row_h 是滚轮一格的步长；max_scroll = 0 表示装得下。 */
+typedef struct {
+    int slot;
+    float row_h;
+    float max_scroll;
+} MutListScroll;
+
+MutListScroll screens_mut_list_scroll_target(const GameState *game, Vector2 mouse);
+
 /* 调试/截图用：强制切到某个页面或弹层（只在 --shot 模式下由 main.c 调用） */
 void ui_debug_force(UiScreen screen, UiOverlay overlay);
 void ui_debug_set_codex_tab(int tab);
 void ui_debug_set_keep_parent(int v);
 void ui_debug_set_store_tab(int tab);
 void ui_debug_set_info_tab(int tab);
+void ui_debug_set_mut_scroll(int slot, float v);
 /* 截图用：模拟一次成功采集，让"皿上浮字 + 闪光 + 粒子"出现在导出帧里 */
 void ui_debug_poke_click(double gain);
 /* 截图用：直接挂一条提示条 */

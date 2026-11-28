@@ -189,6 +189,37 @@ static void test_mutation_desc_scaling(void)
     assert(strstr(buf, expect) != 0);
 }
 
+/* 突变图谱的滚轮命中：几何必须与绘制同源，装不下才给滚距，
+ * 装得下的栏不能白滚（否则滚轮会“空转”）。 */
+static void test_mut_list_scroll(void)
+{
+    GameState game;
+    game_init(&game);
+    game.run.active_species_count = 3;
+    game.run.active_species[0].species_id = SPECIES_CIVILIZATION;
+    game.run.active_species[1].species_id = SPECIES_REEF_METROPOLIS;
+    game.run.active_species[2].species_id = SPECIES_MYCORRHIZAL_WEB;
+    /* 第一栏 21 项（一屏 3 列 × 4 行 = 12），第二栏 4 项装得下 */
+    for (int m = 0; m < 21; ++m) game.run.active_species[0].mutations[m] = true;
+    for (int m = 0; m < 4; ++m) game.run.active_species[1].mutations[m] = true;
+
+    MutListScroll a = screens_mut_list_scroll_target(&game, (Vector2){ 150.0f, 300.0f });
+    assert(a.slot == 0);
+    assert(a.row_h > 0.0f);
+    assert(a.max_scroll > 0.0f);
+    assert(fabsf(a.max_scroll - (float)(7 - 4) * a.row_h) < 0.5f);   /* 7 行内容 - 4 行可视 */
+
+    MutListScroll b = screens_mut_list_scroll_target(&game, (Vector2){ 700.0f, 300.0f });
+    assert(b.slot == 1 && b.max_scroll == 0.0f);
+
+    /* 面板表头与面板外都不该命中，避免滚轮在空白处改掉某一栏 */
+    MutListScroll c = screens_mut_list_scroll_target(&game, (Vector2){ 640.0f, 70.0f });
+    assert(c.slot < 0);
+    MutListScroll d = screens_mut_list_scroll_target(&game, (Vector2){ 20.0f, 300.0f });
+    assert(d.slot < 0);
+    puts("Mutation list: wheel hit-test, scroll range and no-scroll case passed");
+}
+
 int main(void)
 {
     GameState game;
@@ -226,6 +257,7 @@ int main(void)
         insight += button->id == UI_BTN_BUY_INSIGHT && button->enabled;
     }
     assert(collect == 1 && insight == 1);
+    test_mut_list_scroll();
     puts("UI layout: every route page, all tree nodes, reward and insight controls passed");
     return 0;
 }
