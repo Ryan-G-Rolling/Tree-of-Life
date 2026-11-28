@@ -1712,17 +1712,31 @@ static void draw_top_bar(const GameState *game)
     snprintf(line, sizeof(line), "%s · 阶段 %d", ua_species_name(main_species), stage);
     ui_text(line, eb.x + 12.0f, eb.y + 30.0f, F_CAPTION, COL_DIM);
 
+    /* 本纪元封顶：B 的 v8 P0-17 给每个纪元压了深度上限（阶段 8 / 10 / 13），
+     * 到顶后分化会被规则层直接拒掉，而界面上此前只说“前置条件未满足”。
+     * 纪元牌只有 216px 宽，写全“本纪上限 阶段 N”会和物种名撞上，
+     * 所以这里只在到顶时补两字，具体数字交给分化弹层与结算页。 */
+    int era_cap = ua_era_stage_cap(game);
+    bool era_capped = era_cap > 0 && stage >= era_cap;
+    if (era_capped) {
+        ui_text_right("封顶", eb.x + eb.width - 10.0f, eb.y + 30.0f, F_CAPTION, COL_BAD);
+    }
+
     char tbuf[32];
     ui_fmt_time(game->run.elapsed_time, tbuf, (int)sizeof(tbuf));
     ui_text_right(tbuf, eb.x + eb.width - 10.0f, eb.y + 9.0f, F_CAPTION, COL_FAINT);
 
     /* 纪元牌底部的演化进度：当前主物种走到 12 个形态阶段的第几格 */
     {
-        float t = (float)stage / 11.0f;
+        /* 分母换成本纪元上限：这条读作“这一纪元还能走多深”，
+         * 到顶时正好铺满，和右边的「封顶」对得上。
+         * 用整体 12 阶做分母的话，纪元 1 到顶时条子只到 8/11，
+         * 看着像“还没走完”，跟规则正好相反。 */
+        float t = era_cap > 0 ? (float)stage / (float)era_cap : 0.0f;
         if (t < 0.0f) t = 0.0f;
         if (t > 1.0f) t = 1.0f;
         ui_bar((Rectangle){ eb.x + 12.0f, eb.y + 47.0f, eb.width - 24.0f, 3.0f }, t,
-               COL_ACCENT, Fade(COL_BAR_TRACK, 0.8f));
+               era_capped ? COL_BAD : COL_ACCENT, Fade(COL_BAR_TRACK, 0.8f));
     }
 
     UiButton *tree = btn_find(&g_ui, UI_BTN_OPEN_TREE, -1);
@@ -2953,6 +2967,9 @@ static void draw_shop_branch(const GameState *game, int child, Rectangle r)
     float hv = btn_hover_step(b, is_hot(S, b));
     ActionCode check = ua_speciation_check(game, child);
     bool ok = check == ACTION_OK;
+    /* 同样的“封顶优先”判断：商店这三张卡是最先被玩家看到的分化入口，
+     * 这里写着「前置不足」会把人误导去堆突变。 */
+    bool capped = ua_speciation_era_capped(game, child);
     Color col = ecology_color(child);
     int stage = ua_species_stage(child);
     bool afford = game->run.biomass >= ua_speciation_cost(game, child);
@@ -2976,8 +2993,12 @@ static void draw_shop_branch(const GameState *game, int child, Rectangle r)
     ui_text(meta, r.x + 62.0f, r.y + 26.0f, F_CAPTION, COL_DIM);
 
     char req[128];
-    ua_speciation_requirement(child, req, (int)sizeof(req));
-    ui_text(req, r.x + 62.0f, r.y + 42.0f, F_CAPTION, ok ? COL_GOOD : COL_FAINT);
+    if (capped) {
+        snprintf(req, sizeof(req), "超出本纪元上限 %d", ua_era_stage_cap(game));
+    } else {
+        ua_speciation_requirement(child, req, (int)sizeof(req));
+    }
+    ui_text(req, r.x + 62.0f, r.y + 42.0f, F_CAPTION, capped ? COL_BAD : (ok ? COL_GOOD : COL_FAINT));
 
     char num[32], cost[56];
     ui_fmt_num(ua_speciation_cost(game, child), num, (int)sizeof(num));
@@ -2986,9 +3007,9 @@ static void draw_shop_branch(const GameState *game, int child, Rectangle r)
     ui_panel(pill, R_BTN, afford ? Fade(COL_BIOMASS, 0.13f) : COL_SURFACE_OFF,
              afford ? Fade(COL_BIOMASS, 0.55f) : Fade(COL_LINE, 0.7f));
     ui_text(cost, pill.x + 12.0f, pill.y + 5.0f, F_BODY, afford ? COL_BIOMASS : COL_FAINT);
-    ui_text_right(ok ? (afford ? "分化" : "资源不足") : "前置不足",
+    ui_text_right(capped ? "本纪元封顶" : (ok ? (afford ? "分化" : "资源不足") : "前置不足"),
                   pill.x + pill.width - 12.0f, pill.y + 6.0f, F_CAPTION,
-                  ok && afford ? COL_TEXT : COL_FAINT);
+                  capped ? COL_BAD : (ok && afford ? COL_TEXT : COL_FAINT));
 }
 
 /* ---------------- 扩张：容量 / 储备 ----------------
@@ -3226,11 +3247,21 @@ static void draw_ticker(const GameState *game)
     int idx = (int)(g_ui.time / 9.0f) % 7;
 
     switch (idx) {
-    case 0:
-        snprintf(msg, sizeof(msg), "第 %d 纪元 · %s 正处在阶段 %d，%s",
-                 game->run.era, ua_species_name(main_species), stage,
-                 game->run.era >= 5 ? "宇宙的尺度开始向你展开" : "演化还在缓慢积累");
+    case 0: {
+        /* 到顶时这条旁白要换说法：继续写“演化还在缓慢积累”会让玩家
+         * 以为还能往上走，实际上分化已经被本纪元上限挡住了。 */
+        int cap = ua_era_stage_cap(game);
+        if (cap > 0 && stage >= cap) {
+            snprintf(msg, sizeof(msg),
+                     "第 %d 纪元 · 已封顶在阶段 %d，结算后进入下一纪元才能继续上行",
+                     game->run.era, cap);
+        } else {
+            snprintf(msg, sizeof(msg), "第 %d 纪元 · %s 正处在阶段 %d，%s",
+                     game->run.era, ua_species_name(main_species), stage,
+                     game->run.era >= 5 ? "宇宙的尺度开始向你展开" : "演化还在缓慢积累");
+        }
         break;
+    }
     case 1: {
         char num[32], next[32];
         ui_fmt_num(game->run.biomass, num, (int)sizeof(num));
@@ -3321,7 +3352,13 @@ static void draw_bottom_bar(const GameState *game)
         else snprintf(sub, sizeof(sub), "消耗 DNA");
         draw_action_button(mut, ICON_MUT, "主动突变", sub, is_hot(S, mut), COL_DNA);
     }
-    if (spe) draw_action_button(spe, ICON_BRANCH, "物种分化", "消耗生物量", is_hot(S, spe), COL_BIOMASS);
+    if (spe) {
+        /* 到顶后这个按钮点开只会看到一页封顶卡，先把原因写在副标题上 */
+        int cap = ua_era_stage_cap(game);
+        bool capped = cap > 0 && ua_main_stage(game) >= cap;
+        draw_action_button(spe, ICON_BRANCH, "物种分化",
+                           capped ? "本纪元已封顶" : "消耗生物量", is_hot(S, spe), COL_BIOMASS);
+    }
     if (end) draw_action_button(end, ICON_END, "结束本轮演化", "预览 Evolution Points",
                                is_hot(S, end), COL_ACCENT);
 
@@ -3812,6 +3849,22 @@ static void draw_end_era(const GameState *game, const UIState *S)
     ui_panel(panel, R_PANEL, COL_PANEL, Fade(COL_ACCENT, 0.35f));
 
     ui_text_strong("结束本轮演化", panel.x + 36.0f, panel.y + 24.0f, F_DISPLAY, COL_TEXT);
+
+    /* 结算前把“这一纪元还能走多深”写在标题右侧：
+     * 玩家在这里才真正权衡“继续爬”还是“换纪元”，不给这个数字就没得比。 */
+    {
+        int cap = ua_era_stage_cap(game);
+        int stage = ua_main_stage(game);
+        bool capped = cap > 0 && stage >= cap;
+        char capnote[96];
+        if (capped) {
+            snprintf(capnote, sizeof(capnote), "本纪元上限 阶段 %d · 已封顶", cap);
+        } else {
+            snprintf(capnote, sizeof(capnote), "本纪元上限 阶段 %d · 还能再走 %d 阶", cap, cap - stage);
+        }
+        ui_text_right(capnote, panel.x + panel.width - 36.0f, panel.y + 32.0f, F_LABEL,
+                      capped ? COL_BAD : COL_FAINT);
+    }
 
     char sub[180], tbuf[32];
     ui_fmt_time(game->run.elapsed_time, tbuf, (int)sizeof(tbuf));
@@ -4605,6 +4658,24 @@ static void draw_speciation_overlay(const GameState *game, const UIState *S)
     snprintf(bio, sizeof(bio), "生物量 %s", num);
     ui_text_right(bio, panel.x + panel.width - 24.0f, panel.y + 24.0f, F_LABEL, COL_BIOMASS);
 
+    /* 本纪元的阶段上限（v8 P0-17）。这条不写出来时，玩家到顶后只会看到
+     * 每张卡都「前置不足」，而实际原因是一条跟资源、跟突变都无关的规则。 */
+    {
+        int cap = ua_era_stage_cap(game);
+        int stage = ua_main_stage(game);
+        bool capped = cap > 0 && stage >= cap;
+        char note[192];
+        if (capped) {
+            snprintf(note, sizeof(note),
+                     "第 %d 纪元上限：阶段 %d · 已到顶，本轮不会再出现可分化方向，"
+                     "结算进入下一纪元才能继续上行", game->run.era, cap);
+        } else {
+            snprintf(note, sizeof(note), "第 %d 纪元上限：阶段 %d · 主线当前阶段 %d，还能再走 %d 阶",
+                     game->run.era, cap, stage, cap - stage);
+        }
+        ui_text(note, panel.x + 24.0f, panel.y + 54.0f, F_CAPTION, capped ? COL_BAD : COL_FAINT);
+    }
+
     int children[SPECIES_COUNT];
     int n = ua_speciation_children(game, children, SPECIES_COUNT);
 
@@ -4623,6 +4694,7 @@ static void draw_speciation_overlay(const GameState *game, const UIState *S)
         bool hot = is_hot(S, b);
         int sid = children[i];
         ActionCode check = ua_speciation_check(game, sid);
+        bool capped = ua_speciation_era_capped(game, sid);
         double cost = ua_speciation_cost(game, sid);
         bool afford = game->run.biomass >= cost;
         float hv = btn_hover_step(b, hot);
@@ -4642,9 +4714,16 @@ static void draw_speciation_overlay(const GameState *game, const UIState *S)
         ui_text(meta, r.x + 84.0f, r.y + 34.0f, F_CAPTION, COL_DIM);
 
         char req[160];
-        ua_speciation_requirement(sid, req, (int)sizeof(req));
+        if (capped) {
+            /* 封顶时把“需要某项突变”换成真实原因：阶段数越界。
+             * 卡的上一行已经写了目标阶段，这里不再重复“阶段 N”。 */
+            snprintf(req, sizeof(req), "超出本纪元上限 %d · 结算进入下一纪元",
+                     ua_era_stage_cap(game));
+        } else {
+            ua_speciation_requirement(sid, req, (int)sizeof(req));
+        }
         ui_text(req, r.x + 84.0f, r.y + 56.0f, F_CAPTION,
-               check == ACTION_OK ? COL_FAINT : COL_BAD);
+               (capped || check != ACTION_OK) ? COL_BAD : COL_FAINT);
 
         /* 与突变候选同一套提示：选这个分支之后还能走向哪里。
          * 三跳物种名在 264 物种里可能很长，按剩余宽度折一行 + 省略号兜底。 */
@@ -4663,7 +4742,9 @@ static void draw_speciation_overlay(const GameState *game, const UIState *S)
         ui_text_right(price, r.x + r.width - 18.0f, r.y + 16.0f, F_LABEL,
                       afford ? COL_BIOMASS : COL_BAD);
 
-        if (check != ACTION_OK) {
+        if (capped) {
+            ui_text_right("本纪元封顶", r.x + r.width - 18.0f, r.y + 42.0f, F_CAPTION, COL_BAD);
+        } else if (check != ACTION_OK) {
             ui_text_right("前置不足", r.x + r.width - 18.0f, r.y + 42.0f, F_CAPTION, COL_BAD);
         } else if (!afford) {
             ui_text_right("生物量不足", r.x + r.width - 18.0f, r.y + 42.0f, F_CAPTION, COL_BAD);
@@ -5147,6 +5228,41 @@ static void tree_edge(Vector2 a, Vector2 b, Vector2 g, Color c, float w)
     }
 }
 
+/* 同阶段亲缘线：两端落在同一圈上，直线弦会从星图中心横穿过去
+ *（264 个物种里有 35 对是这种“同一时代里分出去的一支”，
+ * 例如 藻类真核生物 → 光合菌席、简单多细胞群落 → 几丁质礁）。
+ * 这里沿这一圈的椭圆弧走：弧线贴着圈，不会糊住别的节点，
+ * 形状本身也说明了“这不是往下一阶段的推进，而是横向的一支”。 */
+static void tree_arc(Vector2 a, Vector2 b, Vector2 g, float rx, float ry, Color c, float w)
+{
+    if (rx <= 0.0f || ry <= 0.0f) { tree_edge(a, b, g, c, w); return; }
+    float a0 = atan2f((a.y - g.y) / ry, (a.x - g.x) / rx);
+    float a1 = atan2f((b.y - g.y) / ry, (b.x - g.x) / rx);
+    float d = a1 - a0;
+    while (d > PI) d -= 2.0f * PI;
+    while (d < -PI) d += 2.0f * PI;
+    Vector2 prev = a;
+    /* 段数随弧长走：短弧 8 段就够，跨半圈的弧要更密才不显折角。
+     * 上限 40 段，避免两条隔了半圈的节点之间画出几百条小线段。 */
+    float span = fabsf(d);
+    int steps = (int)(span / (PI / 20.0f)) + 8;
+    if (steps > 40) steps = 40;
+    for (int i = 1; i <= steps; ++i) {
+        float ang = a0 + d * ((float)i / (float)steps);
+        Vector2 p = { g.x + cosf(ang) * rx, g.y + sinf(ang) * ry };
+        DrawLineEx(prev, p, w, c);
+        prev = p;
+    }
+}
+
+/* 两种亲缘线共用入口：同圈走弧，跨圈走“被引力拉弯”的弦 */
+static void tree_link(Vector2 a, Vector2 b, Vector2 g, float rx, float ry, bool same_ring,
+                      Color c, float w)
+{
+    if (same_ring) tree_arc(a, b, g, rx, ry, c, w);
+    else tree_edge(a, b, g, c, w);
+}
+
 /* v14 W12：264 节点下只画“已发现 + 与已发现相邻”的两圈。
  * 全量暗点会在最外 4 圈糊成一片，而且没有信息量。 */
 static void tree_visibility(const GameState *game, bool found[SPECIES_COUNT],
@@ -5178,7 +5294,7 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
     ui_panel(panel, R_PANEL, COL_PANEL, Fade(COL_ACCENT, 0.30f));
 
     ui_text_strong("进化树 · 星图", panel.x + 24.0f, panel.y + 14.0f, F_TITLE, COL_TEXT);
-    ui_text("一圈一个阶段，越外越晚 · 拖拽平移 · 滚轮缩放 · 点节点看它从哪来",
+    ui_text("一圈一个阶段，越外越晚 · 同圈弧线 = 同阶段旁支 · 拖拽平移 · 滚轮缩放 · 点节点看它从哪来",
             panel.x + 24.0f, panel.y + 44.0f, F_CAPTION, COL_DIM);
 
     /* 发现表只算一次，节点降噪、前沿判定、标签排序共用 */
@@ -5288,8 +5404,12 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
                 for (int k = 0; k < n && edge_budget > 0; ++k) {
                     int p = ps[k];
                     if (p < 0 || p >= SPECIES_COUNT || p == child) continue;
-                    if (ua_species_stage(p) >= own) continue;    /* 只画"早 → 晚"的方向 */
-                    if (ua_species_stage(p) != band) continue;
+                    int pst = ua_species_stage(p);
+                    /* 早期版本这里是 `pst >= own` 就跳过，等于把整类同阶段旁支
+                     *（264 个物种里 35 对）从星图上抹掉了：节点画在同一圈，
+                     * 却看不到它们的亲缘关系。现在只挡“晚 → 早”的反向边。 */
+                    if (pst > own) continue;
+                    if (pst != band) continue;
                     if (drawn_pair[p][child]) continue;
                     drawn_pair[p][child] = true;
 
@@ -5302,15 +5422,24 @@ static void draw_tree_overlay(const GameState *game, const UIState *S)
                     if (!CheckCollisionPointRec(vp[p], cull) && !CheckCollisionPointRec(vp[child], cull))
                         continue;
 
+                    bool same_ring = (pst == own);
+                    /* 弧线用的是屏幕坐标：半径必须同样乘上 zoom，
+                     * 否则放大后弧会缩在圈的里面、末端接不到目标节点。 */
+                    float rr_x = tree_ring_rx(band) * zoom, rr_y = tree_ring_ry(band) * zoom;
+
                     --edge_budget;
                     if (hi) {
                         float pulse = 0.5f + 0.5f * sinf(g_ui.time * 2.0f + (float)child * 0.4f);
-                        tree_edge(vp[p], vp[child], c2, Fade(COL_ACCENT, 0.10f + 0.08f * pulse), 4.5f);
-                        tree_edge(vp[p], vp[child], c2, Fade(COL_ACCENT, 0.55f + 0.30f * pulse), 2.0f);
+                        tree_link(vp[p], vp[child], c2, rr_x, rr_y, same_ring,
+                                  Fade(COL_ACCENT, 0.10f + 0.08f * pulse), 4.5f);
+                        tree_link(vp[p], vp[child], c2, rr_x, rr_y, same_ring,
+                                  Fade(COL_ACCENT, 0.55f + 0.30f * pulse), 2.0f);
                     } else if (lit) {
-                        tree_edge(vp[p], vp[child], c2, Fade(ecology_color(child), 0.26f), 1.1f);
+                        tree_link(vp[p], vp[child], c2, rr_x, rr_y, same_ring,
+                                  Fade(ecology_color(child), 0.26f), 1.1f);
                     } else {
-                        tree_edge(vp[p], vp[child], c2, Fade(COL_LINE_STRONG, 0.10f), 1.0f);
+                        tree_link(vp[p], vp[child], c2, rr_x, rr_y, same_ring,
+                                  Fade(COL_LINE_STRONG, 0.10f), 1.0f);
                     }
                 }
             }

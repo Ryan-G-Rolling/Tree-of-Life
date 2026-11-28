@@ -473,6 +473,19 @@ static void fill_demo_singularity(GameState *g)
     g->legacy.best_biomass = 6.1e12;
 }
 
+/* 纪元 1 封顶：B 的 v8 P0-17 把纪元 1 的深度压在阶段 8（文明）。
+ * 主链正好停在阶段 8，分化候选全是阶段 9 —— 前置突变与生物量都刻意给满，
+ * 这样截图里“一张都点不动”的原因只可能是封顶，不是缺突变或缺资源。 */
+static void fill_demo_capped(GameState *g)
+{
+    fill_demo_late(g);
+    g->run.era = 1;
+    SpeciesState *main = &g->run.active_species[0];
+    main->species_id = SPECIES_CIVILIZATION;   /* 阶段 8 = 纪元 1 的上限 */
+    main->is_main_lineage = true;
+    for (int m = 0; m < MUTATION_COUNT; ++m) main->mutations[m] = true;
+}
+
 /* 截图验证：把三种页面与四种弹层各导出一张，方便离线检查排版 */
 static void capture_screen(const GameState *base, const char *first_file)
 {
@@ -529,6 +542,15 @@ static void capture_screen(const GameState *base, const char *first_file)
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_SPECIATION);
     ui_debug_capture(&game, "shot_03_speciation.png");
 
+    /* 纪元 1 封顶：主链停在阶段 8，候选全是阶段 9，一张都点不动。
+     * 弹层里必须写“本纪元封顶”，底栏与纪元牌也要各留一处标记。 */
+    fill_demo_capped(&game);
+    ui_debug_force(UI_SCREEN_MAIN, UI_OVL_SPECIATION);
+    ui_debug_capture(&game, "shot_03b_speciation_cap.png");
+
+    ui_debug_force(UI_SCREEN_MAIN, UI_OVL_NONE);
+    ui_debug_capture(&game, "shot_01i_era_cap.png");   /* 顶栏「封顶」+ 底栏副标题 */
+
     /* 突变候选用 B 的真实抽取函数生成，弹层里就是这一局真的会出现的候选 */
 #ifndef UI_MOCK
     game.run.mutation_offer = evolution_generate_mutation_offer(&game, 0);
@@ -569,6 +591,18 @@ static void capture_screen(const GameState *base, const char *first_file)
 
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_TREE);
     ui_debug_capture(&game, "shot_05_tree.png");
+
+    /* 同阶段旁支：选中「几丁质礁」，它的整条来路高亮。
+     * 最近一跳是「简单多细胞群落」（同为阶段 3），连线必须贴着圈走成弧线，
+     * 而不是从星图中心穿过去的弦 —— 以前这一步整类被过滤掉了。
+     * 目标物种要先点亮，否则节点不画，弧线末端看着像悬空。 */
+    game.run.discovered_species[SPECIES_CHITIN_REEF] = true;
+    game.legacy.codex_species[SPECIES_CHITIN_REEF] = true;
+    g_ui.tree_sel = SPECIES_CHITIN_REEF;
+    g_ui.tree_zoom = 2.0f;
+    ui_debug_capture(&game, "shot_05f_tree_same_phase.png");
+    g_ui.tree_sel = -1;
+    g_ui.tree_zoom = 1.0f;
 
     /* 星图缩放：滚轮放大约 1.9 倍并向右下平移，验证节点/连线/标签跟着视图走 */
     g_ui.tree_zoom = 1.9f;
@@ -674,5 +708,5 @@ static void capture_screen(const GameState *base, const char *first_file)
     /* 生境样张：8 种大环境并排，核对"每个阶段站在什么地上" */
     ui_debug_capture_habitats("shot_11_habitats.png");
 
-    TraceLog(LOG_INFO, "shot capture done: 30 frames");
+    TraceLog(LOG_INFO, "shot capture done: 32 frames");
 }

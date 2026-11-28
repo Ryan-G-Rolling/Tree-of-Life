@@ -281,6 +281,110 @@ static void test_mutation_atp_ticket(void)
     puts("Mutation ATP ticket: forwarded 1:1 and gates the card together with DNA");
 }
 
+/* v8 P0-17 的纪元阶段封顶：界面靠 ua_speciation_era_capped 把「本纪元封顶」
+ * 从一堆「前置不足」里分出来。这里锁住三件事：
+ *   1) 上限随纪元走（1/2/3 = 8/10/13），且转发自规则层；
+ *   2) 分类结果与 evolution_validate_speciation 不矛盾
+ *      （封顶检查排在所有前置之前，越界的目标不可能判 OK）；
+ *   3) 到顶后分化弹层的按钮全部不可点 —— 玩家点不出来才是真的拒绝。 */
+static void test_era_stage_cap(void)
+{
+    GameState game;
+    game_init(&game);
+    memset(&g_ui, 0, sizeof g_ui);
+
+    int ph8 = -1, ph9 = -1, ph13 = -1;
+    for (int i = 0; i < SPECIES_COUNT; ++i) {
+        int st = ua_species_stage(i);
+        if (st == 8 && ph8 < 0) ph8 = i;
+        if (st == 9 && ph9 < 0) ph9 = i;
+        if (st == 13 && ph13 < 0) ph13 = i;
+    }
+    assert(ph8 >= 0 && ph9 >= 0 && ph13 >= 0);
+
+    game.run.era = 1;
+    assert(ua_era_stage_cap(&game) == 8);
+    assert(ua_era_stage_cap(&game) == evolution_era_stage_cap(&game));
+    assert(!ua_speciation_era_capped(&game, ph8));
+    assert(ua_speciation_era_capped(&game, ph9));
+
+    game.run.era = 2;
+    assert(ua_era_stage_cap(&game) == 10);
+    assert(!ua_speciation_era_capped(&game, ph9));
+
+    /* 纪元 3 起上限 13 = 全表最高阶段，等于不再限制 */
+    game.run.era = 3;
+    assert(ua_era_stage_cap(&game) == 13);
+    assert(!ua_speciation_era_capped(&game, ph13));
+
+    /* 与规则层判定一致：任何被判 OK 的目标都没有越界 */
+    game.run.era = 1;
+    for (int i = 0; i < SPECIES_COUNT; ++i) {
+        bool capped = ua_speciation_era_capped(&game, i);
+        ActionCode code = ua_speciation_check(&game, i);
+        if (capped) assert(code != ACTION_OK);
+        if (code == ACTION_OK) assert(!capped);
+    }
+
+    /* 到顶：主链停在阶段 8，四张候选全是阶段 9，按钮必须全灰 */
+    game.run.active_species_count = 1;
+    game.run.active_species[0].species_id = SPECIES_CIVILIZATION;   /* 阶段 8 */
+    game.run.biomass = 1e12;
+    g_ui.screen = UI_SCREEN_MAIN;
+    g_ui.overlay = UI_OVL_SPECIATION;
+    screens_build(&g_ui.layout, &game, &g_ui);
+    int seen = 0;
+    for (int i = 0; i < g_ui.layout.count; ++i) {
+        const UiButton *b = &g_ui.layout.items[i];
+        if (b->id != UI_BTN_SPECIATE) continue;
+        ++seen;
+        assert(!b->enabled);
+        assert(ua_speciation_era_capped(&game, b->target_id));
+    }
+    assert(seen > 0);
+
+    /* 同一局面换到纪元 2（上限 10），阶段 9 的候选就该恢复可点 */
+    game.run.era = 2;
+    screens_build(&g_ui.layout, &game, &g_ui);
+    for (int i = 0; i < g_ui.layout.count; ++i) {
+        const UiButton *b = &g_ui.layout.items[i];
+        if (b->id != UI_BTN_SPECIATE) continue;
+        assert(!ua_speciation_era_capped(&game, b->target_id));
+    }
+    puts("Era stage cap: forwarded 1:1, classified apart from prerequisites, gates every card");
+}
+
+/* 星图同阶段旁支：绘制循环以前用 `parent phase >= child phase 就跳过` 把整类抹掉了。
+ * 规则层里这类“同一时代分出去的一支”有 35 对（藻类真核生物 → 光合菌席、
+ * 简单多细胞群落 → 几丁质礁……），这里锁住它们确实是同阶段亲本，
+ * 免得以后又有人把同阶段边当成“反向边”一起过滤掉。 */
+static void test_tree_same_phase_edges(void)
+{
+    assert(ua_species_stage(SPECIES_CHITIN_REEF) ==
+           ua_species_stage(SPECIES_MULTICELLULAR_COLONY));
+
+    int ps[8];
+    int n = ua_species_parents(SPECIES_CHITIN_REEF, ps, 8);
+    assert(n > 0);
+    bool has_same_phase = false;
+    for (int k = 0; k < n; ++k) {
+        if (ua_species_stage(ps[k]) == ua_species_stage(SPECIES_CHITIN_REEF)) has_same_phase = true;
+    }
+    assert(has_same_phase);
+
+    /* 全表统计：同阶段父子对不能是 0（是 0 说明规则表变了，注释与图例要跟着改） */
+    int pairs = 0;
+    for (int child = 1; child < SPECIES_COUNT; ++child) {
+        int list[8];
+        int m = ua_species_parents(child, list, 8);
+        for (int k = 0; k < m; ++k) {
+            if (ua_species_stage(list[k]) == ua_species_stage(child)) ++pairs;
+        }
+    }
+    assert(pairs >= 20);
+    printf("Tree same-phase branches: %d pairs kept drawable\n", pairs);
+}
+
 int main(void)
 {
     GameState game;
@@ -290,6 +394,8 @@ int main(void)
     test_mutation_desc_scaling();
     test_mut_list_scroll();
     test_mutation_atp_ticket();
+    test_era_stage_cap();
+    test_tree_same_phase_edges();
     memset(&g_ui, 0, sizeof g_ui);
     g_ui.overlay = UI_OVL_TREE;
     screens_build(&g_ui.layout, &game, &g_ui);

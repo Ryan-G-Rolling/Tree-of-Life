@@ -289,6 +289,28 @@ ActionCode ua_speciation_check(const GameState *game, int target_species_id)
     return evolution_validate_speciation(game, slot, target_species_id);
 }
 
+/* v8 P0-17：本纪元的阶段深度上限。只转发，界面不重写 8/10/13。 */
+int ua_era_stage_cap(const GameState *game)
+{
+    if (!game) return 0;
+    return evolution_era_stage_cap(game);
+}
+
+int ua_main_stage(const GameState *game)
+{
+    if (!game) return 0;
+    return evolution_main_stage(game);
+}
+
+/* 与 evolution_validate_speciation 里那条封顶检查逐字对应：
+ * 该检查排在支线深度与前置突变之前，所以“check 失败 + 这里为真”时，
+ * 唯一原因就是本纪元到顶。界面据此把「前置不足」改写成「本纪元封顶」。 */
+bool ua_speciation_era_capped(const GameState *game, int target_species_id)
+{
+    if (!game || target_species_id < 0 || target_species_id >= SPECIES_COUNT) return false;
+    return species_phase(target_species_id) > evolution_era_stage_cap(game);
+}
+
 const char *ua_speciation_requirement(int target_species_id, char *buf, int buf_size)
 {
     if (target_species_id < 0 || target_species_id >= SPECIES_COUNT) {

@@ -104,6 +104,19 @@ ActionCode ua_speciation_check(const GameState *game, int target_species_id);
 /* 前置条件文本，用于按钮下方说明，例如“需要 Nucleus + 已有 Photosynthesis”。 */
 const char *ua_speciation_requirement(int target_species_id, char *buf, int buf_size);
 
+/* 本纪元的阶段深度上限（v8 P0-17：纪元 1/2/3 = 阶段 8/10/13，纪元 ≥3 即无实限）。
+ * 直接转发 evolution_era_stage_cap —— 8/10/13 这三个数只存在于规则层，
+ * 界面绝不自己写一遍。 */
+int ua_era_stage_cap(const GameState *game);
+
+/* 主线当前阶段。转发 evolution_main_stage，界面不再假设“活跃槽 0 就是主线”。 */
+int ua_main_stage(const GameState *game);
+
+/* 目标物种是否已经越过本纪元上限（只用于把“封顶”从一堆“前置不足”里分出来）。
+ * 判定本身仍然走 evolution_validate_speciation；这条只作分类显示，
+ * 让玩家看到的是“本纪元封顶”而不是含糊的“条件未满足”。 */
+bool ua_speciation_era_capped(const GameState *game, int target_species_id);
+
 /* 这个物种再往后还能分化成什么 —— 分化候选卡上的“后续”。
  * 沿子代取阶段最近的主干走两步，输出“珊瑚共同体 → 真核群落”；
  * 已是末端则写“已到本路线末端”。名字全部走中文图鉴。 */
