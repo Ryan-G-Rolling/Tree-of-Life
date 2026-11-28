@@ -220,6 +220,67 @@ static void test_mut_list_scroll(void)
     puts("Mutation list: wheel hit-test, scroll range and no-scroll case passed");
 }
 
+/* 突变是双币：DNA 主价（offer 里）+ ATP 门票（随已购张数涨）。
+ * 卡面若只判 DNA，DNA 够而 ATP 不够时会显示“可点”，点下去只弹一句「ATP 不足」，
+ * 玩家看不到还差多少。这里同时锁两件事：报价必须 1:1 转发规则层、ATP 必须参与按钮可用性。 */
+static void test_mutation_atp_ticket(void)
+{
+    GameState game;
+    game_init(&game);
+    game.run.active_species_count = 1;
+    game.run.active_species[0].species_id = SPECIES_CYANOBACTERIUM;
+    game.run.active_species[0].population = 120.0;
+
+    int mid = -1;
+    for (int id = 0; id < MUTATION_COUNT; ++id) {
+        const MutationDef *def = mutation_get(id);
+        if (def && def->min_phase >= MUTATION_ATP_MIN_PHASE) { mid = id; break; }
+    }
+    assert(mid >= 0);
+    double ticket = ua_mutation_atp_cost(&game, mid);
+    assert(ticket > 0.0);
+    /* 转发而不是重算：与规则层必须逐值相同（k 的口径一改就露馅） */
+    assert(fabs(ticket - evolution_mutation_atp_cost(&game, mid)) < 1e-9);
+
+    game.run.mutation_offer.active = true;
+    game.run.mutation_offer.species_slot = 0;
+    game.run.mutation_offer.choice_count = 1;
+    game.run.mutation_offer.mutation_ids[0] = mid;
+    game.run.mutation_offer.dna_costs[0] = 1.0;
+
+    memset(&g_ui, 0, sizeof g_ui);
+    g_ui.screen = UI_SCREEN_MAIN;
+    g_ui.overlay = UI_OVL_MUTATION;
+
+    /* DNA 远远够、ATP 为 0 → 必须不可点 */
+    game.run.dna = 1e9;
+    game.run.atp = 0.0;
+    screens_build(&g_ui.layout, &game, &g_ui);
+    int seen = 0;
+    for (int i = 0; i < g_ui.layout.count; ++i) {
+        const UiButton *b = &g_ui.layout.items[i];
+        if (b->id != UI_BTN_CHOOSE_MUTATION) continue;
+        ++seen;
+        assert(!b->enabled);
+    }
+    assert(seen == 1);
+
+    /* ATP 刚好够 → 可点；差 1 点 → 又不可点（边界不能含糊） */
+    game.run.atp = ticket;
+    screens_build(&g_ui.layout, &game, &g_ui);
+    for (int i = 0; i < g_ui.layout.count; ++i) {
+        const UiButton *b = &g_ui.layout.items[i];
+        if (b->id == UI_BTN_CHOOSE_MUTATION) assert(b->enabled);
+    }
+    game.run.atp = ticket - 1.0;
+    screens_build(&g_ui.layout, &game, &g_ui);
+    for (int i = 0; i < g_ui.layout.count; ++i) {
+        const UiButton *b = &g_ui.layout.items[i];
+        if (b->id == UI_BTN_CHOOSE_MUTATION) assert(!b->enabled);
+    }
+    puts("Mutation ATP ticket: forwarded 1:1 and gates the card together with DNA");
+}
+
 int main(void)
 {
     GameState game;
@@ -227,6 +288,8 @@ int main(void)
     test_routes(&game);
     test_codex_navigation();
     test_mutation_desc_scaling();
+    test_mut_list_scroll();
+    test_mutation_atp_ticket();
     memset(&g_ui, 0, sizeof g_ui);
     g_ui.overlay = UI_OVL_TREE;
     screens_build(&g_ui.layout, &game, &g_ui);
@@ -257,7 +320,6 @@ int main(void)
         insight += button->id == UI_BTN_BUY_INSIGHT && button->enabled;
     }
     assert(collect == 1 && insight == 1);
-    test_mut_list_scroll();
     puts("UI layout: every route page, all tree nodes, reward and insight controls passed");
     return 0;
 }

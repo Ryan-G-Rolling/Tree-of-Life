@@ -112,6 +112,11 @@ const char *ua_species_route(int species_id, char *buf, int buf_size);
 /* ================= B 侧：突变 ================= */
 
 double ua_mutation_refresh_cost(const GameState *game);
+/* 突变是双币：DNA 主价（在 mutation_offer.dna_costs 里）+ ATP 门票。
+ * ATP 门票 = 10 s × 1.12^k 的主谱系 ATP 产率（k 只数门票卡），
+ * 且随已购张数变化 —— 所以每次打开都要向规则层现问，不能缓存。
+ * 直接转发 evolution_mutation_atp_cost，UI 不复制这条公式。 */
+double ua_mutation_atp_cost(const GameState *game, int mutation_id);
 const char *ua_mutation_name(int mutation_id);
 const char *ua_mutation_desc(int mutation_id, char *buf, int buf_size);
 bool ua_mutation_is_rare(int mutation_id);

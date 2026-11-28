@@ -640,6 +640,17 @@ static void capture_screen(const GameState *base, const char *first_file)
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_MUTATION);
     ui_debug_capture(&game, "shot_02b_mutation_late.png");
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_NONE);
+
+    /* 文案上限：9 项效果（5 项百分比 + 抗性 + 理念）在 592px 卡宽里一行放不下，
+     * 会折两行。这张锁住“描述与后续绝不越出卡片右边框”。 */
+    game.run.mutation_offer.active = true;
+    game.run.mutation_offer.species_slot = 0;
+    game.run.mutation_offer.choice_count = 1;
+    game.run.mutation_offer.mutation_ids[0] = MUTATION_CHLOROPLAST_ENDOSYMBIOSIS;
+    game.run.mutation_offer.dna_costs[0] = 4200.0;
+    ui_debug_force(UI_SCREEN_MAIN, UI_OVL_MUTATION);
+    ui_debug_capture(&game, "shot_02c_mutation_long.png");
+    ui_debug_force(UI_SCREEN_MAIN, UI_OVL_NONE);
 #endif
 
     /* 早期杆状菌：培养皿 + 展台里的生物都必须落在自己的画框内 */
@@ -663,5 +674,5 @@ static void capture_screen(const GameState *base, const char *first_file)
     /* 生境样张：8 种大环境并排，核对"每个阶段站在什么地上" */
     ui_debug_capture_habitats("shot_11_habitats.png");
 
-    TraceLog(LOG_INFO, "shot capture done: 27 frames");
+    TraceLog(LOG_INFO, "shot capture done: 30 frames");
 }

@@ -4184,13 +4184,16 @@ static void build_overlay(UiLayout *L, const GameState *game, const UIState *S)
     case UI_OVL_MUTATION: {
         Rectangle panel = mutation_panel_rect(game);
         for (int i = 0; i < game->run.mutation_offer.choice_count && i < MAX_MUTATION_CHOICES; ++i) {
-            bool afford = game->run.dna >= game->run.mutation_offer.dna_costs[i];
+            /* 突变是双币：DNA 主价 + ATP 门票。只判 DNA 会让卡面显示“可点”，
+             * 点下去却只弹一句「ATP 不足」，玩家不知道还差多少 —— 所以两边一起判。 */
+            int mid = game->run.mutation_offer.mutation_ids[i];
+            bool afford = game->run.dna >= game->run.mutation_offer.dna_costs[i] &&
+                          game->run.atp >= ua_mutation_atp_cost(game, mid);
             btn_add(L, UI_BTN_CHOOSE_MUTATION,
                     (Rectangle){ panel.x + 24.0f, panel.y + 84.0f + (float)i * 124.0f,
                                  panel.width - 48.0f, 112.0f },
                     game->run.mutation_offer.mutation_ids[i], i, afford);
-        }
-        btn_add(L, UI_BTN_CLOSE_OVERLAY,
+        }        btn_add(L, UI_BTN_CLOSE_OVERLAY,
                 (Rectangle){ panel.x + (panel.width - 180.0f) * 0.5f,
                              panel.y + panel.height - 52.0f, 180.0f, H_SECONDARY }, 0, 0, true);
         if (game->run.mutation_offer.active) {
@@ -4409,6 +4412,68 @@ static void draw_mutation_sigil(Vector2 c, int mutation_id, Color col, bool rare
     draw_mutation_sigil_scaled(c, mutation_id, col, rare, t, 1.0f);
 }
 
+/* 行尾遗留的 "·" 与空格：折行落在分隔符上的话，下一行以内容开头会更干净 */
+static void trim_row_tail(char *s)
+{
+    int n = (int)strlen(s);
+    for (;;) {
+        if (n > 0 && s[n - 1] == ' ') { s[--n] = '\0'; continue; }
+        if (n >= 2 && (unsigned char)s[n - 2] == 0xC2u && (unsigned char)s[n - 1] == 0xB7u) {
+            n -= 2;
+            s[n] = '\0';
+            continue;
+        }
+        break;
+    }
+}
+
+/* 按实测像素宽度折行（中文逐字宽、数字/百分号更窄，不能按字数估）。
+ * 行数用尽时在末行补省略号，必要时从尾部退到 UTF-8 边界再补 —— 卡片是硬边框，
+ * 宁可少读两个效果项，也不能让字冲出框外。返回实际行数。 */
+static int wrap_text_limited(const char *text, float width, float size, int max_rows,
+                             char rows[][192])
+{
+    if (max_rows < 1) max_rows = 1;
+    for (int i = 0; i < max_rows; ++i) rows[i][0] = '\0';
+
+    int row = 0, used = 0;
+    const char *p = text;
+    while (*p) {
+        int bytes = 1;
+        while (p[bytes] && ((unsigned char)p[bytes] & 0xC0u) == 0x80u) ++bytes;
+        char trial[192];
+        memcpy(trial, rows[row], (size_t)used);
+        memcpy(trial + used, p, (size_t)bytes);
+        trial[used + bytes] = '\0';
+        if (used > 0 && ui_text_w(trial, size) > width) {
+            if (row + 1 >= max_rows) break;   /* 行数用尽：剩下的不要了 */
+            trim_row_tail(rows[row]);
+            ++row;
+            used = 0;
+        }
+        memcpy(rows[row] + used, p, (size_t)bytes);
+        used += bytes;
+        rows[row][used] = '\0';
+        p += bytes;
+    }
+
+    if (*p) {
+        char *last = rows[row];
+        int n = (int)strlen(last);
+        float ell = ui_text_w("…", size);
+        while (n > 0 && ui_text_w(last, size) + ell > width) {
+            --n;
+            while (n > 0 && ((unsigned char)last[n] & 0xC0u) == 0x80u) --n;
+            last[n] = '\0';
+        }
+        trim_row_tail(last);
+        strncat(last, "…", sizeof(rows[0]) - strlen(last) - 1);
+    } else {
+        trim_row_tail(rows[row]);
+    }
+    return row + 1;
+}
+
 static void draw_mutation_overlay(const GameState *game, const UIState *S)
 {
     Rectangle panel = mutation_panel_rect(game);
@@ -4463,23 +4528,50 @@ static void draw_mutation_overlay(const GameState *game, const UIState *S)
             ui_text_center("稀有", tag.x + tag.width * 0.5f, tag.y + 4.0f, F_CAPTION, COL_RARE);
         }
 
-        char desc[160];
+        /* 效果摘要最多 9 项（5 项百分比 + 5 项抗性 + 理念），一行必然冲出卡片右边界。
+         * 按实测字宽折两行，仍放不下就末行省略号收口。 */
+        char desc[224];
         ua_mutation_desc(mid, desc, (int)sizeof(desc));
-        ui_text(desc, r.x + 82.0f, r.y + 32.0f, F_BODY, COL_DIM);
+        char drow[3][192];
+        float text_w = r.width - 82.0f - 16.0f;
+        int drows = wrap_text_limited(desc, text_w, F_BODY, 2, drow);
+        for (int k = 0; k < drows; ++k) {
+            ui_text(drow[k], r.x + 82.0f, r.y + 31.0f + (float)k * 15.0f, F_BODY, COL_DIM);
+        }
+        float below = r.y + 31.0f + (float)drows * 15.0f;
 
         /* 路线预告：选之前就知道这条路后面会解锁哪些物种。
-         * 名字与走向由适配层从"前置突变 → 物种 → 子代"现查，UI 不复制规则表。 */
+         * 名字与走向由适配层从"前置突变 → 物种 → 子代"现查，UI 不复制规则表。
+         * 三跳物种名同样会超宽，按剩余宽度折一行 + 省略号。 */
         char route[192];
         ua_mutation_route(mid, route, (int)sizeof(route));
-        ui_text("后续", r.x + 82.0f, r.y + 55.0f, F_CAPTION, COL_ACCENT);
-        ui_text(route, r.x + 82.0f + ui_text_w("后续 ", F_CAPTION), r.y + 55.0f,
+        float route_y = below + 2.0f;
+        ui_text("后续", r.x + 82.0f, route_y, F_CAPTION, COL_ACCENT);
+        float route_w = text_w - ui_text_w("后续 ", F_CAPTION);
+        char rrow[2][192];
+        wrap_text_limited(route, route_w, F_CAPTION, 1, rrow);
+        ui_text(rrow[0], r.x + 82.0f + ui_text_w("后续 ", F_CAPTION), route_y,
                 F_CAPTION, COL_DIM);
 
-        char cost[48];
+        /* 双币报价：DNA 主价（紫）+ ATP 门票（黄）。ATP 门票随已购张数上涨，
+         * 不写出来玩家不会知道“为什么 DNA 够了还是买不了”。 */
+        char cost[64];
+        float cx = r.x + 82.0f;
         ui_fmt_num(game->run.mutation_offer.dna_costs[i], num, (int)sizeof(num));
         snprintf(cost, sizeof(cost), "%s DNA", num);
-        ui_text(cost, r.x + 82.0f, r.y + 83.0f, F_BODY, usable ? COL_DNA : COL_BAD);
-        ui_text_right("点击选择", r.x + r.width - 16.0f, r.y + 85.0f, F_CAPTION, COL_FAINT);
+        ui_text(cost, cx, r.y + 83.0f, F_BODY, usable ? COL_DNA : COL_BAD);
+        cx += ui_text_w(cost, F_BODY);
+
+        double atp_price = ua_mutation_atp_cost(game, mid);
+        if (atp_price > 0.0) {
+            char an[32];
+            ui_fmt_num(atp_price, an, (int)sizeof(an));
+            snprintf(cost, sizeof(cost), "  ·  %s ATP", an);
+            ui_text(cost, cx, r.y + 83.0f, F_BODY, usable ? COL_ATP : COL_BAD);
+        }
+
+        ui_text_right(usable ? "点击选择" : "资源不足", r.x + r.width - 16.0f, r.y + 85.0f,
+                      F_CAPTION, usable ? COL_FAINT : COL_BAD);
     }
 
     UiButton *refresh = btn_find(S, UI_BTN_REFRESH_MUTATION, -1);

@@ -333,6 +333,15 @@ double ua_mutation_refresh_cost(const GameState *game)
     return evolution_mutation_refresh_cost(game);
 }
 
+double ua_mutation_atp_cost(const GameState *game, int mutation_id)
+{
+    /* 只转发。这条报价随“本纪元已买张数”变化，所以每次现算；
+     * 一旦在 UI 侧缓存或自己乘 1.12^k，k 的口径调整（v19 D1 改成只数门票卡）
+     * 就会静默错位 —— 上次属性卡涨价就是栽在这里。 */
+    if (!game) return 0.0;
+    return evolution_mutation_atp_cost(game, mutation_id);
+}
+
 const char *ua_mutation_name(int mutation_id)
 {
     const CodexEntry *entry = codex_entry(CODEX_MUTATION, mutation_id);
@@ -345,8 +354,16 @@ static void text_append(char *buf, int size, size_t *used, const char *piece)
     if (!buf || size <= 1 || *used >= (size_t)size - 1) return;
     int n = snprintf(buf + *used, (size_t)size - *used, "%s", piece);
     if (n <= 0) return;
+    if (*used + (size_t)n >= (size_t)size) {
+        /* 空间不足被硬截断。snprintf 可能正好切在一个汉字中间，
+         * 剩下的半个 UTF-8 序列会渲染成方块/乱码 —— 退到字符边界再收尾。 */
+        size_t end = (size_t)size - 1;
+        while (end > *used && ((unsigned char)buf[end - 1] & 0xC0u) == 0x80u) --end;
+        buf[end] = '\0';
+        *used = end;
+        return;
+    }
     *used += (size_t)n;
-    if (*used > (size_t)size - 1) *used = (size_t)size - 1;
 }
 
 const char *ua_mutation_desc(int mutation_id, char *buf, int buf_size)
