@@ -88,7 +88,7 @@ build/%.o: %.c $(HEADERS)
 	@$(call MKDIR_P,$(dir $@))
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# B 的规则层自测：21 组 / 36k+ 断言，只链接规则模块，不含 raylib
+# B 的规则层自测：27 组 / 130,892 项断言，只链接规则模块，不含 raylib
 build/test_b.exe: tests/test_b.c $(B_OBJ)
 	$(CC) $(TEST_FLAGS) $^ -lm -o $@
 

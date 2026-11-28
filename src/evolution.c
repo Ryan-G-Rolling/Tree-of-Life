@@ -1285,9 +1285,8 @@ double evolution_mutation_atp_cost(const GameState *game, int mutation_id)
     if (!def || def->min_phase < MUTATION_ATP_MIN_PHASE) {
         return 0.0;
     }
-    /* v7 P0-2/4d：按主谱系 ATP 收入的 45 秒计价。
-     * v10 P0-22：删掉 5e8 上限（它把“45 秒”压成“5 秒”，纪元 3 一局买 58 张），
-     * 只保留 1e7 的绝对地板；价格随产率同步上涨。 */
+    /* 突变门票：第 k+1 张 = 10 s × 1.12^k 的主谱系 ATP 产率，
+     * k 只数门票卡；地板为 3 秒产率（随收入缩放，不用固定 1e7）。 */
     double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
     evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
     /* v14 E1/E2：第 k+1 张 = 10 s × 1.12^k，k 为本纪元已购张数。
@@ -2283,8 +2282,7 @@ void evolution_price_rates(const GameState *game, double *atp_rate, double *biom
 
 double evolution_capacity_cost(const GameState *game)
 {
-    /* v10 P0-22：容量 = ATP 部分（45 s 产率）+ 生物量部分（45 s 产率），
-     * 双币并行，ATP 与生物量各有一个稳定出口。 */
+    /* 容量 = ATP 部分（80 s 产率 ×1.06^L）+ 生物量部分（10 s 产率），双币并行。 */
     return evolution_capacity_atp_cost(game) + evolution_capacity_biomass_cost(game);
 }
 
@@ -2337,8 +2335,8 @@ ActionCode evolution_apply_capacity_upgrade(GameState *game)
 
 double evolution_reserve_cost(const GameState *game)
 {
-    /* v10 P0-22：储备改时间本位——每级 80 s 产率，替换 1000 × 1.6^L。
-     * 每纪元 5–7 级，到 26 级触底需要跨纪元积累；RESERVE_COST_ATP 是地板。 */
+    /* 储备时间本位：每级 45 s 产率 ×1.09^L，RESERVE_COST_ATP 是地板；
+     * 减伤 0.90^n 在第 16 级触底。 */
     double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
     evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
     /* v19 D3：储备加等比涨价——不涨价的出口会在纪元中段就买满（实测 210 s ≈ 0.35T），
@@ -2414,8 +2412,8 @@ double evolution_sub_upgrade_cost(const GameState *game, const SubUpgradeDef *de
     if (!def) {
         return 0.0;
     }
-    /* v10 P0-22：子升级改时间本位——50 s 主谱系知识产率（替换 300 × 3.2^tier）。
-     * 子升级乘算知识收入本身，形成自限反馈：买一层 → 收入 ×乘数 → 下一层贵 20%。 */
+    /* 子升级时间本位：42 s 主谱系知识产率，base_knowledge_cost 是地板。
+     * 子升级乘算知识收入本身，形成自限反馈：买一层 → 收入 ×1.35 → 下一层贵 35%。 */
     double atp_rate = 0.0, biomass_rate = 0.0, knowledge_rate = 0.0;
     evolution_price_rates(game, &atp_rate, &biomass_rate, &knowledge_rate);
     double cost = knowledge_rate * SUB_UPGRADE_KNOWLEDGE_SECONDS;
@@ -2666,11 +2664,11 @@ SpeciesRates evolution_calculate_species_rates(const GameState *game, int specie
                                diversity * production * eco_biomass * sub * insight_buff *
                                phase_compress;
     double knowledge_scale = pow(population_scale, KNOWLEDGE_POPULATION_EXPONENT);
-    /* 第十轮：阶段 0–1 的 DNA 产出 ×1.5，缓解开局饥饿 */
+    /* 阶段 0–1 的 DNA 产出 ×1.40（EARLY_DNA_BONUS），缓解开局饥饿 */
     double early_dna = species_phase(species->species_id) <= EARLY_DNA_MAX_PHASE ? EARLY_DNA_BONUS
                                                                                : 1.0;
     /* v10：DNA 起手斜坡。首突变验收要 35–60 s，但纪元 1 要跑到阶段 8 又需要
-     * 足够的 DNA 总量；用 0→120 s 的斜坡同时满足两者（0.45× 起，120 s 后满额）。 */
+     * 足够的 DNA 总量；用 0→120 s 的斜坡同时满足两者（0.33× 起，120 s 后满额）。 */
     double dna_ramp = DNA_RAMP_START +
                       (1.0 - DNA_RAMP_START) * fmin(1.0, run->elapsed_time / DNA_RAMP_SECONDS);
     rates.dna_per_second = def->base_dna * dna_scale * DNA_INCOME_SCALE * dna_ramp * run_genome *

@@ -19,18 +19,17 @@ ORDER = [
     "FIXED_STEP_SECONDS", "BASE_CLICK_ATP", "STARTING_ATP", "STARTING_BIOMASS",
     "LEGACY_STARTING_DNA", "STARTING_POPULATION", "MIN_ACTIVE_POPULATION",
     "FIRST_EVENT_DELAY", "EVENT_INTERVAL", "EVENT_DURATION_SCALE",
-    "ADAPTATION_PREVIEW_SECONDS", "MAX_ACTIVE_SPECIES", "MAX_MUTATION_CHOICES",
-    "DNA_POPULATION_EXPONENT", "MUTATION_COST_GROWTH", "MUTATION_PHASE_COST_BASE",
-    "MUTATION_PHASE_COST_SLOPE", "KEY_MUTATION_DISCOUNT", "FIRST_MUTATION_DISCOUNT",
-    "LATE_MUTATION_COST_MULTIPLIER",
+    "ADAPTATION_PREVIEW_SECONDS", "DNA_POPULATION_EXPONENT",
+    "MUTATION_COST_GROWTH", "MUTATION_PHASE_COST_BASE", "MUTATION_PHASE_COST_SLOPE",
+    "KEY_MUTATION_DISCOUNT", "FIRST_MUTATION_DISCOUNT", "LATE_MUTATION_COST_MULTIPLIER",
     "EARLY_DNA_BONUS", "EARLY_DNA_MAX_PHASE",
-    "CAPACITY_COST_PER_CAP", "CAPACITY_GAIN_PER_LEVEL", "CAPACITY_COST_GROWTH",
-    "CAPACITY_MAX_LEVEL", "CAPACITY_ATP_SHARE", "CAPACITY_BIOMASS_SHARE",
-    "CAPACITY_BIOMASS_ONLY_LEVELS",
+    "CAPACITY_GAIN_PER_LEVEL", "CAPACITY_MAX_LEVEL", "CAPACITY_PRICE_GROWTH",
     "RESERVE_COST_ATP", "RESERVE_REDUCTION_STEP", "RESERVE_REDUCTION_FLOOR",
-    "RESERVE_MAX_LEVEL",
-    "KNOWLEDGE_POPULATION_EXPONENT", "SUB_UPGRADE_COST_GROWTH",
-    "CRISIS_PASS_RATIO_ERA1", "CRISIS_PASS_RATIO_ERA3", "CRISIS_PASS_POPULATION_RATIO", "CRISIS_DAMAGE_STAGE_SCALE",
+    "RESERVE_MAX_LEVEL", "RESERVE_PRICE_GROWTH", "RESERVE_ATP_SECONDS",
+    "MUTATION_ATP_SECONDS", "MUTATION_TICKET_GROWTH", "MUTATION_ATP_MIN_PHASE",
+    "SAVE_VERSION", "KNOWLEDGE_POPULATION_EXPONENT",
+    "CRISIS_PASS_RATIO_ERA1", "CRISIS_PASS_RATIO_ERA3",
+    "CRISIS_PASS_POPULATION_RATIO", "CRISIS_DAMAGE_STAGE_SCALE", "CRISIS_EARLY_SCALE",
     "CRISIS_EVENT_PRODUCTION_SCALE", "CRISIS_DAMAGE_MULTIPLIER",
     "INSTANT_LOSS_STAGE_SCALE", "INSTANT_LOSS_MAX",
     "DIVERSITY_SYNERGY_MULTIPLIER", "DIVERSITY_SPECIATION_DISCOUNT",
@@ -82,18 +81,25 @@ def main():
         return 0
 
     if "--check" in sys.argv:
-        cur = [l.strip() for l in current.strip().splitlines() if l.strip()]
-        want = [l.strip() for l in generated.splitlines() if l.strip()]
-        if cur == want:
-            print(f"§3 常量与 balance.h 一致（{len(ORDER)} 行）")
+        # 文档块允许保留行尾注释；比较 #define 名称与数值本身。
+        cur = {}
+        for line in current.splitlines():
+            m = re.match(r"\s*#define\s+([A-Z_][A-Z0-9_]*)\s+([^\s/]+)", line)
+            if m:
+                cur[m.group(1)] = m.group(2)
+        missing = [n for n in ORDER if n not in cur]
+        changed = [(n, cur[n], values[n]) for n in ORDER if n in cur and cur[n] != values[n]]
+        extra = [n for n in cur if n not in ORDER]
+        if not missing and not changed:
+            print(f"§3 常量与 balance.h 一致（{len(ORDER)} 个）")
+            if extra:
+                print("  文档中另有未纳入检查的常量:", ", ".join(extra))
             return 0
         print("§3 常量与 balance.h 不一致：")
-        for line in want:
-            if line not in cur:
-                print("  缺少/不同:", line)
-        for line in cur:
-            if line not in want:
-                print("  多余/不同:", line)
+        for name in missing:
+            print("  缺少:", name, "=", values[name])
+        for name, got, want in changed:
+            print(f"  不同: {name} 文档={got} balance={want}")
         return 1
 
     print(generated)

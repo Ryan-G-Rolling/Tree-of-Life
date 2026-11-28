@@ -90,9 +90,9 @@
 #define SPECIATION_PARENT_SHARE_KEEP 0.40     /* 保留亲本：亲本 40% */
 #define SPECIATION_MIN_CHILD_POPULATION 10.0
 #define SPECIATION_METEOR_MIN_STAGE 3
-/* v10 P0-22：分化门票改时间本位——N × 1.08^阶段 秒的主谱系生物量产率。
- * 校准：13 张票的墙钟成本 Σ14×1.08^p ≈ 266 s，600 s 纪元里装得下 12–13 次分化；
- * 阶段 13 再 ×1.6 作为真正的 hard wall（P0-24）。base_speciation_cost 保留为地板。 */
+/* 分化门票 = 20 s × 1.06^p（p < 8）/ 1.20^p（p ≥ 8）的主谱系生物量产率；
+ * 阶段 12 ×1.18、阶段 13 硬墙 ×1.00、纪元 2 ×1.18、支线 ×1.25。
+ * base_speciation_cost 保留为地板。 */
 #ifndef SPECIATION_TICKET_SECONDS
 #define SPECIATION_TICKET_SECONDS 20.0
 #endif
@@ -111,10 +111,8 @@
 #ifndef SPECIATION_HARD_WALL_MULT
 #define SPECIATION_HARD_WALL_MULT 1.00
 #endif
-/* v10 收口：阶段 12 单独加一道溢价。阶段 13 的门票已经由 hard wall 卡住，
- * 但 11→12 此前对所有人都是“按时到达”（100% 抵达），验收要求 55–80% 的抵达率，
- * 需要让阶段 12 本身成为一次真正的取舍：多付 1.10 倍门票（v16 F6：1.25 → 1.10，
- * 与 hard wall 1.12 → 1.00 一起放开阶段 12/13 的抵达），慢下来的局就停在 11。 */
+/* 阶段 12 单独溢价：目标是让 11→12 成为一次取舍。v16 F6 把 1.25 降到 1.10，
+ * v19 D2 三点校准（1.14 / 1.18 / 1.22）后冻结中点 1.18。 */
 #ifndef SPECIATION_PHASE12_MULT
 #define SPECIATION_PHASE12_MULT 1.18
 #endif
@@ -123,15 +121,14 @@
 #ifndef SPECIATION_ERA2_MULT
 #define SPECIATION_ERA2_MULT 1.18
 #endif
-/* v10 P0-22 配套：常数地板整体 ×0.45。地板原按“线性收入的旧曲线”定的
- * （40/350/1200/1350…），sqrt 之后收入复合慢了一半，中段每张票要等 100–240 s，
- * 60 种子实测卡在 stage 4。缩地板恢复“每张票 15–60 s”的节奏（0.45 → 0.25）。 */
+/* 地板倍率：阶段 ≥2 用 1.4，阶段 ≤1 用 6.3（SPECIATION_EARLY_FLOOR_SCALE），
+ * 把首分化拉到 150–210 s。地板同样乘 0.635^阶段，否则压缩后永远买不起。 */
 #ifndef SPECIATION_FLOOR_SCALE
 #define SPECIATION_FLOOR_SCALE 1.4
 #endif
 /* v10 P1-11：阶段 6 起主谱系分化提供“2 选 1”——主链节点或同阶段支线物种 */
-/* v14：支线最多离主链 4 层（1 个支线槽位最多 4 次分化）。
- * 两个支线槽位合计 4–7 次，对应方案「每局 16–20 物种 = 12–13 主链 + 4–7 支线」。 */
+/* v14：支线最多离主链 2 层（每个支线槽位最多 2 次分化）；再深会让单局物种数
+ * 冲过 G4 的 18 上限。 */
 #ifndef BRANCH_MAX_DEPTH
 #define BRANCH_MAX_DEPTH 2
 #endif
@@ -196,17 +193,12 @@
 #ifndef CRISIS_PASS_POPULATION_RATIO
 #define CRISIS_PASS_POPULATION_RATIO 0.74
 #endif
-/* 第十二轮：纪元 1 用更宽的通过线（0.65），纪元 2+ 用 0.70，
- * 避免“越后期越松”/“开局就把低尾打穿”。
- * 第十四轮：0.63 → 0.60，把纪元 1 的 6/6 危机存活率拉回 35% 带。
- * v9 P0-19：4 类危机轮换后定在 0.672。实测 0.672 → 全清 37%，0.675 → 6%：
- * 单局危机损失集中在 33% 附近，这条线对数值极敏感，调整前必须复跑 1000 种子。 */
+/* 纪元 1 的危机通过线。v9 P0-19 的 0.672 会在 0.675 处从全清 37% 跌到 6%，
+ * 说明这条线对数值极敏感；v19 定稿调到 0.78，调整前必须复跑 1000 种子。 */
 #ifndef CRISIS_PASS_RATIO_ERA1
 #define CRISIS_PASS_RATIO_ERA1 0.78
 #endif
-/* v7：纪元 3 收紧到 0.85。v9 P0-19：改为 0.75 —— 0.85 时单局危机次数
- * 被失败重抽拉到 7 次以上，全清率压在 3% 以下；0.75 后回到 30% 带，
- * 同时纪元 3 仍是三纪元里通过线最高的一档。 */
+/* 纪元 3 的危机通过线。v9 是 0.75，v19 定稿调到 0.80（三档里最严的一条）。 */
 #ifndef CRISIS_PASS_RATIO_ERA3
 #define CRISIS_PASS_RATIO_ERA3 0.80
 #endif
@@ -299,7 +291,6 @@ static inline unsigned int era_crisis_pool(int era)
 #define LEGACY_ALL_MULTIPLIER_LV4 1.12
 #define LEGACY_CAP_MULTIPLIER_LV1 1.10
 #define LEGACY_NEW_RUN_ATP_LV3 50.0
-#define SPECIATION_MAX_TARGETS 2
 
 /* 第四轮平衡：永久树 5 → 8 级，Lv.5–8 全部有实际效果 */
 #define LEGACY_BIOMASS_MULTIPLIER_LV5 1.05
@@ -322,7 +313,6 @@ static inline unsigned int era_crisis_pool(int era)
 #define SYNERGY_VENT_MAT_GROWTH 0.10
 #define SYNERGY_EUKARYOTIC_ENGINE_ATP 0.15
 #define SYNERGY_DETOX_TISSUE_CAP 0.05
-#define SYNERGY_THERMOSTABLE_TRAIT 1
 
 /* ---------------- 第四轮：新物种基石与新共振 ---------------- */
 #define KEYSTONE_FUNGAL_DNA 0.10
@@ -353,9 +343,8 @@ static inline unsigned int era_crisis_pool(int era)
 #ifndef MUTATION_COST_GROWTH
 #define MUTATION_COST_GROWTH 1.45
 #endif
-/* v10 P0-22：容量也换时间本位——ATP 部分 40 s 产率 + 生物量部分 2 s 产率。
- * 生物量份额压到极小，容量就不再和分化门票抢同一种资源（纪元 3 门票可达 90 s 生物量），
- * 改由 ATP 单独决定档位；预期每纪元 6–14 级。 */
+/* 容量时间本位：ATP 部分 80 s 产率 + 生物量部分 10 s 产率。
+ * 生物量份额压得很小，容量不与分化门票抢同一种资源；ATP 半边再按等级 ×1.06^L。 */
 #ifndef CAPACITY_ATP_SECONDS
 #define CAPACITY_ATP_SECONDS 80.0
 #endif
@@ -369,42 +358,35 @@ static inline unsigned int era_crisis_pool(int era)
 #define CAPACITY_BIOMASS_FLOOR 10.0
 #endif
 #define CAPACITY_GAIN_PER_LEVEL 0.05
-/* v10 P0-23：容量倍率保持线性（1 + 0.05×L），L 封顶 26（v19 D4；实测旧上限曾到 42） */
+/* 容量倍率保持线性（1 + 0.05×L），L 封顶 26（v19 D4）。 */
 #define CAPACITY_MAX_LEVEL 26
 /* v19 D4：容量第 L 级的 ATP 半边 × CAPACITY_PRICE_GROWTH^L（校准区间 1.04–1.08）。 */
 #ifndef CAPACITY_PRICE_GROWTH
 #define CAPACITY_PRICE_GROWTH 1.06
 #endif
-/* v10 P0-22：储备改时间本位——每级 120 s 被动 ATP 产率（≈30 s 墙钟，含点击收入），
- * 每纪元 5–7 级，到 26 级要跨 3–4 个纪元；RESERVE_COST_ATP 保留为地板。 */
+/* 储备时间本位：每级 45 s 被动 ATP 产率 ×1.09^L，RESERVE_COST_ATP 是地板。
+ * 减伤 0.90^n 在第 16 级触底，因此硬顶 16 级。 */
 #define RESERVE_COST_ATP 1000.0
-/* v14 E4：110 → 45 s。实测储备每局只买到 1.4 级，110 秒太贵，储备这条线等于不存在。
- * 45 s 配合 E5 的 0.90 步进，目标 8–14 级/局。 */
 #ifndef RESERVE_ATP_SECONDS
 #define RESERVE_ATP_SECONDS 45.0
 #endif
-/* v8 P0-15：储备减伤改为乘算，第 6 级之后仍有边际收益，约 22 级触底 */
-/* v14 E5：0.94 → 0.90，与 E4 降价配对，防止“便宜但无用”。
- * 地板仍为 0.20（v10 实测值；v14 方案里写的 0.15 是旧基线，E6 本身标注“不变”，故不动）。 */
+/* v14 E5：0.94 → 0.90，与降价配对，防止“便宜但无用”；地板仍为 0.20。 */
 #ifndef RESERVE_REDUCTION_STEP
 #define RESERVE_REDUCTION_STEP 0.90
 #endif
 #ifndef RESERVE_REDUCTION_FLOOR
 #define RESERVE_REDUCTION_FLOOR 0.20
 #endif
-/* v9 P0-20：储备减伤 0.94^n 在第 26 级触底（0.94^26 ≈ 0.199 < 0.20），
- * 第 27 级起是“花钱买 0 收益”。显式截断在 26 级，游戏内不再允许继续购买。 */
+/* v16 F4：0.90^15 = 0.206 > 0.20、0.90^16 = 0.185 < 0.20，第 16 级即触底满级。 */
 #ifndef RESERVE_MAX_LEVEL
-/* v16 F4：0.90^15 = 0.206 > 0.20、0.90^16 = 0.185 < 0.20，第 16 级即触底满级。
- * 旧的 26 是死常量（购买逻辑触底即停），游戏内永远买不到第 17 级。 */
 #define RESERVE_MAX_LEVEL 16
+#endif
 /* v19 D3：储备第 L 级的价格 = 45 s 产率 × RESERVE_PRICE_GROWTH^L（校准区间 1.06–1.12）。 */
 #ifndef RESERVE_PRICE_GROWTH
 #define RESERVE_PRICE_GROWTH 1.09
 #endif
-#endif
 
-/* 储备减伤系数：0.94^levels，最低 0.20。环境与产率两处共用同一实现。 */
+/* 储备减伤系数：0.90^levels，最低 0.20。环境与产率两处共用同一实现。 */
 static inline double reserve_damage_scale(int levels)
 {
     double scale = 1.0;
@@ -535,14 +517,9 @@ static inline double reserve_damage_scale(int levels)
 #endif
 #define MUTATION_COST_BAND_MID_PHASE 4
 #define MUTATION_COST_BAND_LATE_PHASE 8
-/* v7 P0-2/4d：阶段 8 起的高阶突变按“当前收入的 N 秒”计价。
- * v10 P0-22：删掉 5e8 上限（它把“45 秒”压成“5 秒”，纪元 3 一局买 58 张）；
- * 只保留 1e7 地板。定价锚是被动产率，而钱包存量约等于 1/增长率（30–60 s 产率），
- * N 必须小于它才买得起——N=220/90 时阶段 8 以上的门票永远凑不齐（实测卡在 stage 8）。
- * v10 收口：30 → 8。纪元 3 一局要买 150+ 张突变，30 秒/张把 ATP 全吃光，
- * 容量的生物量份额与三条升级轨被饿死（实测单级耗时 100 s、容量 1 级）。
- * 8 秒仍保留“突变要花 ATP”的机制，但不再是压倒性的出口。 */
-/* v14 E1：8 → 10 s。突变票改等比递增（E2），10 s 是第 1 张的基准秒数。 */
+/* 突变 ATP 门票：所有阶段都收，第 k+1 张 = 主谱系 ATP/s × 10 × 1.12^k，
+ * 地板 = 主谱系 ATP/s × 3（k = 本纪元已购门票卡，只数主谱系槽位）。
+ * v14 E1/E2：8 → 10 s 并改为等比递增，避免纪元 3 把 150+ 张突变一次买空。 */
 #ifndef MUTATION_ATP_SECONDS
 #define MUTATION_ATP_SECONDS 10.0
 #endif
@@ -570,10 +547,9 @@ static inline double reserve_damage_scale(int levels)
 #ifndef MUTATION_REFRESH_LIMIT
 #define MUTATION_REFRESH_LIMIT 3
 #endif
-#ifndef MUTATION_ATP_COST_MIN
-#define MUTATION_ATP_COST_MIN 10000000.0
-#endif
+#ifndef MUTATION_ATP_MIN_PHASE
 #define MUTATION_ATP_MIN_PHASE 0
+#endif
 /* 第十五轮：新增 140 条突变数量大，单条百分比按 0.35 计入产率，
  * 避免“买满后叠乘爆炸”把后期节奏再次压平。只作用于 ID ≥ 64 的新内容。 */
 #ifndef ROUND15_MUTATION_BONUS_SCALE
@@ -586,13 +562,11 @@ static inline double reserve_damage_scale(int levels)
 #ifndef KNOWLEDGE_POPULATION_EXPONENT
 #define KNOWLEDGE_POPULATION_EXPONENT 0.5
 #endif
-/* 子升级理念成本：v10 P0-22 改时间本位——每层 50 s 主谱系知识产率，
- * 知识收入随子升级乘算自限（买一层 → 收入 ×1.2 → 下一层贵 20%），
- * 预期每纪元 4–6 层（旧 3.2^ 曲线一局买了 16 层）。base_knowledge_cost 保留为地板。 */
+/* 子升级理念成本：每层 42 s 主谱系知识产率，base_knowledge_cost 是地板；
+ * 知识收入随子升级乘算自限（买一层 → 收入 ×1.35 → 下一层贵 35%）。 */
 #ifndef SUB_UPGRADE_KNOWLEDGE_SECONDS
 #define SUB_UPGRADE_KNOWLEDGE_SECONDS 42.0
 #endif
-#define SUB_UPGRADE_MIN_PHASE 6
 
 /* 第十六轮：洞见——无上限知识升级，每级 +2% 全产率，价格指数增长 */
 #ifndef INSIGHT_BASE_COST

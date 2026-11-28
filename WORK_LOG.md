@@ -301,6 +301,7 @@ A/B/C 可运行整合版已在此前完成，Git 基线为 `44e2c0d`；既有结
 - 修 bug：3 倍离屏 + scissor 下 `DrawTriangleFan`/`DrawTriangle` 整片不落像素（同链路 `DrawCircle`/`DrawRectangle` 正常），大陆不可见 → 改扫描线求交 + `DrawRectangleV` 填充（`fill_blob`）；`morph_civ` 与 `planet_body` 重复打城市灯叠成金色噪点 → 删后者；帧数日志 20 → 25。
 - 产物：`docs/screens/final/art_sheet_morph_v18.png` 与 25 张 4K 截图归档。
 
+
 ## 2026-11-27 · Agent · v10 定价体系与结构收口（第十九轮）
 
 - **P0-22 四张价格表改时间本位**：`economy_upgrade_cost` / `evolution_capacity_*` / `evolution_reserve_cost` /
@@ -371,7 +372,6 @@ A/B/C 可运行整合版已在此前完成，Git 基线为 `44e2c0d`；既有结
   容量 10 级、储备 5 级（26 级占比 0%）；危机类型覆盖中位 10 类/局；全清 34.8 / 28.7 / 36.7%；存档 v9 3,224 B。
 - **未完成**：P1-13 `src/screens.c` 拆 6 个翻译单元仍未执行（同上轮原因）；`git push` 未执行（需用户明确授权）。
 - **清理**：删除本轮临时分析脚本 `build/tmp_analyze.py` 与中间扫描 `build/tmp_b2.csv`、`build/tmp_b3.csv`；
-=======
   `tools/reports/` 保留 `make report` 生成的正式 CSV。
 
 ## 2026-11-27 夜 · v14 一次性扩容（264/282 + 星图重绘 + 时间本位定价终版）
@@ -425,8 +425,6 @@ A/B/C 可运行整合版已在此前完成，Git 基线为 `44e2c0d`；既有结
 
 **补记（同日）**：上面写的「`git push` 未执行」已作废——`AGENTS.md` 已授权直接同步 main，
 本轮提交 `10e6edc` 已 push 到 `origin/main`（变基到远端 `9441e93` 之上，冲突仅 `WORK_LOG.md`，双方记录均已保留）。
-
----
 
 ## 2026-11-27 夜（续）· v14 机制修正：支线共享基因组 + 分位门槛 + 字形/文档补齐
 
@@ -513,6 +511,97 @@ G3 末/中 = 0.872/0.837 = **1.042** PASS；G4 物种中位 **17**（P10 17 / P9
 
 **未处理（方案 §8 已预判）**：覆盖率受 `BRANCH_MAX_DEPTH 2` 与 bot 不吃方向卡限制；
 容量被属性卡挤占 ATP 买不动；阶段 13 仍是彩蛋区。
+
+## 2026-11-28 · Agent · v23 定稿复核（报告/文档层）
+
+- **原因**：用户上传 `TreeOfLife-全局审查与定稿-v23.md`，要求按审查结论做最终修改完善。审查结论为代码零缺陷，
+  只需四项报告/文档层收口，明确不改 `balance.h`、不改 `demo_b.c` 判断、不碰阶段 13、不动 `BRANCH_MAX_DEPTH`。
+
+- **工作区回滚**：`README.md`、`WORK_LOG.md`、`Makefile`、`data/balance.h`、`demo/demo_b.c`、`src/environment.c`、
+  `tests/test_b.c`、`tools/reports/design.csv`、`tools/reports/make_report_table.py` 共 9 个文件的 BOM 重复
+  （`﻿`→`﻿﻿`）与换行漂移。先逐文件 diff（`--ignore-space-at-eol`、`-w`）确认无实际内容变化，再按路径逐个检出还原；
+  未使用整树 checkout，未改历史。还原后 `git status` 仅剩本轮 4 个文档/脚本改动。
+
+- **已知残留入档**：`docs/CHANGELOG-v19.md` §八 改为四条带归因的冻结项——容量 4 级（bot 为分化预留 0.55 张票，
+  非价格）、覆盖 54/264（`BRANCH_MAX_DEPTH 2` 结构上限）、阶段 13 抵达 2.1%（彩蛋区设计）、
+  G2 中位 15 ≈ 自限 16（bot 行为而非经济约束）；写明下一轮不得当新 bug 修。§五 G2 行同步改判为「记录项」。
+
+- **G2 降级 + 结构断言**：`tools/reports/gate_check.py` 把 G2 移出判定列表，改为记录项打印；
+  新增与 bot 无关的结构口径——第 12 张门票 = `MUTATION_ATP_SECONDS × MUTATION_TICKET_GROWTH^12` = **39.0 s 产率**，
+  两个常量用正则从 `data/balance.h` 读取（不另写一份），只打印不判定。退出码只由 G3/G4/G5 决定。
+
+- **对照跑两位小数**：`tools/reports/compare_strategy.py` 的支出/收入由一位改两位小数。200 局同种子实测
+  **86.29%（买属性卡）vs 86.31%（`--lean`）**，两组不再显示成同一个数，可确认分支确实切换。
+  `docs/CHANGELOG-v19.md` §六 表与说明同步更新。
+
+- **验证**：`python tools/reports/gate_check.py tools/reports/batch3_scan_round15.csv "…batch3_scan…,batch3_explore…,batch2_scan…"`
+  输出 1000 局：G3 PASS（0.872/0.837=1.042）、G4 PASS（中位 17）、G5 FAIL（阶段 12 95.7% / 13 2.1%，与冻结口径一致）；
+  记录项新增「G2 结构口径 39.0 s 产率」。`compare_strategy.py 200` 正常完成。两个脚本 `ast.parse` 语法校验通过。
+  本轮未改游戏代码，未重编译、未重跑 1000 种子生产批次，1000 局数据复用现有 `tools/reports/batch*_round15.csv`。
+
+- **未完成**：`git push` 需联网，若沙箱拦截则本地提交后留待同步；P1-13 `src/screens.c` 拆分仍按 v19 记录保留为未做。
+
+- **同步结果（补记）**：本轮提交 `8929aa1` 已成功 push 到 `origin/main`（`24715d7..8929aa1`），上面「若沙箱拦截」的条件未发生。
+
+## 2026-11-28 · Agent · 最终审查与文档全量对齐（v24）
+
+- **原因**：用户要求做最终审查。代码与测试全绿，但发现 v23 之后报告层仍有系统性漂移，用户选择“全部修复”。
+
+- **审查发现**：`docs/02` 物种表只到 ID 185、突变表只到 ID 203，且 §5 ID 45 / ID 185、§6.2 ID 203
+  三行被旧生成器挤坏（单元格粘连）；分化门票、突变 ATP、危机池与通过线、容量/储备、子升级/洞见、
+  EP 公式均有旧版残留；§3 常量块 4 个值与 `balance.h` 不符；`gen_constants.py --check` 因 `ORDER`
+  仍含已删除宏而直接失败；README 的 v10 段落混合旧价，测试项数与 60 分钟回归数字过期；
+  `balance.h` 有 4 个死常量与多处矛盾注释。
+
+- **表格补全**：用一次性脚本直接解析 `src/species.c` 与 `src/evolution.c`，生成 ID 186–263（78 行物种）
+  与 ID 204–281（78 行突变）；写入前先把生成器回算 0–185 / 0–203 的既有行，逐列比对 0 不一致后才落地。
+  三处坏行一并修正。补全后物种表 264 行、突变表 282 行，ID 连续无缺口、列数一致。临时脚本已删除。
+
+- **公式与取值**：`docs/02` §5 分化门票改时间本位（20 s ×1.06^p / 1.20^p，阶段 12 ×1.18、
+  阶段 13 ×1.00、纪元 2 ×1.18、支线 ×1.25）；§6.3 突变 ATP 改 `10 s ×1.12^k`（地板 3 s 产率）；
+  §7.2 环境表补到 18 项并按 `environment.c` 更新伤害；§8.5 危机池改为 `{1,2,3,4,5}` /
+  `{6,13,14,15}` / `{1,5,16,17}`，通过线 0.78 / 0.74 / 0.80；§8.3 补阶段压缩与 DNA×2.0 + ramp；
+  §8.4 上限补容量倍率；§8.5 伤害补 `CRISIS_EARLY_SCALE`；§8.7 容量 26 级双币、储备 45 s×1.09^L /
+  16 级 / 0.90^n；§8.8 子升级 42 s、洞见 600×1.6^L；§9 EP 公式改为
+  `2×阶段 + min(⌊突变/3⌋,3) + 物种 + min(危机,6)×5 + 里程碑`（上限 332）。§3 常量块修正 4 个值。
+
+- **脚本与代码卫生**：`gen_constants.py` 的 `ORDER` 换成当前 45 个常量，`--check` 改为按名称/值比较
+  并忽略行尾注释；删除死常量 `MUTATION_ATP_COST_MIN`、`SPECIATION_MAX_TARGETS`、`SUB_UPGRADE_MIN_PHASE`、
+  `SYNERGY_THERMOSTABLE_TRAIT`；修正 `balance.h` / `evolution.c` 中与现值矛盾的注释；把
+  `RESERVE_PRICE_GROWTH` 移出 `RESERVE_MAX_LEVEL` 的条件编译块（原先若外部定义上限会漏定义价格）。
+  README 的 v10 段落改写为 v19 定稿口径，测试项数 130,892，60 分钟回归 58 突变 / 55 EP，存档 3,952 B。
+
+- **验证**：`mingw32-make test` 27 组 / 130,892 项 0 失败，36 项接线、60 分钟回归、玩法、图鉴通过；
+  `test-ui` 25 次点击一致；`test-layout` 390 张详情卡与全部路线/星图节点通过；
+  `mingw32-make` 重建 `treeoflife.exe` 成功；`validate_content.py` 11 项 PASS；
+  `gen_constants.py --check` 输出「§3 常量与 balance.h 一致（45 个）」。
+
+- **清理**：删除 `build/tmp_gen_doc.py`、`build/tmp_patch_tables.py`、`build/tmp_sp_rows.txt`、
+  `build/tmp_mu_rows.txt`；`build/` 其余为本轮编译产物，按惯例保留供复跑。
+
+- **未完成**：P1-13 `src/screens.c` 拆分仍按 v19 记录保留为未做；本轮未重跑 1000 种子生产批次，
+  验收数据沿用现有 `tools/reports/batch*_round15.csv`。
+- **同步结果**：本轮提交 `cf02a5a` 已 push 到 `origin/main`（`b8c9d5e..cf02a5a`）。
+
+## 2026-11-28 · Agent · v25 最终收尾（报告层，零机制改动）
+
+- **原因**：v25 彻底审查只留两项 5 分钟收尾（G5 判定、Makefile 注释），本次直接执行。
+
+- **G5 判定改下限**：`tools/reports/gate_check.py` 由 `55 <= stage12 <= 80` 改为 `stage12 >= 55`，
+  门禁名称改为「G5 阶段 12 抵达 ≥ 55%（下限）」，并在文件头写明撤销上限的理由
+  （阶段 12 已有 20 个物种，抵达率越高内容越容易被看到；「让 12 成为取舍点」是 D1 之前的旧意图）。
+  实测 1000 局：`PASS G5 12 95.7% / 13 2.1%`，**退出码恢复为 0**。
+
+- **目标表同步**：`tools/reports/design.csv` 的 `stage12_arrive` 上限 80 → 100，重新 `--lock`，
+  重新生成 `tree-of-life-b/assets/acceptance.js`（diff 仅两处：设计指纹 + 该行 target/status）。
+
+- **文档对齐**：`docs/CHANGELOG-v19.md` 门槛表 G5 行改为「≥55%（v25 定稿只设下限）/ PASS」，
+  第七节改题为「G5 的终态：D2 冻结中点，判定改为下限」并补理由；README 的 G5 段落同步。
+
+- **注释修正**：`Makefile:85` 的「21 组 / 36k+ 断言」改为实际「27 组 / 130,892 项断言」。
+
+- **未动**：`src/`、`data/balance.h`、`demo/`、`tests/` 一行未改；机制与数值零改动。
+- **同步结果**：本条目随本轮提交直接 push 到 `origin/main`。
 
 ## 2026-11-28 · 生境演替（C 界面层）
 

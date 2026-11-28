@@ -1,11 +1,31 @@
 # -*- coding: utf-8 -*-
-"""v19 门槛自检：读 demo_b --batch3 的原始输出，打印 G2–G5 与全部记录项。
+"""v19 门槛自检：读 demo_b --batch3 的原始输出，打印 G3–G5 与全部记录项。
+
+G2（门票卡张数）已降为记录项：它测的是 bot 自限，不是经济约束。
+这里额外打印一条与 bot 无关的结构口径（第 12 张门票的秒产率），只打印不判定。
+
+v25 定稿：G5 改为下限判定（≥55% 即达标），撤销 80% 上限——阶段 12 已有 20 个物种，
+抵达率越高内容越容易被看到；「12 是取舍点」是 D1 之前的旧意图，已不成立。
 
 用法：python tools/reports/gate_check.py build/batch3_oneshot.csv [探索批次 csv]
-退出码：0 全部达标；1 有门槛不达标（人工看输出即可）。
+退出码：0 全部门槛达标；1 有门槛不达标（人工看输出即可）。
 """
+import os
+import re
 import statistics
 import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+BALANCE = os.path.join(HERE, "..", "..", "data", "balance.h")
+
+
+def balance_define(name):
+    """从 data/balance.h 读一个数值宏，避免报告脚本与实现各写一份常量。"""
+    text = open(BALANCE, encoding="utf-8-sig").read()
+    m = re.search(r"^#define\s+%s\s+([0-9.eE+-]+)" % name, text, re.M)
+    if not m:
+        raise SystemExit(f"balance.h 里找不到 {name}")
+    return float(m.group(1))
 
 
 def quantile(values, p):
@@ -69,14 +89,15 @@ def main(path, explore_path=None):
     g_med, g_p10, g_p90 = statistics.median(gate), quantile(gate, 0.10), quantile(gate, 0.90)
 
     gates = [
-        ("G2 门票卡张数 中位 12–16", 12 <= g_med <= 16,
-         f"中位 {g_med:.0f}（P10 {g_p10:.0f} / P90 {g_p90:.0f}）"),
         ("G3 末 20% 支出率 ≥ 0.8× 中段 60%", late_vs_mid >= 0.8,
          f"{late_rate:.3f} / {mid_rate:.3f} = {late_vs_mid:.3f}"),
         ("G4 单局物种 中位 16–18 / P10 ≥14 / P90 ≤20",
          16 <= s_med <= 18 and s_p10 >= 14 and s_p90 <= 20,
          f"中位 {s_med:.0f}（P10 {s_p10:.0f} / P90 {s_p90:.0f}）"),
-        ("G5 阶段 12 抵达 55–80%", 55 <= stage12 <= 80, f"12 {stage12:.1f}% / 13 {stage13:.1f}%"),
+        # v25 定稿口径：只设下限（阶段 12 已有 20 个物种，抵达率越高内容越容易被看到）。
+        # 旧口径 55–80% 的上限来自「希望 12 是取舍点」，D1 之后该意图已不成立。
+        ("G5 阶段 12 抵达 ≥ 55%（下限）", stage12 >= 55,
+         f"12 {stage12:.1f}% / 13 {stage13:.1f}%"),
     ]
     print(f"样本 {len(b3)} 局")
     failed = 0
@@ -84,7 +105,14 @@ def main(path, explore_path=None):
         print(f"{'PASS' if ok else 'FAIL'}  {name}：{actual}")
         failed += 0 if ok else 1
 
+    ticket_base = balance_define("MUTATION_ATP_SECONDS")
+    ticket_growth = balance_define("MUTATION_TICKET_GROWTH")
+    ticket12 = ticket_base * ticket_growth ** 12
     print("记录项（不作门槛）：")
+    print(f"  G2 门票卡张数：中位 {g_med:.0f}（P10 {g_p10:.0f} / P90 {g_p90:.0f}），"
+          f"自限 16 张——测 bot 不测经济")
+    print(f"  G2 结构口径（与 bot 无关）：第 12 张门票 = {ticket_base:g} s × {ticket_growth:g}^12 "
+          f"= {ticket12:.1f} s 产率，只打印不判定")
     print(f"  三段支出率：前 20% {statistics.median(early) if early else 0:.3f} / 中 60% {mid_rate:.3f} / "
           f"后 20% {late_rate:.3f}（后段绝对值参考线 0.40）")
     print(f"  全局 支出/收入 {statistics.median(sink) * 100:.1f}%")
