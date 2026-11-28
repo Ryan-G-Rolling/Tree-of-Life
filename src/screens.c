@@ -4987,31 +4987,16 @@ static void draw_codex_overlay(const GameState *game, const UIState *S)
     }
 }
 
-/* Wrap at UTF-8 boundaries and measured width; never truncate an approved quote. */
-static void draw_codex_quote(const char *quote, Rectangle area)
+/* v25：图鉴详情的说明行改为图片正下方的小字引号文案；科普正文另起一段。 */
+static void draw_codex_tagline(const char *quote, Rectangle area)
 {
-    char line[192] = { 0 };
-    int used = 0, row = 0;
-    for (const char *p = quote; *p;) {
-        int bytes = 1;
-        while (p[bytes] && ((unsigned char)p[bytes] & 0xC0u) == 0x80u) ++bytes;
-        char trial[192];
-        memcpy(trial, line, (size_t)used);
-        memcpy(trial + used, p, (size_t)bytes);
-        trial[used + bytes] = '\0';
-        if (used > 0 && ui_text_w(trial, F_TITLE) > area.width) {
-            ui_text_center_strong(line, area.x + area.width * 0.5f, area.y + row * 34.0f,
-                                  F_TITLE, COL_TEXT);
-            ++row;
-            used = 0;
-        }
-        memcpy(line + used, p, (size_t)bytes);
-        used += bytes;
-        line[used] = '\0';
-        p += bytes;
-    }
-    if (used) ui_text_center_strong(line, area.x + area.width * 0.5f, area.y + row * 34.0f,
-                                   F_TITLE, COL_TEXT);
+    char text[224];
+    snprintf(text, sizeof(text), "“%s”", quote);
+    char rows[3][192];
+    int n = wrap_text_limited(text, area.width, F_CAPTION, 2, rows);
+    for (int i = 0; i < n; ++i)
+        ui_text_center(rows[i], area.x + area.width * 0.5f, area.y + (float)i * 17.0f,
+                       F_CAPTION, COL_DIM);
 }
 
 static void draw_codex_detail(const GameState *game, const UIState *S)
@@ -5025,7 +5010,7 @@ static void draw_codex_detail(const GameState *game, const UIState *S)
     ui_panel(panel, R_PANEL, COL_PANEL, Fade(accent, 0.6f));
     ui_text_strong(found ? entry->name : "未发现", panel.x + 24.0f, panel.y + 20.0f,
                    F_TITLE, COL_TEXT);
-    Rectangle art = { panel.x + 20.0f, panel.y + 62.0f, panel.width - 40.0f, 254.0f };
+    Rectangle art = { panel.x + 20.0f, panel.y + 62.0f, panel.width - 40.0f, 176.0f };
     ui_panel(art, R_CARD, COL_BG_DEEP, Fade(accent, 0.25f));
     Vector2 center = { art.x + art.width * 0.5f, art.y + art.height * 0.5f };
     int dhab = HABITAT_HYDROTHERMAL;
@@ -5055,10 +5040,20 @@ static void draw_codex_detail(const GameState *game, const UIState *S)
         } else {
             snprintf(tag, sizeof(tag), "%s", is_species ? "物种图鉴" : "突变图鉴");
         }
-        ui_text_center(tag, panel.x + panel.width * 0.5f, panel.y + 340.0f, F_CAPTION, accent);
+        ui_text_center(tag, panel.x + panel.width * 0.5f, panel.y + 288.0f, F_CAPTION, accent);
     }
-    draw_codex_quote(found ? entry->tagline : "继续探索，故事还在前面。",
-                     (Rectangle){ panel.x + 40.0f, panel.y + 376.0f, panel.width - 80.0f, 112.0f });
+    draw_codex_tagline(found ? entry->tagline : "继续探索，故事还在前面。",
+                       (Rectangle){ panel.x + 28.0f, panel.y + 246.0f, panel.width - 56.0f, 0.0f });
+    if (found) {
+        const char *sci = codex_science((CodexKind)S->codex_detail_kind, S->codex_detail_id);
+        if (sci && sci[0]) {
+            char rows[8][192];
+            int n = wrap_text_limited(sci, panel.width - 56.0f, F_BODY, 8, rows);
+            for (int i = 0; i < n; ++i)
+                ui_text(rows[i], panel.x + 28.0f, panel.y + 316.0f + (float)i * 21.0f,
+                        F_BODY, COL_TEXT);
+        }
+    }
     UiButton *back = btn_find(S, UI_BTN_CODEX_BACK, -1);
     if (back) ui_btn_draw(back, "返回图鉴", NULL, is_hot(S, back));
     ui_text_center("Esc 返回 · 保留当前页", panel.x + panel.width * 0.5f,
