@@ -385,6 +385,143 @@ static void test_tree_same_phase_edges(void)
     printf("Tree same-phase branches: %d pairs kept drawable\n", pairs);
 }
 
+/* 危机存活线：规则层按纪元给 0.78 / 0.74 / 0.80，但判定用的是“事件期间最低人口”，
+ * 以前界面一个字都没写。这里锁住三件事：
+ *   1. 适配层读到的比例与门槛，就是 environment_calculate_step 判定的那一份；
+ *   2. 门槛 = max(MIN_ACTIVE_POPULATION, 开始人口 × 比例)，不是当前人口 × 比例；
+ *   3. lowest 取“最低”而不是“当前”，否则回升之后会误判为安全。 */
+static void test_crisis_pass_line(void)
+{
+    double ratios[3] = { 0.0, 0.0, 0.0 };
+    for (int era = 1; era <= 3; ++era) {
+        GameState g;
+        game_init(&g);
+        g.run.era = era;
+        g.run.active_species_count = 1;
+        g.run.active_species[0].is_main_lineage = true;
+        g.run.active_species[0].population = 1000.0;
+        g.run.crisis_start_population = 1000.0;
+        g.run.crisis_min_population = 900.0;
+        g.run.current_environment_id = ENV_METEOR_IMPACT;
+
+        double ratio = ua_crisis_pass_ratio(&g);
+        double threshold = ua_crisis_threshold(&g);
+        assert(ratio > 0.0 && ratio < 1.0);
+        assert(fabs(threshold - 1000.0 * ratio) < 1e-6);
+
+        /* 门槛就是判定线：人口停在门槛上算通过，差 1 点就不算 */
+        g.run.active_species[0].population = threshold;
+        g.run.crisis_min_population = threshold;
+        assert(ua_crisis_lowest(&g) >= threshold);
+
+        /* 当前人口回升到 1000，但期间最低只有门槛 -1 → 仍不达标（取最低，不是取当前） */
+        g.run.active_species[0].population = 1000.0;
+        g.run.crisis_min_population = threshold - 1.0;
+        assert(ua_crisis_lowest(&g) < threshold);
+
+        ratios[era - 1] = ratio;
+    }
+    /* 三档必须各不相同，否则“按纪元收紧”等于没做 */
+    assert(fabs(ratios[0] - ratios[1]) > 1e-9);
+    assert(fabs(ratios[1] - ratios[2]) > 1e-9);
+    assert(fabs(ratios[0] - ratios[2]) > 1e-9);
+
+    /* 门槛不跟着人口下探：危机开始人口为 0 时退回最小活体数 */
+    GameState empty;
+    game_init(&empty);
+    empty.run.crisis_start_population = 0.0;
+    assert(fabs(ua_crisis_threshold(&empty) - MIN_ACTIVE_POPULATION) < 1e-9);
+
+    puts("Crisis pass line: same ratio/threshold as the verdict, lowest not current");
+}
+
+/* EP 规则文案：界面曾经手写 “每 2 个 1 EP”“每个 1 EP，最多 3”，
+ * 而规则是 每个物种 1 EP、每类危机 5 EP 最多 6 类。这里把文案钉在规则常量上，
+ * 以后再改平衡，界面会跟着变，不会又出现“同一行右边得分和左边规则打架”。 */
+static void test_ep_rule_text(void)
+{
+    char text[64];
+    char want[64];
+
+    ua_ep_rule_text(0, text, (int)sizeof(text));
+    snprintf(want, sizeof(want), "每阶段 %d EP", EP_PER_STAGE);
+    assert(strcmp(text, want) == 0);
+
+    /* 突变有 EP 封顶，文案必须写出“最多 N”，否则玩家会以为突变越多收益越大 */
+    ua_ep_rule_text(1, text, (int)sizeof(text));
+    snprintf(want, sizeof(want), "每 %d 个 1 EP，最多 %d",
+             EP_MUTATIONS_PER_POINT, EP_MUTATION_CAP);
+    assert(strcmp(text, want) == 0);
+    assert(strstr(text, "最多") != NULL);
+
+    ua_ep_rule_text(2, text, (int)sizeof(text));
+    if (EP_SPECIES_PER_POINT <= 1) {
+        assert(strcmp(text, "每个 1 EP") == 0);
+    } else {
+        snprintf(want, sizeof(want), "每 %d 个 1 EP", EP_SPECIES_PER_POINT);
+        assert(strcmp(text, want) == 0);
+    }
+
+    ua_ep_rule_text(3, text, (int)sizeof(text));
+    snprintf(want, sizeof(want), "每类 %d EP，最多 %d 类", EP_POINTS_PER_CRISIS, EP_CRISIS_CAP);
+    assert(strcmp(text, want) == 0);
+
+    ua_ep_rule_text(4, text, (int)sizeof(text));
+    assert(strcmp(text, "每档 1 EP") == 0);
+
+    /* 主界面那行公式：系数同样来自规则层 */
+    char formula[128];
+    ua_ep_formula_text(formula, (int)sizeof(formula));
+    assert(strstr(formula, "B") != NULL);
+    if (EP_SPECIES_PER_POINT <= 1) {
+        assert(strstr(formula, "S/") == NULL);      /* 每个物种 1 EP 时不该写 S/2 */
+    }
+    char cr[24];
+    snprintf(cr, sizeof(cr), "%d×min(C,%d)", EP_POINTS_PER_CRISIS, EP_CRISIS_CAP);
+    if (EP_POINTS_PER_CRISIS == 1) {
+        snprintf(cr, sizeof(cr), "min(C,%d)", EP_CRISIS_CAP);
+    }
+    assert(strstr(formula, cr) != NULL);
+
+    puts("EP rule text: every coefficient comes from balance.h, not from screens.c");
+}
+
+/* 下一事件预览：事件进行中 RunState.next_environment_id 是 -1（规则层用它表示
+ * “尚未抽取”），横幅以前只看“next != 当前事件”，于是把它翻成了
+ * “下一事件：Unknown”。这里锁住三种状态：能预览 / 事件中不预览 / 未解锁不预览。 */
+static void test_next_event_preview(void)
+{
+    GameState game;
+    game_init(&game);
+    char buf[64];
+
+    /* 常态 + Adaptation Lv.3 + 已抽到下一事件 → 可以预览，名称与规则层一致 */
+    game.run.current_environment_id = ENV_NORMAL_OCEAN;
+    game.run.next_environment_id = ENV_GLOBAL_COOLING;
+    game.legacy.levels[LEGACY_ADAPTATION] = 3;
+    assert(ua_next_event_preview(&game, buf, (int)sizeof(buf)));
+    assert(strcmp(buf, ua_environment_name(ENV_GLOBAL_COOLING)) == 0);
+
+    /* 事件进行中：next 为 -1，绝不能画成 Unknown */
+    game.run.current_environment_id = ENV_NUTRIENT_UPWELLING;
+    game.run.next_environment_id = -1;
+    assert(!ua_next_event_preview(&game, buf, (int)sizeof(buf)));
+    assert(buf[0] == '\0');
+
+    /* 常态但没到 Adaptation Lv.3 → 不预告 */
+    game.run.current_environment_id = ENV_NORMAL_OCEAN;
+    game.run.next_environment_id = ENV_GLOBAL_COOLING;
+    game.legacy.levels[LEGACY_ADAPTATION] = 2;
+    assert(!ua_next_event_preview(&game, buf, (int)sizeof(buf)));
+
+    /* 抽到“常态”表示池子空了，这一行也不该出现 */
+    game.legacy.levels[LEGACY_ADAPTATION] = 3;
+    game.run.next_environment_id = ENV_NORMAL_OCEAN;
+    assert(!ua_next_event_preview(&game, buf, (int)sizeof(buf)));
+
+    puts("Next-event preview: no Unknown during events, name forwarded from rules");
+}
+
 int main(void)
 {
     GameState game;
@@ -396,6 +533,9 @@ int main(void)
     test_mutation_atp_ticket();
     test_era_stage_cap();
     test_tree_same_phase_edges();
+    test_crisis_pass_line();
+    test_ep_rule_text();
+    test_next_event_preview();
     memset(&g_ui, 0, sizeof g_ui);
     g_ui.overlay = UI_OVL_TREE;
     screens_build(&g_ui.layout, &game, &g_ui);

@@ -35,4 +35,14 @@ double environment_multiplier_for_slot(const GameState *game, int species_slot);
 /* Adaptation Lv.3：当前是否允许显示下一事件预览 */
 bool environment_preview_available(const GameState *game);
 
+/* 危机存活线：按纪元取通过比例（纪元 1 / 2 / 3 各一档）。
+ * 界面要把「还差多少人口算通过」写出来，所以与判定共用这一份实现。 */
+double environment_crisis_pass_ratio(const GameState *game);
+
+/* 本轮危机的存活门槛人口 = max(MIN_ACTIVE_POPULATION, 开始人口 × 通过比例)。 */
+double environment_crisis_threshold(const GameState *game);
+
+/* 判定口径：事件期间主谱系的最低人口（含当前值），不是结束瞬间的人口。 */
+double environment_crisis_lowest(const GameState *game);
+
 #endif

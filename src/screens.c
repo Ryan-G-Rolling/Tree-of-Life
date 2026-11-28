@@ -2309,7 +2309,17 @@ static void draw_env_banner(const GameState *game)
     }
     ui_text_strong(ename, r.x + 64.0f, r.y + 6.0f, F_LABEL, COL_TEXT);
 
-    const char *chip = in_event ? (crisis ? "危机中" : "丰饶期") : "稳定期";
+    /* 危机时把存活线写进 chip：判定用的是“事件期间最低人口”，玩家不知道线在哪，
+     * 只能等结束时被动看结果。比例取自规则层，界面不写 0.78 / 0.74 / 0.80。 */
+    char chip_txt[64];
+    if (crisis) {
+        double ratio = ua_crisis_pass_ratio(game);
+        snprintf(chip_txt, sizeof(chip_txt), "危机中 · 存活线 %d%%",
+                 (int)lround(ratio * 100.0));
+    } else {
+        snprintf(chip_txt, sizeof(chip_txt), "%s", in_event ? "丰饶期" : "稳定期");
+    }
+    const char *chip = chip_txt;
     float cw = ui_text_w(chip, F_CAPTION) + 14.0f;
     Rectangle chipr = { r.x + r.width - S_PAD - cw, r.y + 6.0f, cw, H_CHIP };
     ui_panel(chipr, R_CHIP(H_CHIP), Fade(accent, 0.16f), Fade(accent, 0.45f));
@@ -2320,12 +2330,34 @@ static void draw_env_banner(const GameState *game)
     else ua_environment_desc(env, desc, (int)sizeof(desc));
     ui_text(desc, r.x + 64.0f, r.y + 28.0f, F_CAPTION, COL_DIM);
 
-    if (game->legacy.levels[LEGACY_ADAPTATION] >= 3 && game->run.next_environment_id != env) {
+    /* 右侧一列：危机时是“当前最低 / 门槛”，常态时是下一事件预告。
+     * 事件进行中 RunState.next_environment_id 是 -1（表示尚未抽取），
+     * 以前只看“next != 当前事件”，于是把 -1 翻成了 Unknown。
+     * 现在是否可预览由适配层判定，无效就不画。 */
+    char side[96];
+    side[0] = '\0';
+    Color side_col = COL_FAINT;
+    if (crisis) {
+        double need = ua_crisis_threshold(game);
+        double low = ua_crisis_lowest(game);
+        char lt[32], nt[32];
+        ui_fmt_num(low, lt, (int)sizeof(lt));
+        ui_fmt_num(need, nt, (int)sizeof(nt));
+        snprintf(side, sizeof(side), "最低 %s · 需 %s", lt, nt);
+        side_col = (low >= need) ? COL_GOOD : COL_BAD;
+    } else {
         char nb[64];
-        snprintf(nb, sizeof(nb), "下一事件：%s", ua_environment_name(game->run.next_environment_id));
-        float used = ui_text_w(desc, F_CAPTION) + ui_text_w(nb, F_CAPTION) + 28.0f;
+        if (ua_next_event_preview(game, nb, (int)sizeof(nb))) {
+            snprintf(side, sizeof(side), "下一事件：%s", nb);
+            side_col = COL_EP;
+        }
+    }
+    if (side[0]) {
+        /* 描述比较长的环境（“电离辐射穿透水体，只有最全面的适应能保全种群。”）
+         * 会和右侧撞上，撞了就只留 chip，不硬挤成两截。 */
+        float used = ui_text_w(desc, F_CAPTION) + ui_text_w(side, F_CAPTION) + 28.0f;
         if (r.x + 64.0f + used < r.x + r.width - S_PAD) {
-            ui_text_right(nb, r.x + r.width - S_PAD, r.y + 28.0f, F_CAPTION, COL_EP);
+            ui_text_right(side, r.x + r.width - S_PAD, r.y + 28.0f, F_CAPTION, side_col);
         }
     }
 }
@@ -2746,8 +2778,15 @@ static void info_content_next(const GameState *game, Rectangle r)
         ui_text(line, x + 14.0f, y, F_CAPTION, COL_DIM);
     }
 
-    ui_text("EP = 2E + M/3 + S/2 + min(C,3) + B · 主动结束不会丢失图鉴",
-            x, r.y + 126.0f, F_CAPTION, COL_FAINT);
+    {
+        /* 公式由规则层生成：以前手写 "S/2 + min(C,3)"，规则改成 每个物种 1 EP、
+         * 每类危机 5 EP 最多 6 类之后，这行成了错的教学。 */
+        char formula[128];
+        ua_ep_formula_text(formula, (int)sizeof(formula));
+        char line[224];
+        snprintf(line, sizeof(line), "EP = %s · 主动结束不会丢失图鉴", formula);
+        ui_text(line, x, r.y + 126.0f, F_CAPTION, COL_FAINT);
+    }
 }
 
 static void info_content_output(const GameState *game, Rectangle r)
@@ -3879,6 +3918,13 @@ static void draw_end_era(const GameState *game, const UIState *S)
     EraReward reward;
     ua_era_reward(game, &reward);
 
+    /* 规则列全部来自规则层常量：界面手写过 "每 2 个 1 EP" 与 "每个 1 EP，最多 3"，
+     * 而规则是 每个物种 1 EP、每类危机 5 EP 最多 6 类 —— 两边对不上。 */
+    char rule_text[5][64];
+    for (int i = 0; i < 5; ++i) {
+        ua_ep_rule_text(i, rule_text[i], (int)sizeof(rule_text[i]));
+    }
+
     struct {
         const char *label;
         const char *var;
@@ -3888,11 +3934,11 @@ static void draw_end_era(const GameState *game, const UIState *S)
         Color color;
         int icon;
     } rows[5] = {
-        { "主要进化阶段", "E", "每阶段 2 EP",         c[0], reward.era_points,      COL_ACCENT,  ICON_STAGE },
-        { "解锁突变",     "M", "每 3 个 1 EP",        c[1], reward.mutation_points, COL_DNA,     ICON_MUT },
-        { "发现物种",     "S", "每 2 个 1 EP",        c[2], reward.species_points,  COL_BIOMASS, ICON_POP },
-        { "度过危机",     "C", "每个 1 EP，最多 3",   c[3], reward.crisis_points,   COL_RARE,    ICON_ENV },
-        { "生物量里程碑", "B", "每档 1 EP",           c[4], reward.biomass_points,  COL_EP,      ICON_BIOMASS },
+        { "主要进化阶段", "E", rule_text[0], c[0], reward.era_points,      COL_ACCENT,  ICON_STAGE },
+        { "解锁突变",     "M", rule_text[1], c[1], reward.mutation_points, COL_DNA,     ICON_MUT },
+        { "发现物种",     "S", rule_text[2], c[2], reward.species_points,  COL_BIOMASS, ICON_POP },
+        { "度过危机",     "C", rule_text[3], c[3], reward.crisis_points,   COL_RARE,    ICON_ENV },
+        { "生物量里程碑", "B", rule_text[4], c[4], reward.biomass_points,  COL_EP,      ICON_BIOMASS },
     };
 
     for (int i = 0; i < 5; ++i) {

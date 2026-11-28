@@ -641,26 +641,47 @@ static void capture_screen(const GameState *base, const char *first_file)
     ui_debug_force(UI_SCREEN_LEGACY, UI_OVL_NONE);
     ui_debug_capture(&game, "shot_07_legacy.png");
 
-    /* 危机横幅：常态 / 事件两种计时各出一张，回归时能直接对比环的语义 */
+    /* 危机横幅：常态 / 事件两种计时各出一张，回归时能直接对比环的语义。
+     * 存活线要一起上镜头：crisis_start_population / crisis_min_population 是判定口径，
+     * 演示态不给值的话门槛会退回最小活体数，横幅上就成了“需 1”。 */
     fill_demo_late(&game);
     game.phase = PHASE_RUNNING;
     game.run.current_environment_id = ENV_GLOBAL_COOLING;
     game.run.environment_time_left = 18.0;
     game.run.event_interval_left = 0.0;
+    game.run.next_environment_id = -1;              /* 事件进行中：规则层用它表示“尚未抽取” */
+    game.run.crisis_start_population = game.run.active_species[0].population;
+    game.run.crisis_min_population = game.run.active_species[0].population * 0.95;
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_NONE);
     ui_debug_capture(&game, "shot_08_crisis.png");
 
-    /* 陨石撞击：进入瞬间的爆发（火痕 + 冲击波 + 抖屏 + 标题条） */
+    /* 陨石撞击：进入瞬间的爆发（火痕 + 冲击波 + 抖屏 + 标题条）。
+     * 这张同时拍“没达标”的存活线：最低人口被压到门槛以下，横幅该转红。 */
     fill_demo_late(&game);
     game.phase = PHASE_RUNNING;
     game.run.current_environment_id = ENV_METEOR_IMPACT;
     game.run.environment_time_left = 22.0;
     game.run.event_interval_left = 0.0;
+    game.run.next_environment_id = -1;
+    game.run.crisis_start_population = game.run.active_species[0].population;
+    game.run.crisis_min_population = game.run.active_species[0].population * 0.55;
     ui_debug_force(UI_SCREEN_MAIN, UI_OVL_NONE);
     ui_debug_poke_crisis(ENV_METEOR_IMPACT, 2.0f);
     ui_debug_capture(&game, "shot_08b_meteor.png");
     ui_debug_poke_crisis(-1, 0.0f);
     g_ui.crisis_flash = 0.0f;
+
+    /* 丰饶期（正面事件）：事件进行中 next_environment_id 是 -1。
+     * 以前横幅只看“next != 当前事件”，于是把 -1 翻成了“下一事件：Unknown”。
+     * 这张专门盯这个回归：事件期间右侧只该有存活线（危机）或什么都没有。 */
+    fill_demo_late(&game);
+    game.phase = PHASE_RUNNING;
+    game.run.current_environment_id = ENV_NUTRIENT_UPWELLING;
+    game.run.environment_time_left = 26.0;
+    game.run.event_interval_left = 0.0;
+    game.run.next_environment_id = -1;
+    ui_debug_force(UI_SCREEN_MAIN, UI_OVL_NONE);
+    ui_debug_capture(&game, "shot_08c_boon.png");
 
     /* 终局形态：奇点（黑洞 + 吸积盘 + 光子环），展示形态引擎的第 10 类 */
     fill_demo_singularity(&game);
@@ -708,5 +729,5 @@ static void capture_screen(const GameState *base, const char *first_file)
     /* 生境样张：8 种大环境并排，核对"每个阶段站在什么地上" */
     ui_debug_capture_habitats("shot_11_habitats.png");
 
-    TraceLog(LOG_INFO, "shot capture done: 32 frames");
+    TraceLog(LOG_INFO, "shot capture done: 34 frames");
 }

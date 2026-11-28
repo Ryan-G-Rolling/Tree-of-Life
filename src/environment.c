@@ -195,6 +195,43 @@ static double main_lineage_population(const GameState *game)
     return slot >= 0 ? game->run.active_species[slot].population : 0.0;
 }
 
+double environment_crisis_pass_ratio(const GameState *game)
+{
+    if (!game) {
+        return CRISIS_PASS_RATIO_ERA1;
+    }
+    /* 第十二轮：通过线按纪元区分；v7：纪元 3 收紧到 0.80 */
+    if (game->run.era <= 1) {
+        return CRISIS_PASS_RATIO_ERA1;
+    }
+    if (game->run.era == 2) {
+        return CRISIS_PASS_POPULATION_RATIO;
+    }
+    return CRISIS_PASS_RATIO_ERA3;
+}
+
+double environment_crisis_threshold(const GameState *game)
+{
+    if (!game) {
+        return MIN_ACTIVE_POPULATION;
+    }
+    double threshold = game->run.crisis_start_population * environment_crisis_pass_ratio(game);
+    return threshold > MIN_ACTIVE_POPULATION ? threshold : MIN_ACTIVE_POPULATION;
+}
+
+double environment_crisis_lowest(const GameState *game)
+{
+    if (!game) {
+        return 0.0;
+    }
+    /* 第十一轮：判定口径改为“事件期间最低人口”，而不是结束瞬间的人口 */
+    double lowest = game->run.crisis_min_population > 0.0
+                        ? game->run.crisis_min_population
+                        : game->run.crisis_start_population;
+    double now = main_lineage_population(game);
+    return now < lowest ? now : lowest;
+}
+
 /* 单个随机数抽取，排除上一个事件与阶段未解锁的事件。
  * 第三轮：危机轮转——优先抽取本纪元尚未通过的危机类型，
  * 避免同一类型反复出现导致危机种类 C 长期停在 5。
@@ -320,22 +357,10 @@ EnvironmentStep environment_calculate_step(const GameState *game, double dt)
             step.event_ended = true;
             step.ended_environment_id = current;
             if (environment_is_crisis(current)) {
-                /* 第十二轮：通过线按纪元区分；v7：纪元 3 收紧到 0.85 */
-                double pass_ratio = game->run.era <= 1
-                                        ? CRISIS_PASS_RATIO_ERA1
-                                        : (game->run.era == 2 ? CRISIS_PASS_POPULATION_RATIO
-                                                              : CRISIS_PASS_RATIO_ERA3);
-                double threshold =
-                    fmax(MIN_ACTIVE_POPULATION,
-                         game->run.crisis_start_population * pass_ratio);
-                /* 第十一轮：判定口径改为“事件期间最低人口”，而不是结束瞬间的人口 */
-                double lowest = game->run.crisis_min_population > 0.0
-                                    ? game->run.crisis_min_population
-                                    : game->run.crisis_start_population;
-                double now = main_lineage_population(game);
-                if (now < lowest) {
-                    lowest = now;
-                }
+                /* 通过线与判定口径都走下面的导出函数：界面显示的就是这里判的，
+                 * 两边不再各写一遍 0.78 / 0.74 / 0.80。 */
+                double threshold = environment_crisis_threshold(game);
+                double lowest = environment_crisis_lowest(game);
                 step.crisis_lowest_population = lowest;
                 step.crisis_survived = lowest >= threshold;
             }

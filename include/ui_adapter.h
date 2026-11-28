@@ -170,6 +170,23 @@ bool ua_environment_is_crisis(int environment_id);
  * 界面只负责画环。 */
 void ua_environment_timer(const GameState *game, double *remaining, double *total, bool *in_event);
 
+/* 危机存活线（按纪元 0.78 / 0.74 / 0.80）。判定与界面共用规则层同一份实现；
+ * 界面只用它把「还差多少人口算通过」写出来，不参与任何通过判定。 */
+double ua_crisis_pass_ratio(const GameState *game);
+
+/* 本轮危机的存活门槛人口。危机未开始时按开始人口 0 算，返回 MIN_ACTIVE_POPULATION。 */
+double ua_crisis_threshold(const GameState *game);
+
+/* 事件期间主谱系的最低人口（判定口径），界面用它和门槛对比显示“当前最低”。 */
+double ua_crisis_lowest(const GameState *game);
+
+/* 下一事件预览：true 表示可以画这行，名称写入 buf。
+ *
+ * 事件进行中 RunState.next_environment_id 是 -1（规则层用它表示“尚未抽取”），
+ * 界面若只看“next != 当前事件”就会把它翻成 Unknown。是否可预览属于规则知识，
+ * 收在适配层，界面只管画 / 不画。 */
+bool ua_next_event_preview(const GameState *game, char *buf, int buf_size);
+
 /* ================= B 侧：结算与永久强化 ================= */
 
 /* 逐项明细：out[0]=E out[1]=M out[2]=S out[3]=C out[4]=B。
@@ -178,6 +195,15 @@ void ua_era_breakdown(const GameState *game, int out[5]);
 
 /* 直接转发 prestige_preview_reward，保证预览与正式结算同一个函数。 */
 void ua_era_reward(const GameState *game, EraReward *out);
+
+/* EP 计分规则的第 row 行文案（0..4 = 阶段 / 突变 / 物种 / 危机 / 里程碑）。
+ *
+ * 这些数字以前是界面里手写的，规则层改成“每类 5 EP、最多 6 类”之后界面还写着
+ * “每个 1 EP，最多 3”，和同一行右边的得分自相矛盾。现在统一由规则层常量生成。 */
+void ua_ep_rule_text(int row, char *buf, int buf_size);
+
+/* EP 公式串（不含 “EP = ” 前缀），例如 "2E + min(M/3,3) + S + 5×min(C,6) + B"。 */
+void ua_ep_formula_text(char *buf, int buf_size);
 
 /* Biomass 里程碑门槛（02 §9.1 的表），UI 用它画进度条。 */
 double ua_milestone_threshold(int level);

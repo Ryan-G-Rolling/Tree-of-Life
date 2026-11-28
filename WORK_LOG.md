@@ -814,3 +814,55 @@ ATP 产率，k 只数门票卡，地板 3 秒产率）。ATP 不够时只弹一�
   **未纳入本次提交**，保持原样。
 - **未完成**：P1-13 `src/screens.c` 拆分仍未做；本轮未重跑 `--shot` 截图与 60 分钟以外的长线探索。
 - **同步结果**：本条随本轮提交推送 `origin/main`。
+
+## 2026-11-28 深夜 · 规则里的限制逐条对账（C 界面层）
+
+把 B 的 `data/balance.h` 与 `evolution.c` / `environment.c` 里所有“会挡住玩家”的
+限制拉了一遍，逐条核对界面有没有说清。结论分三类：
+
+**一、已经在界面上（不动）**
+
+- 纪元阶段上限 8/10/13（上一轮已上屏）
+- 容量 `CAPACITY_MAX_LEVEL=26`、储备 `RESERVE_MAX_LEVEL=16`、永久强化
+  `LEGACY_MAX_LEVEL=8` —— 报价返回 INFINITY → 卡片写「已满级」
+- 突变刷新 `MUTATION_REFRESH_LIMIT=3` —— 按钮副标题写「N/3」「本批已刷新 3 次」
+- 关键突变保底深度 `MAINLINE_GUARANTEE_MAX_PHASE=12`（属于候选池规则，不是玩家操作门槛）
+- 单轮升级 `RUN_UPGRADE_MAX_LEVEL=-1`（不限，无需提示）
+
+**二、确认不可达，不加提示**
+
+- `BRANCH_MAX_DEPTH=2`：`evolution_speciation_offers` 固定从槽 0 出候选，
+  `evolution_apply_speciation` 里 `child.is_main_lineage = source_is_main`，
+  而槽 0 恒为主线 → `!parent->is_main_lineage && depth > 2` 这条在玩家可达路径上
+  永不成立。UI 里加一行“本枝已到底”会是一句永远不出现的提示，不如不加。
+
+**三、真缺的，已补（三项）**
+
+1. **危机存活线**。判定是 `max(MIN_ACTIVE_POPULATION, crisis_start_population × 比例)`
+   与「事件期间最低人口」比大小，比例按纪元 0.78 / 0.74 / 0.80。界面原来只有「危机中」。
+   - 规则层提取 `environment_crisis_pass_ratio / threshold / lowest`，
+     `environment_calculate_step` 改为调用它们（判定与显示共用一份实现）。
+   - 适配层 1:1 转发；横幅 chip 写「危机中 · 存活线 80%」，说明行右侧写
+     「最低 4978 · 需 4192」，达标绿 / 未达标红；描述过长时只留 chip。
+2. **结算 EP 的规则文案**。原来硬编码「发现物种 每 2 个 1 EP」「度过危机 每个 1 EP，
+   最多 3」，主界面公式写 `S/2 + min(C,3)`；规则是 `EP_SPECIES_PER_POINT=1`、
+   `EP_POINTS_PER_CRISIS=5`、`EP_CRISIS_CAP=6`、`EP_MUTATION_CAP=3`。
+   同一行右边「C = 3 → +15」和左边「最多 3」自相矛盾。
+   - 新增 `ua_ep_rule_text(row)` / `ua_ep_formula_text()`，五个系数全部由宏生成。
+     修好后读作「C = 3 · 每类 5 EP，最多 6 类 · +15」，
+     主界面 `EP = 2E + min(M/3,3) + S + 5×min(C,6) + B`。
+3. **「下一事件：Unknown」**（用户截图）。事件进行中 `next_environment_id == -1`
+   表示“尚未抽取”，横幅只判断「不等于当前事件」就把它画成了 Unknown。
+   - 新增 `ua_next_event_preview(game, buf, size)`：常态期 + 已抽到 + Adaptation 已解锁
+     三者同时成立才返回名称，否则整行不画。
+
+**验证**
+
+- 0 warning / 0 error；`make test` 27 组 130,892 项 + 36 项接线 + 集成 + 60 分钟回归 +
+  gameplay + codex 全通过。
+- `test-layout` 新增三项：`test_crisis_pass_line`（比例与门槛同源、门槛不随人口下探、
+  lowest 取最低不取当前）、`test_ep_rule_text`（逐行与宏一致、公式不含 S/2、
+  危机项必须是 5×min(C,6)）、`test_next_event_preview`（能预览 / 事件中不预览 / 未解锁不预览）。
+- 4K 逐张核对：危机横幅两张（绿 4978/4192、红 2882/4192）文字不越框；丰饶期右侧为空；
+  结算页五行文案与得分自洽（16+3+18+15+10=62）；情报面板公式行未越界。
+- 截图 33 → 34（新增 `shot_08c_boon.png`）；README 增两节；单文件版重建。

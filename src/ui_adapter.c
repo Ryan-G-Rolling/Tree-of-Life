@@ -648,6 +648,46 @@ void ua_environment_timer(const GameState *game, double *remaining, double *tota
 
 /* ================= B 侧：结算与永久强化 ================= */
 
+double ua_crisis_pass_ratio(const GameState *game)
+{
+    return environment_crisis_pass_ratio(game);
+}
+
+double ua_crisis_threshold(const GameState *game)
+{
+    return environment_crisis_threshold(game);
+}
+
+double ua_crisis_lowest(const GameState *game)
+{
+    return environment_crisis_lowest(game);
+}
+
+bool ua_next_event_preview(const GameState *game, char *buf, int buf_size)
+{
+    if (!buf || buf_size <= 0) {
+        return false;
+    }
+    buf[0] = '\0';
+    if (!game) {
+        return false;
+    }
+    /* 只有常态期、且规则层真的抽到了下一个事件时才有“下一事件”可写。
+     * 事件进行中 next_environment_id == -1，ENV_NORMAL_OCEAN 表示池子空了。 */
+    if (game->run.current_environment_id != ENV_NORMAL_OCEAN) {
+        return false;
+    }
+    int next = game->run.next_environment_id;
+    if (next <= ENV_NORMAL_OCEAN || next >= ENV_COUNT) {
+        return false;
+    }
+    if (!legacy_preview_enabled(&game->legacy)) {
+        return false;
+    }
+    snprintf(buf, (size_t)buf_size, "%s", ua_environment_name(next));
+    return true;
+}
+
 void ua_era_breakdown(const GameState *game, int out[5])
 {
     out[0] = out[1] = out[2] = out[3] = out[4] = 0;
@@ -674,6 +714,71 @@ void ua_era_reward(const GameState *game, EraReward *out)
 double ua_milestone_threshold(int level)
 {
     return prestige_milestone_threshold(level);
+}
+
+void ua_ep_rule_text(int row, char *buf, int buf_size)
+{
+    if (!buf || buf_size <= 0) {
+        return;
+    }
+    buf[0] = '\0';
+    switch (row) {
+    case 0:
+        snprintf(buf, (size_t)buf_size, "每阶段 %d EP", EP_PER_STAGE);
+        break;
+    case 1:
+        snprintf(buf, (size_t)buf_size, "每 %d 个 1 EP，最多 %d",
+                 EP_MUTATIONS_PER_POINT, EP_MUTATION_CAP);
+        break;
+    case 2:
+        if (EP_SPECIES_PER_POINT <= 1) {
+            snprintf(buf, (size_t)buf_size, "每个 1 EP");
+        } else {
+            snprintf(buf, (size_t)buf_size, "每 %d 个 1 EP", EP_SPECIES_PER_POINT);
+        }
+        break;
+    case 3:
+        snprintf(buf, (size_t)buf_size, "每类 %d EP，最多 %d 类",
+                 EP_POINTS_PER_CRISIS, EP_CRISIS_CAP);
+        break;
+    case 4:
+        snprintf(buf, (size_t)buf_size, "每档 1 EP");
+        break;
+    default:
+        break;
+    }
+}
+
+void ua_ep_formula_text(char *buf, int buf_size)
+{
+    if (!buf || buf_size <= 0) {
+        return;
+    }
+    buf[0] = '\0';
+
+    char era[24], mut[40], spe[24], cri[40];
+    if (EP_PER_STAGE == 1) {
+        snprintf(era, sizeof(era), "E");
+    } else {
+        snprintf(era, sizeof(era), "%dE", EP_PER_STAGE);
+    }
+    if (EP_MUTATIONS_PER_POINT > 1) {
+        snprintf(mut, sizeof(mut), "min(M/%d,%d)", EP_MUTATIONS_PER_POINT, EP_MUTATION_CAP);
+    } else {
+        snprintf(mut, sizeof(mut), "min(M,%d)", EP_MUTATION_CAP);
+    }
+    if (EP_SPECIES_PER_POINT > 1) {
+        snprintf(spe, sizeof(spe), "S/%d", EP_SPECIES_PER_POINT);
+    } else {
+        snprintf(spe, sizeof(spe), "S");
+    }
+    if (EP_POINTS_PER_CRISIS == 1) {
+        snprintf(cri, sizeof(cri), "min(C,%d)", EP_CRISIS_CAP);
+    } else {
+        snprintf(cri, sizeof(cri), "%d×min(C,%d)", EP_POINTS_PER_CRISIS, EP_CRISIS_CAP);
+    }
+
+    snprintf(buf, (size_t)buf_size, "%s + %s + %s + %s + B", era, mut, spe, cri);
 }
 
 int ua_milestone_level(const GameState *game)
