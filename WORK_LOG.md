@@ -647,6 +647,8 @@ G3 末/中 = 0.872/0.837 = **1.042** PASS；G4 物种中位 **17**（P10 17 / P9
   `CONNECT tunnel failed, response 502` / `schannel: server closed abruptly`；直连 github.com:443 超时。
   连续 12 次 `git fetch` 同样失败，无法确认远端最新引用（一次 `ls-remote` 曾看到 `b8c9d5e`，
   若确有新提交，推送前需先 `git fetch && git merge`）。
-- 待网络恢复后执行：`git fetch origin && git merge origin/main && git push origin main`。
-  本地 `deliverables/TreeOfLife.exe`（71 MB）已按合并后源码重建，`deliverables/screens/` 27 张已更新。
+- **推送结果（2026-11-28 15:08）**：网络恢复后 `git fetch` 一次成功，远端已推进到 `65a04db`（v23–v25 定稿）。
+  合并后按「逐提交推到临时分支、最后快进 main」的顺序推送，单次请求体从 383 MB 压到最大 136 MB，
+  12 个提交全部落地，`main` 快进到 `c99ec4a`，临时分支 `_sync` 已删除。
+  本地仅领先 0 / 落后 0，工作区干净；`deliverables/TreeOfLife.exe`（71 MB）空目录实测导出 27 张通过。
 
